@@ -1,11 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { MessageCircle, Phone, Instagram, X, Search, FileText, ChevronLeft, ChevronRight, Check, ChevronDown, MapPin, Clock, PlayCircle } from "lucide-react";
-import { useCars, useSettings, addLead, phoneRaw } from "@/lib/store";
+import { MessageCircle, Phone, Instagram, X, Search, FileText } from "lucide-react";
 import hero from "@/assets/hero.jpg";
-import { BRANDS, T, waLink as baseWa, type Car, type Lang } from "@/lib/bycar";
-
-const isSold = (c: Car) => c.status === "Satıldı" || (!c.status && isSold(c));
+import { BRANDS, CARS, INSTAGRAM, PHONE, PHONE_RAW, T, waLink, type Car, type Lang } from "@/lib/bycar";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -14,8 +11,6 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Ferrari, Lamborghini, Rolls-Royce ve daha fazlası. Özel koleksiyon ve VIP araç ithalatı." },
       { property: "og:title", content: "ByCar — Exclusive Automotive" },
       { property: "og:description", content: "Lüksün Yeni Adresi. Dünyanın en seçkin otomobilleri, sizin için." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Index,
@@ -37,26 +32,19 @@ function Index() {
   const [gear, setGear] = useState("");
   const [detail, setDetail] = useState<Car | null>(null);
   const [offerFor, setOfferFor] = useState<string | null>(null);
-  const [privacy, setPrivacy] = useState(false);
-  const [cars] = useCars();
-  const [settings] = useSettings();
-  const RAW = phoneRaw(settings.phone);
-  const waLink = (car?: string) => baseWa(car, RAW);
-  const igHandle = "@" + settings.instagram.replace(/\/$/, "").split("/").pop();
 
   const list = useMemo(
     () =>
-      cars.filter(
+      CARS.filter(
         (c) =>
-          c.status !== "Taslak" &&
           (!brand || c.brand === brand) &&
           (!year || String(c.year) === year) &&
           (!body || c.body === body) &&
           (!fuel || c.fuel === fuel) &&
           (!gear || c.gear === gear) &&
           c.title.toLowerCase().includes(q.toLowerCase()),
-      ).sort((a, b) => Number(!!b.featured) - Number(!!a.featured)),
-    [cars, brand, q, year, body, fuel, gear],
+      ),
+    [brand, q, year, body, fuel, gear],
   );
 
   return (
@@ -102,7 +90,7 @@ function Index() {
       <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
         <SectionTitle kicker="Collection" title={t.collection} />
         <div className="mb-6 flex flex-wrap gap-2">
-          {["", ...new Set([...BRANDS, ...cars.map((c) => c.brand)])].map((b) => (
+          {["", ...BRANDS].map((b) => (
             <button key={b} onClick={() => setBrand(b)} className={`border px-4 py-2 text-xs uppercase tracking-wider ${brand === b ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>{b || t.all}</button>
           ))}
         </div>
@@ -111,17 +99,17 @@ function Index() {
             <Search className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} className={`${input} pl-10`} />
           </div>
-          <Sel v={year} set={setYear} label={lang === "tr" ? "Model Yılı" : "Year"} opts={[...new Set(cars.map((c) => String(c.year)))].sort().reverse()} />
+          <Sel v={year} set={setYear} label={lang === "tr" ? "Model Yılı" : "Year"} opts={["2024", "2023", "2022"]} />
           <Sel v={body} set={setBody} label={lang === "tr" ? "Kasa Tipi" : "Body"} opts={["Coupe", "SUV", "Sedan", "Cabrio"]} />
           <div className="grid grid-cols-2 gap-3">
             <Sel v={fuel} set={setFuel} label={lang === "tr" ? "Yakıt" : "Fuel"} opts={["Benzin", "Hibrit", "Elektrik", "Dizel"]} />
-            <Sel v={gear} set={setGear} label={lang === "tr" ? "Vites" : "Gear"} opts={["Otomatik", "F1/PDK", "Manuel"]} />
+            <Sel v={gear} set={setGear} label={lang === "tr" ? "Vites" : "Gear"} opts={["Otomatik", "Manuel"]} />
           </div>
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((c) => (
             <article key={c.id} className="group relative overflow-hidden border border-border bg-card">
-              <button onClick={() => !isSold(c) && setDetail(c)} className="block w-full overflow-hidden">
+              <button onClick={() => !c.sold && setDetail(c)} className="block w-full overflow-hidden">
                 <img src={c.images[0]} alt={c.title} loading="lazy" width={1280} height={832} className="aspect-[16/10] w-full object-cover transition duration-700 group-hover:scale-105" />
               </button>
               <div className="p-5">
@@ -130,13 +118,12 @@ function Index() {
                     <span key={x} className="border border-border px-2 py-1">{x}</span>
                   ))}
                 </div>
-                {c.featured && <div className="mb-2 text-[10px] uppercase tracking-[0.3em] text-primary">★ {lang === "tr" ? "Vitrin" : "Featured"}</div>}
                 <h3 className="mb-5 text-2xl font-semibold">{c.title}</h3>
-                <a href={waLink(c.title)} target="_blank" rel="noreferrer" aria-disabled={isSold(c)} className={`${goldBtn} w-full ${isSold(c) ? "pointer-events-none opacity-40" : ""}`}>
+                <a href={waLink(c.title)} target="_blank" rel="noreferrer" aria-disabled={c.sold} className={`${goldBtn} w-full ${c.sold ? "pointer-events-none opacity-40" : ""}`}>
                   <MessageCircle className="h-4 w-4" /> {t.quote}
                 </a>
               </div>
-              {isSold(c) && (
+              {c.sold && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 grayscale">
                   <span className="rotate-[-12deg] border-2 border-destructive bg-background/80 px-6 py-2 text-2xl font-bold tracking-[0.4em] text-destructive">{t.sold}</span>
                 </div>
@@ -152,7 +139,7 @@ function Index() {
             <SectionTitle kicker="Private Import" title={t.importTitle} />
             <p className="text-muted-foreground">{t.importSub}</p>
           </div>
-          <SimpleForm t={t} kind="İthalat" fields={[t.f.model, t.f.year, "budget", t.f.country, t.f.name, t.f.phone]} />
+          <SimpleForm t={t} fields={[t.f.model, t.f.year, "budget", t.f.country, t.f.name, t.f.phone]} />
         </div>
       </section>
 
@@ -165,20 +152,6 @@ function Index() {
               <h3 className="mb-2 text-xl font-semibold">{h}</h3>
               <p className="text-sm text-muted-foreground">{d}</p>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="sss" className="mx-auto max-w-4xl scroll-mt-20 px-4 pb-24">
-        <SectionTitle kicker="FAQ" title={t.faqTitle} />
-        <div className="divide-y divide-border border border-border">
-          {t.faqs.map(([qq, a]) => (
-            <details key={qq} className="group p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-semibold">
-                {qq}<ChevronDown className="h-5 w-5 shrink-0 text-primary transition group-open:rotate-180" />
-              </summary>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{a}</p>
-            </details>
           ))}
         </div>
       </section>
@@ -199,38 +172,26 @@ function Index() {
             <p className="mt-2 text-sm text-muted-foreground">Exclusive Automotive | Luxury Without Borders</p>
           </div>
           <div className="space-y-2 text-sm">
-            <a href={`tel:+${RAW}`} className="flex items-center gap-2 hover:text-primary"><Phone className="h-4 w-4" />{settings.phone}</a>
-            <a href={settings.instagram} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-primary"><Instagram className="h-4 w-4" />{igHandle}</a>
-            <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="h-4 w-4" />{settings.address}</div>
-            <div className="flex items-center gap-2 text-muted-foreground"><Clock className="h-4 w-4" />{settings.hours}</div>
+            <a href={`tel:+${PHONE_RAW}`} className="flex items-center gap-2 hover:text-primary"><Phone className="h-4 w-4" />{PHONE}</a>
+            <a href={INSTAGRAM} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-primary"><Instagram className="h-4 w-4" />@bycar.eu</a>
             <div className="text-muted-foreground">bycarglobal.com</div>
           </div>
           <div className="space-y-2 text-sm text-muted-foreground">
-            <a href="#sss" className="block hover:text-primary">{t.faq}</a>
-            <button onClick={() => setPrivacy(true)} className="block hover:text-primary">{t.privacy}</button>
+            <div>{t.faq}</div>
+            <div>{t.privacy}</div>
             <Link to="/admin" className="block hover:text-primary">Yönetim Paneli</Link>
           </div>
         </div>
       </footer>
 
-      {detail && <DetailModal car={detail} t={t} lang={lang} waLink={waLink} raw={RAW} onClose={() => setDetail(null)} onOffer={() => setOfferFor(detail.title)} />}
+      {detail && <DetailModal car={detail} t={t} lang={lang} onClose={() => setDetail(null)} onOffer={() => setOfferFor(detail.title)} />}
       {offerFor && (
         <Modal onClose={() => setOfferFor(null)}>
           <h3 className="mb-1 text-3xl font-semibold">{t.form}</h3>
           <p className="mb-6 text-sm text-primary">{offerFor}</p>
-          <SimpleForm t={t} kind="Teklif" car={offerFor} fields={[t.f.name, t.f.phone, t.f.offer]} />
+          <SimpleForm t={t} fields={[t.f.name, t.f.phone, t.f.offer]} />
         </Modal>
       )}
-      {privacy && (
-        <Modal onClose={() => setPrivacy(false)}>
-          <h3 className="mb-4 text-3xl font-semibold">{t.privacy}</h3>
-          <p className="leading-relaxed text-muted-foreground">{t.privacyText}</p>
-        </Modal>
-      )}
-      <a href={waLink()} target="_blank" rel="noreferrer" aria-label="WhatsApp" className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-primary-foreground shadow-gold ring-2 ring-primary/40 transition hover:scale-110">
-        <MessageCircle className="h-7 w-7" />
-        <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-primary/30" />
-      </a>
     </div>
   );
 }
@@ -253,34 +214,21 @@ function Sel({ v, set, label, opts }: { v: string; set: (s: string) => void; lab
   );
 }
 
-function SimpleForm({ t, fields, kind, car }: { t: (typeof T)["tr"]; fields: string[]; kind: "Teklif" | "İthalat"; car?: string }) {
+function SimpleForm({ t, fields }: { t: (typeof T)["tr"]; fields: string[] }) {
   const [done, setDone] = useState(false);
   if (done) return <p className="border border-primary p-6 text-primary">{t.sent}</p>;
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const v = Array.from(e.currentTarget.elements)
-          .filter((el): el is HTMLInputElement => "name" in el && !!(el as HTMLInputElement).name)
-          .reduce<Record<string, string>>((a, el) => ({ ...a, [el.name]: el.value.trim().slice(0, 500) }), {});
-        const subject = kind === "Teklif"
-          ? `${car ?? ""}${v[t.f.offer] ? " — " + v[t.f.offer] : ""}`
-          : `${v[t.f.model]} (${v[t.f.year]}) · ${v.budget} ${v.cur} · ${v[t.f.country]}`;
-        addLead({ type: kind, name: v[t.f.name], phone: v[t.f.phone], subject });
-        setDone(true);
-      }}
-      className="grid gap-3 sm:grid-cols-2"
-    >
+    <form onSubmit={(e) => { e.preventDefault(); setDone(true); }} className="grid gap-3 sm:grid-cols-2">
       {fields.map((f) =>
         f === "budget" ? (
           <div key={f} className="flex gap-2">
-            <input name="budget" required maxLength={40} placeholder={t.f.budget} className={input} />
-            <select name="cur" className={`${input} w-24`}><option>EUR</option><option>USD</option><option>TL</option></select>
+            <input required placeholder={t.f.budget} className={input} />
+            <select className={`${input} w-24`}><option>EUR</option><option>USD</option><option>TL</option></select>
           </div>
         ) : f === t.f.offer ? (
-          <textarea key={f} name={f} maxLength={500} placeholder={f} rows={3} className={`${input} sm:col-span-2`} />
+          <textarea key={f} required placeholder={f} rows={3} className={`${input} sm:col-span-2`} />
         ) : (
-          <input key={f} name={f} required maxLength={100} type={f === t.f.phone ? "tel" : "text"} placeholder={f} className={input} />
+          <input key={f} required placeholder={f} className={input} />
         ),
       )}
       <button className={`${goldBtn} sm:col-span-2`}>{t.send}</button>
@@ -299,24 +247,14 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
   );
 }
 
-function DetailModal({ car, t, lang, onClose, onOffer, waLink, raw }: { car: Car; t: (typeof T)["tr"]; lang: Lang; onClose: () => void; onOffer: () => void; waLink: (c?: string) => string; raw: string }) {
-  const n = car.images.length;
+function DetailModal({ car, t, lang, onClose, onOffer }: { car: Car; t: (typeof T)["tr"]; lang: Lang; onClose: () => void; onOffer: () => void }) {
   const [img, setImg] = useState(0);
   const labels = lang === "tr"
     ? { expertise: "Ekspertiz", package: "Donanım Paketi", tramer: "Tramer", power: "Motor Gücü", color: "Renk" }
     : { expertise: "Inspection", package: "Package", tramer: "Damage Record", power: "Power", color: "Color" };
   return (
     <Modal onClose={onClose}>
-      <div className="relative mb-3">
-        <img src={car.images[img]} alt={car.title} className="aspect-[16/10] w-full object-cover" />
-        {n > 1 && (
-          <>
-            <button onClick={() => setImg((img - 1 + n) % n)} aria-label="Previous" className="absolute left-2 top-1/2 -translate-y-1/2 border border-primary bg-background/70 p-2 text-primary hover:bg-primary hover:text-primary-foreground"><ChevronLeft /></button>
-            <button onClick={() => setImg((img + 1) % n)} aria-label="Next" className="absolute right-2 top-1/2 -translate-y-1/2 border border-primary bg-background/70 p-2 text-primary hover:bg-primary hover:text-primary-foreground"><ChevronRight /></button>
-            <div className="absolute bottom-2 right-3 bg-background/70 px-2 py-0.5 text-xs">{img + 1} / {n}</div>
-          </>
-        )}
-      </div>
+      <img src={car.images[img]} alt={car.title} className="mb-3 aspect-[16/10] w-full object-cover" />
       <div className="mb-6 flex gap-2">
         {car.images.map((s, i) => (
           <button key={i} onClick={() => setImg(i)} className={`w-20 border-2 ${i === img ? "border-primary" : "border-transparent opacity-60"}`}>
@@ -335,22 +273,9 @@ function DetailModal({ car, t, lang, onClose, onOffer, waLink, raw }: { car: Car
           ))}
         </tbody>
       </table>
-      {car.extras && car.extras.length > 0 && (
-        <div className="mb-6">
-          <h4 className="mb-3 text-xs uppercase tracking-[0.3em] text-primary">{t.extras}</h4>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {car.extras.map((x) => (
-              <li key={x} className="flex items-start gap-2 text-sm"><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />{x}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {car.video && (
-        <a href={car.video} target="_blank" rel="noreferrer" className="mb-6 inline-flex items-center gap-2 text-sm text-primary hover:underline"><PlayCircle className="h-5 w-5" />{lang === "tr" ? "Tanıtım Videosunu İzle" : "Watch the Video"}</a>
-      )}
       <div className="grid gap-3 sm:grid-cols-3">
         <a href={waLink(car.title)} target="_blank" rel="noreferrer" className={goldBtn}><MessageCircle className="h-4 w-4" />{t.waQuote}</a>
-        <a href={`tel:+${raw}`} className={outlineBtn}><Phone className="h-4 w-4" />{t.call}</a>
+        <a href={`tel:+${PHONE_RAW}`} className={outlineBtn}><Phone className="h-4 w-4" />{t.call}</a>
         <button onClick={onOffer} className={outlineBtn}><FileText className="h-4 w-4" />{t.form}</button>
       </div>
     </Modal>
