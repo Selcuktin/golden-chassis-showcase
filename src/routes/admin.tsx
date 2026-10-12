@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Lock,
   Plus,
@@ -15,6 +15,8 @@ import {
   Sparkles,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
   UploadCloud,
   Film,
   Maximize2,
@@ -22,14 +24,20 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Database,
+  Download,
+  Upload,
+  Undo2,
 } from "lucide-react";
 import {
   ADMIN_PRESETS,
-  BRANDS,
   DEFAULT_SETTINGS,
   autoGenerateEnglishDescription,
   compressImageToWebP,
+  exportD1SqlDump,
+  exportDatabaseJSON,
   getLoginLockoutState,
+  importDatabaseJSON,
   recordLoginAttempt,
   translateTerm,
   useByCarStore,
@@ -95,31 +103,42 @@ function Admin() {
     inquiries,
     settings,
     lang,
+    undoSnap,
     setLang,
     updateCars,
     resetCars,
     updateInquiries,
+    resetInquiries,
     updateSettings,
+    restoreUndo,
   } = useByCarStore();
 
-  const [authed, setAuthed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.sessionStorage.getItem("bycar_admin_auth") === "1";
-  });
+  // SSR-safe hydration: initialize false and sync in useEffect
+  const [authed, setAuthed] = useState(false);
   const [pw, setPw] = useState("");
   const [pwErr, setPwErr] = useState("");
-  const [lockout, setLockout] = useState(() => getLoginLockoutState());
+  const [lockout, setLockout] = useState<{ attempts: number; lockedUntil: number | null }>({
+    attempts: 0,
+    lockedUntil: null,
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setAuthed(window.sessionStorage.getItem("bycar_admin_auth") === "1");
+      setLockout(getLoginLockoutState());
+    }
+  }, []);
 
   const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings">("fleet");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState("");
+  const [dbMsg, setDbMsg] = useState("");
+  const [fleetSearch, setFleetSearch] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number>(0);
-
-  const maxAllowedYear = new Date().getFullYear() + 1;
 
   // Form states for Add / Edit Vehicle
   const [brand, setBrand] = useState("Porsche");
@@ -151,6 +170,11 @@ function Admin() {
   const [images, setImages] = useState<string[]>([]);
   const [imgUrlInput, setImgUrlInput] = useState("");
 
+  const flashNotice = (msg: string) => {
+    setSavedMsg(msg);
+    setTimeout(() => setSavedMsg(""), 4500);
+  };
+
   const startEdit = (c: Car) => {
     setEditingId(c.id);
     setBrand(c.brand);
@@ -162,7 +186,7 @@ function Admin() {
     setBody(c.body);
     setStatus(c.status || (c.sold ? "sold" : "active"));
     setFeatured(Boolean(c.featured));
-    setImageFit(c.imageFit || "cover");
+    setImageFit(c.imageFit || settings.defaultCardFit || "cover");
     setVideo(c.video || "");
     setPower(c.specs.power);
     setColor(c.specs.color);
@@ -179,6 +203,19 @@ function Admin() {
     setTab("add");
   };
 
+  const resetCurrentEdit = () => {
+    if (editingId) {
+      const orig = cars.find((c) => c.id === editingId);
+      if (orig) {
+        startEdit(orig);
+        flashNotice("Düzenleme sıfırlandı: Aracın kayıtlı orijinal bilgileri ve fotoğrafları geri yüklendi.");
+        return;
+      }
+    }
+    clearForm();
+    flashNotice("Form varsayılan değerlere sıfırlandı.");
+  };
+
   const clearForm = () => {
     setEditingId(null);
     setBrand("Porsche");
@@ -190,7 +227,7 @@ function Admin() {
     setBody("Coupe");
     setStatus("active");
     setFeatured(false);
-    setImageFit("contain");
+    setImageFit(settings.defaultCardFit || "contain");
     setVideo("");
     setPower("510 HP (4.0 Atmosferik Boxer)");
     setColor("Jet Siyah / Bordo Deri");
@@ -352,8 +389,23 @@ function Admin() {
     );
   };
 
+  const moveCarInFleet = (idx: number, dir: -1 | 1) => {
+    const target = idx + dir;
+    if (target < 0 || target >= cars.length) return;
+    const next = [...cars];
+    const temp = next[idx];
+    next[idx] = next[target];
+    next[target] = temp;
+    updateCars(next);
+  };
+
   const handleDeleteCar = (id: string) => {
-    updateCars(cars.filter((c) => c.id !== id));
+    const target = cars.find((c) => c.id === id);
+    updateCars(
+      cars.filter((c) => c.id !== id),
+      target ? `"${target.title}" Silindi` : "Araç Silindi",
+    );
+    if (editingId === id) clearForm();
   };
 
   const handleInquiryStatus = (id: string, nextStatus: Inquiry["status"]) => {
@@ -363,7 +415,37 @@ function Admin() {
   };
 
   const handleDeleteInquiry = (id: string) => {
-    updateInquiries(inquiries.filter((m) => m.id !== id));
+    const target = inquiries.find((m) => m.id === id);
+    updateInquiries(
+      inquiries.filter((m) => m.id !== id),
+      target ? `"${target.name}" Talebi Silindi` : "Talep Silindi",
+    );
+  };
+
+  const downloadFile = (content: string, filename: string, mime: string) => {
+    if (typeof window === "undefined") return;
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = importDatabaseJSON(String(reader.result || ""));
+      setDbMsg(res.message);
+      setTimeout(() => setDbMsg(""), 5000);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   if (!authed) {
@@ -416,7 +498,10 @@ function Admin() {
           >
             <div>
               <input
+                id="admin-password"
+                name="admin_password"
                 type="password"
+                autoComplete="current-password"
                 value={pw}
                 disabled={isLocked}
                 onChange={(e) => setPw(e.target.value)}
@@ -426,7 +511,8 @@ function Admin() {
               />
               <p className="mt-2 text-xs text-muted-foreground">
                 Demo Giriş Şifresi:{" "}
-                <code className="font-semibold text-primary">bycar2024</code>
+                <code className="font-semibold text-primary">bycar2024</code> veya{" "}
+                <code className="font-semibold text-primary">bycar2026</code>
               </p>
               {isLocked && (
                 <p className="mt-2 border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
@@ -514,9 +600,44 @@ function Admin() {
           </div>
         </div>
 
+        {/* Undo / Database Recovery Banner */}
+        {(undoSnap || dbMsg) && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-primary/50 bg-primary/10 px-4 py-3 text-xs">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-primary" />
+              {dbMsg ? (
+                <span className="font-semibold text-primary">{dbMsg}</span>
+              ) : (
+                <span>
+                  Son işlem yedeklendi:{" "}
+                  <strong className="text-primary">
+                    {undoSnap?.label} ({undoSnap?.timestamp})
+                  </strong>
+                </span>
+              )}
+            </div>
+            {undoSnap && (
+              <button
+                type="button"
+                onClick={() => {
+                  const snap = restoreUndo();
+                  if (snap) {
+                    setDbMsg(`"${snap.label}" işlemi geri alındı, önceki veriler yüklendi.`);
+                    setTimeout(() => setDbMsg(""), 4500);
+                  }
+                }}
+                className="inline-flex cursor-pointer items-center gap-1.5 border border-primary bg-primary px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow"
+              >
+                <Undo2 className="h-3.5 w-3.5" /> Son İşlemi Geri Al (Veriyi Kurtar)
+              </button>
+            )}
+          </div>
+        )}
+
         {/* 4 Navigation Tabs */}
         <div className="mb-8 grid grid-cols-2 border border-border bg-card lg:grid-cols-4">
           <button
+            type="button"
             onClick={() => setTab("fleet")}
             className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
               tab === "fleet"
@@ -527,10 +648,8 @@ function Admin() {
             1. Araç Yönetimi ({cars.length})
           </button>
           <button
-            onClick={() => {
-              if (tab !== "add") clearForm();
-              setTab("add");
-            }}
+            type="button"
+            onClick={() => setTab("add")}
             className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
               tab === "add"
                 ? "bg-primary text-primary-foreground"
@@ -540,6 +659,7 @@ function Admin() {
             2. {editingId ? "Aracı Düzenle" : "Yeni Araç Ekle"}
           </button>
           <button
+            type="button"
             onClick={() => setTab("inbox")}
             className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
               tab === "inbox"
@@ -551,6 +671,7 @@ function Admin() {
             {newInquiriesCount > 0 ? ` · ${newInquiriesCount} Yeni` : ""})
           </button>
           <button
+            type="button"
             onClick={() => setTab("settings")}
             className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
               tab === "settings"
@@ -558,19 +679,28 @@ function Admin() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            4. Filtre & Modal Ayarları
+            4. Filtre, Modal & Veritabanı
           </button>
         </div>
 
         {/* TAB 1: FLEET MANAGEMENT */}
         {tab === "fleet" && (
           <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
-                Durumu, kadrajı (`Tam Sığdır / Doldur`) veya bilgileri değiştirilen araçlar anında ana vitrine yansır.
-              </p>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 flex-wrap items-center gap-3">
+                <input
+                  value={fleetSearch}
+                  onChange={(e) => setFleetSearch(e.target.value)}
+                  placeholder="Koleksiyonda ara (Marka, model, kasa, paket...)"
+                  className={`${input} max-w-xs`}
+                />
+                <span className="text-xs text-muted-foreground">
+                  Durumu, sırası (`↑`/`↓`) veya kadrajı değiştirilen araçlar anında vitrine yansır.
+                </span>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <button
+                  type="button"
                   onClick={() => {
                     clearForm();
                     setTab("add");
@@ -580,6 +710,21 @@ function Admin() {
                   <Plus className="h-4 w-4" /> Yeni Araç Ekle
                 </button>
                 <button
+                  type="button"
+                  onClick={() =>
+                    downloadFile(
+                      exportD1SqlDump(),
+                      "bycar-d1-veritabani.sql",
+                      "application/sql",
+                    )
+                  }
+                  className="inline-flex cursor-pointer items-center gap-1.5 border border-primary/50 bg-card px-3 py-2 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground"
+                  title="Tüm araçları ve talepleri Cloudflare D1 SQLite formatında indir"
+                >
+                  <Database className="h-3.5 w-3.5" /> D1 SQL İndir
+                </button>
+                <button
+                  type="button"
                   onClick={resetCars}
                   className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
@@ -589,167 +734,213 @@ function Admin() {
             </div>
 
             <div className="divide-y divide-border border border-border bg-card">
-              {cars.map((c) => {
-                const currentStatus: CarStatus =
-                  c.status || (c.sold ? "sold" : "active");
-                const currentFit: ImageFit = c.imageFit || "cover";
-                return (
-                  <div
-                    key={c.id}
-                    className="flex flex-col justify-between gap-4 p-4 lg:flex-row lg:items-center"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="relative h-16 w-28 shrink-0 overflow-hidden border border-border bg-black">
-                        {currentFit === "contain" ? (
-                          <>
-                            <img
-                              src={c.images[0]}
-                              alt=""
-                              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-md"
-                            />
+              {cars
+                .map((c, originalIdx) => ({ c, originalIdx }))
+                .filter(({ c }) => {
+                  if (!fleetSearch.trim()) return true;
+                  const q = fleetSearch.toLowerCase();
+                  return (
+                    c.title.toLowerCase().includes(q) ||
+                    c.brand.toLowerCase().includes(q) ||
+                    c.body.toLowerCase().includes(q) ||
+                    c.specs.package.toLowerCase().includes(q)
+                  );
+                })
+                .map(({ c, originalIdx }) => {
+                  const currentStatus: CarStatus =
+                    c.status || (c.sold ? "sold" : "active");
+                  const currentFit: ImageFit = c.imageFit || "cover";
+                  return (
+                    <div
+                      key={c.id}
+                      className="flex flex-col justify-between gap-4 p-4 lg:flex-row lg:items-center"
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* Order Controls (Up / Down) */}
+                        <div className="flex flex-col items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={originalIdx === 0}
+                            onClick={() => moveCarInFleet(originalIdx, -1)}
+                            className="cursor-pointer border border-border p-1 text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-30"
+                            title="Sırayı Yukarı Taşı"
+                          >
+                            <ArrowUp className="h-3 w-3" />
+                          </button>
+                          <span className="text-[10px] font-bold text-primary">
+                            #{originalIdx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={originalIdx === cars.length - 1}
+                            onClick={() => moveCarInFleet(originalIdx, 1)}
+                            className="cursor-pointer border border-border p-1 text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-30"
+                            title="Sırayı Aşağı Taşı"
+                          >
+                            <ArrowDown className="h-3 w-3" />
+                          </button>
+                        </div>
+
+                        <div className="relative h-16 w-28 shrink-0 overflow-hidden border border-border bg-black">
+                          {currentFit === "contain" ? (
+                            <>
+                              <img
+                                src={c.images[0]}
+                                alt=""
+                                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-md"
+                              />
+                              <img
+                                src={c.images[0]}
+                                alt={c.title}
+                                className="relative z-10 h-full w-full object-contain"
+                              />
+                            </>
+                          ) : (
                             <img
                               src={c.images[0]}
                               alt={c.title}
-                              className="relative z-10 h-full w-full object-contain"
+                              className="h-full w-full object-cover"
                             />
-                          </>
-                        ) : (
-                          <img
-                            src={c.images[0]}
-                            alt={c.title}
-                            className="h-full w-full object-cover"
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-widest text-primary">
+                              {c.brand}
+                            </span>
+                            <span className="border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                              {c.body}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              · {c.year} · {c.km.toLocaleString("tr-TR")} KM ·{" "}
+                              {c.images.length} Açı Fotoğraf
+                              {c.video ? " + Video" : ""}
+                            </span>
+                          </div>
+                          <div className="font-display text-xl font-semibold">
+                            {c.title}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {c.specs.power} · {c.specs.package}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Image Fit Toggle (Tam Sığdır vs Tam Doldur) */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleFitChange(
+                              c.id,
+                              currentFit === "contain" ? "cover" : "contain",
+                            )
+                          }
+                          title="Kart Fotoğraf Kadrajı: Tam Sığdır (Kesmeden) / Tam Doldur"
+                          className={`inline-flex cursor-pointer items-center gap-1 border px-2.5 py-1.5 text-[11px] transition ${
+                            currentFit === "contain"
+                              ? "border-primary/70 bg-primary/15 text-primary font-semibold"
+                              : "border-border text-muted-foreground hover:border-primary"
+                          }`}
+                        >
+                          <Maximize2 className="h-3 w-3" />
+                          {currentFit === "contain" ? "Tam Sığdır" : "Tam Doldur"}
+                        </button>
+
+                        {/* Featured Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFeatured(c.id)}
+                          title="Vitrinde Öne Çıkar"
+                          className={`inline-flex cursor-pointer items-center gap-1 border px-2.5 py-1.5 text-[11px] transition ${
+                            c.featured
+                              ? "border-primary bg-primary/20 text-primary font-semibold"
+                              : "border-border text-muted-foreground hover:border-primary"
+                          }`}
+                        >
+                          <Star
+                            className={`h-3 w-3 ${c.featured ? "fill-primary text-primary" : ""}`}
                           />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-widest text-primary">
-                            {c.brand}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            · {c.year} · {c.km.toLocaleString("tr-TR")} KM ·{" "}
-                            {c.images.length} Açı Fotoğraf
-                            {c.video ? " + Video" : ""}
-                          </span>
-                        </div>
-                        <div className="font-display text-xl font-semibold">
-                          {c.title}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {c.specs.power} · {c.specs.package}
-                        </div>
+                          Öne Çıkar
+                        </button>
+
+                        {/* Status Buttons */}
+                        {(["active", "sold", "draft"] as CarStatus[]).map((st) => {
+                          const labels: Record<CarStatus, string> = {
+                            active: "Satışta",
+                            sold: "Satıldı",
+                            draft: "Taslak",
+                          };
+                          const active = currentStatus === st;
+                          return (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => handleStatusChange(c.id, st)}
+                              className={`cursor-pointer border px-3 py-1.5 text-xs uppercase tracking-wider transition ${
+                                active
+                                  ? st === "sold"
+                                    ? "border-destructive bg-destructive font-semibold text-destructive-foreground"
+                                    : st === "draft"
+                                      ? "border-muted-foreground bg-muted font-semibold text-foreground"
+                                      : "border-primary bg-primary font-semibold text-primary-foreground"
+                                  : "border-border text-muted-foreground hover:border-primary"
+                              }`}
+                            >
+                              {labels[st]}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => startEdit(c)}
+                          className="inline-flex cursor-pointer items-center gap-1 border border-border px-3 py-1.5 text-xs text-foreground hover:border-primary hover:text-primary"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" /> Düzenle
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCar(c.id)}
+                          className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                          title="Aracı Sil (Geri Alınabilir)"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* Image Fit Toggle (Tam Sığdır vs Tam Doldur) */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleFitChange(
-                            c.id,
-                            currentFit === "contain" ? "cover" : "contain",
-                          )
-                        }
-                        title="Kart Fotoğraf Kadrajı: Tam Sığdır (Kesmeden) / Tam Doldur"
-                        className={`inline-flex cursor-pointer items-center gap-1 border px-2.5 py-1.5 text-[11px] transition ${
-                          currentFit === "contain"
-                            ? "border-primary/70 bg-primary/15 text-primary font-semibold"
-                            : "border-border text-muted-foreground hover:border-primary"
-                        }`}
-                      >
-                        <Maximize2 className="h-3 w-3" />
-                        {currentFit === "contain" ? "Tam Sığdır" : "Tam Doldur"}
-                      </button>
-
-                      {/* Featured Toggle */}
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeatured(c.id)}
-                        title="Vitrinde Öne Çıkar"
-                        className={`inline-flex cursor-pointer items-center gap-1 border px-2.5 py-1.5 text-[11px] transition ${
-                          c.featured
-                            ? "border-primary bg-primary/20 text-primary font-semibold"
-                            : "border-border text-muted-foreground hover:border-primary"
-                        }`}
-                      >
-                        <Star
-                          className={`h-3 w-3 ${c.featured ? "fill-primary text-primary" : ""}`}
-                        />
-                        Öne Çıkar
-                      </button>
-
-                      {/* Status Buttons */}
-                      {(["active", "sold", "draft"] as CarStatus[]).map((st) => {
-                        const labels: Record<CarStatus, string> = {
-                          active: "Satışta",
-                          sold: "Satıldı",
-                          draft: "Taslak",
-                        };
-                        const active = currentStatus === st;
-                        return (
-                          <button
-                            key={st}
-                            onClick={() => handleStatusChange(c.id, st)}
-                            className={`cursor-pointer border px-3 py-1.5 text-xs uppercase tracking-wider transition ${
-                              active
-                                ? st === "sold"
-                                  ? "border-destructive bg-destructive font-semibold text-destructive-foreground"
-                                  : st === "draft"
-                                    ? "border-muted-foreground bg-muted font-semibold text-foreground"
-                                    : "border-primary bg-primary font-semibold text-primary-foreground"
-                                : "border-border text-muted-foreground hover:border-primary"
-                            }`}
-                          >
-                            {labels[st]}
-                          </button>
-                        );
-                      })}
-                      <button
-                        onClick={() => startEdit(c)}
-                        className="inline-flex cursor-pointer items-center gap-1 border border-border px-3 py-1.5 text-xs text-foreground hover:border-primary hover:text-primary"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" /> Düzenle
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCar(c.id)}
-                        className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
-                        title="Aracı Sil"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
         )}
 
-        {/* TAB 2: ADD / EDIT VEHICLE WITH CLICKABLE CHIPS & DRAG-DROP WEBP */}
+        {/* TAB 2: ADD / EDIT VEHICLE WITH CLICKABLE CHIPS & UNRESTRICTED INPUTS */}
         {tab === "add" && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const numYear = Math.min(
-                maxAllowedYear,
-                Math.max(1900, Number(year) || 2025),
-              );
-              const numKm = Math.max(0, Number(km) || 0);
-              const finalTitle = title.trim() || `${brand} ${pkg || "Exclusive"}`;
+              const parsedYear = Number(String(year).replace(/[^0-9]/g, ""));
+              const numYear = parsedYear > 0 ? parsedYear : new Date().getFullYear();
+              const parsedKm = Number(String(km).replace(/[^0-9]/g, ""));
+              const numKm = parsedKm >= 0 ? parsedKm : 0;
+              const cleanBrand = brand.trim() || "Porsche";
+              const finalTitle =
+                title.trim() || `${cleanBrand} ${pkg.trim() || "Exclusive"}`;
               const finalImages =
                 images.length > 0
-                  ? images
+                  ? Array.from(new Set(images))
                   : ["/cars/cupra/1.jpg", "/cars/cupra/2.jpg"];
 
               const finalDescTr =
                 descTr.trim() ||
-                `${numYear} model ${finalTitle}. ${power}, ${color}, ${expertise} kondisyonda ByCar Global özel koleksiyon aracı.`;
+                `${numYear} model ${finalTitle}. ${power || "Yüksek performans"}, ${
+                  color || "Özel renk"
+                }, ${expertise || "Hatasız / Boyasız"} kondisyonda ByCar Global özel koleksiyon aracı.`;
               const finalDescEn =
                 descEn.trim() ||
                 autoGenerateEnglishDescription(
                   finalTitle,
-                  brand,
+                  cleanBrand,
                   numYear,
                   numKm,
                   power,
@@ -763,13 +954,13 @@ function Admin() {
 
               const newCar: Car = {
                 id: editingId || `car-${Date.now()}`,
-                brand: brand.trim() || "Porsche",
+                brand: cleanBrand,
                 title: finalTitle,
                 year: numYear,
                 km: numKm,
-                fuel,
-                gear,
-                body,
+                fuel: fuel.trim() || "Benzin",
+                gear: gear.trim() || "Otomatik",
+                body: body.trim() || "Coupe",
                 status,
                 sold: status === "sold",
                 featured,
@@ -777,11 +968,11 @@ function Admin() {
                 video: video.trim() || undefined,
                 images: finalImages,
                 specs: {
-                  power: power || "Belirtilmedi",
-                  color: color || "Özel Renk",
-                  package: pkg || "Exclusive Paket",
-                  expertise: expertise || "Hatasız / Boyasız / Orijinal",
-                  tramer: tramer || "Yok",
+                  power: power.trim() || "Belirtilmedi",
+                  color: color.trim() || "Özel Renk",
+                  package: pkg.trim() || "Exclusive Paket",
+                  expertise: expertise.trim() || "Hatasız / Boyasız / Orijinal",
+                  tramer: tramer.trim() || "Yok",
                 },
                 extras: selectedExtras,
                 extrasEn: finalExtrasEn,
@@ -792,56 +983,82 @@ function Admin() {
               };
 
               if (editingId) {
-                updateCars(cars.map((c) => (c.id === editingId ? newCar : c)));
-                setSavedMsg("Araç başarıyla güncellendi ve vitrine yansıtıldı.");
+                updateCars(
+                  cars.map((c) => (c.id === editingId ? newCar : c)),
+                  `"${newCar.title}" Güncelleme Öncesi`,
+                );
+                flashNotice(
+                  "Araç değişiklikleri başarıyla kaydedildi ve canlı vitrine yansıtıldı!",
+                );
               } else {
-                updateCars([newCar, ...cars]);
-                setSavedMsg(
-                  "Yeni araç başarıyla koleksiyona eklendi! (Markası filtre barına otomatik tanımlandı)",
+                updateCars([newCar, ...cars], `"${newCar.title}" Ekleme Öncesi`);
+                clearForm();
+                flashNotice(
+                  "Yeni araç başarıyla koleksiyona eklendi! (Marka, kasa, yakıt ve vites filtrelerine otomatik tanımlandı)",
                 );
               }
-              setTimeout(() => setSavedMsg(""), 4000);
-              clearForm();
             }}
             className="grid gap-5 border border-border bg-card p-6 sm:grid-cols-2"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 sm:col-span-2">
               <div>
                 <h2 className="font-display text-2xl font-semibold">
                   {editingId ? "Araç Bilgilerini Düzenle" : "Koleksiyona Yeni Araç Ekle"}
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  Hazır etiketlere tıklayarak saniyeler içinde seçebilir veya kutulara serbestçe yazabilirsiniz.
+                  Hazır etiketlere tıklayarak hızlıca seçebilir veya tüm kutulara sınırlama olmadan serbestçe yazabilirsiniz.
                 </p>
               </div>
-              {editingId && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={clearForm}
-                  className="cursor-pointer text-xs text-primary underline"
+                  onClick={resetCurrentEdit}
+                  className="inline-flex cursor-pointer items-center gap-1.5 border border-primary/60 bg-primary/10 px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground"
+                  title={
+                    editingId
+                      ? "Yaptığınız değişiklikleri geri alır ve aracın kayıtlı verilerini yükler"
+                      : "Formdaki tüm alanları temizler ve sıfırlar"
+                  }
                 >
-                  Yeni Araç Formuna Geç
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {editingId ? "Düzenlemeyi Sıfırla" : "Formu Sıfırla"}
                 </button>
-              )}
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={clearForm}
+                    className="inline-flex cursor-pointer items-center gap-1.5 border border-border bg-background px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Yeni Araç Formuna Geç
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 1. MARKA (Clickable Chips + Free Input) */}
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-primary">
-                1. Marka Seçin (veya Yeni Marka Yazın — Filtrelerde Otomatik Oluşur)
+                1. Marka Seçin veya İstediğiniz Markayı Yazın (Sınırlama Yok — Filtrede Otomatik Oluşur)
               </label>
               <ChipList
                 items={ADMIN_PRESETS.brands}
                 selected={brand}
                 onSelect={(b) => {
+                  const prevBrand = brand.trim();
                   setBrand(b);
-                  if (!title) setTitle(`${b} `);
+                  if (
+                    !title.trim() ||
+                    title.trim() === prevBrand ||
+                    ADMIN_PRESETS.brands.some((preset) => title.trim() === preset)
+                  ) {
+                    setTitle(`${b} `);
+                  }
                 }}
               />
               <input
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
-                placeholder="Marka adı yazın (Örn: Porsche, Aston Martin, Range Rover...)"
+                placeholder="Marka adı yazın (Örn: Porsche, Aston Martin, Range Rover, Togg, Bugatti...)"
                 className={input}
               />
             </div>
@@ -864,7 +1081,7 @@ function Admin() {
 
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Donanım Paketi (Tıklayın veya Yazın)
+                Donanım Paketi (Tıklayın veya Serbestçe Yazın)
               </label>
               <ChipList
                 items={ADMIN_PRESETS.packages.slice(0, 6)}
@@ -879,10 +1096,10 @@ function Admin() {
               />
             </div>
 
-            {/* 3. MODEL YILI & KİLOMETRE */}
+            {/* 3. MODEL YILI & KİLOMETRE (Unrestricted) */}
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Model Yılı (1900 – {maxAllowedYear})
+                Model Yılı (Tıklayın veya Serbestçe Yazın)
               </label>
               <ChipList
                 items={["2026", "2025", "2024", "2023", "2022", "2020", "2016"]}
@@ -890,18 +1107,18 @@ function Admin() {
                 onSelect={setYear}
               />
               <input
-                type="number"
-                min={1900}
-                max={maxAllowedYear}
+                type="text"
+                inputMode="numeric"
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
+                placeholder="Örn: 2025"
                 className={input}
               />
             </div>
 
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Kilometre (KM)
+                Kilometre (KM — Tıklayın veya Serbestçe Yazın)
               </label>
               <ChipList
                 items={["0", "1200", "6001", "15000", "18500", "30000", "50000"]}
@@ -909,84 +1126,69 @@ function Admin() {
                 onSelect={setKm}
               />
               <input
-                type="number"
-                min={0}
+                type="text"
+                inputMode="numeric"
                 value={km}
                 onChange={(e) => setKm(e.target.value)}
+                placeholder="Örn: 0 veya 18500"
                 className={input}
               />
             </div>
 
-            {/* 4. YAKIT, VİTES, KASA TİPİ (1-Click Pills) */}
-            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
+            {/* 4. YAKIT TÜRÜ, VİTES TİPİ, KASA TİPİ (Hem Tıklanabilir Hem Yazılabilir — Sınırlama Yok!) */}
+            <div className="grid gap-4 border border-border/80 bg-background/40 p-4 sm:col-span-2 lg:grid-cols-3">
+              {/* Yakıt Türü */}
               <div>
-                <label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
-                  Yakıt Türü
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-primary">
+                  Yakıt Türü (Seçin veya Yazın)
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(["Benzin", "Hibrit", "Elektrik", "Dizel"] as Car["fuel"][]).map(
-                    (f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => setFuel(f)}
-                        className={`cursor-pointer border py-2 text-xs font-semibold transition ${
-                          fuel === f
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-muted-foreground hover:border-primary"
-                        }`}
-                      >
-                        {f}
-                      </button>
-                    ),
-                  )}
-                </div>
+                <ChipList
+                  items={ADMIN_PRESETS.fuels}
+                  selected={fuel}
+                  onSelect={setFuel}
+                />
+                <input
+                  value={fuel}
+                  onChange={(e) => setFuel(e.target.value)}
+                  placeholder="Serbest yakıt türü yazın (Sınırlama yok)..."
+                  className={input}
+                />
               </div>
 
+              {/* Vites Tipi */}
               <div>
-                <label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
-                  Vites Tipi
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-primary">
+                  Vites Tipi (Seçin veya Yazın)
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(["Otomatik", "Manuel"] as Car["gear"][]).map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setGear(g)}
-                      className={`cursor-pointer border py-2 text-xs font-semibold transition ${
-                        gear === g
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background text-muted-foreground hover:border-primary"
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
+                <ChipList
+                  items={ADMIN_PRESETS.gears}
+                  selected={gear}
+                  onSelect={setGear}
+                />
+                <input
+                  value={gear}
+                  onChange={(e) => setGear(e.target.value)}
+                  placeholder="Serbest vites tipi yazın (Sınırlama yok)..."
+                  className={input}
+                />
               </div>
 
+              {/* Kasa Tipi */}
               <div>
-                <label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
-                  Kasa Tipi
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-primary">
+                  Kasa Tipi (Seçin veya İstediğinizi Yazın)
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(["Coupe", "SUV", "Sedan", "Cabrio"] as Car["body"][]).map(
-                    (b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setBody(b)}
-                        className={`cursor-pointer border py-2 text-xs font-semibold transition ${
-                          body === b
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-muted-foreground hover:border-primary"
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    ),
-                  )}
-                </div>
+                <ChipList
+                  items={ADMIN_PRESETS.bodies}
+                  selected={body}
+                  onSelect={setBody}
+                />
+                <input
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder="Örn: Hatchback, Station Wagon, VIP Minivan..."
+                  className={input}
+                />
               </div>
             </div>
 
@@ -1664,14 +1866,54 @@ function Admin() {
               )}
             </div>
 
-            <button type="submit" className={`${goldBtn} py-4 sm:col-span-2`}>
-              {editingId ? "Değişiklikleri Kaydet & Yayınla" : "Aracı Koleksiyona Kaydet"}
-            </button>
+            <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row">
+              <button type="submit" className={`${goldBtn} flex-1 py-4`}>
+                {editingId
+                  ? "Değişiklikleri Kaydet & Yayınla"
+                  : "Aracı Koleksiyona Kaydet"}
+              </button>
+              <button
+                type="button"
+                onClick={resetCurrentEdit}
+                className="inline-flex cursor-pointer items-center justify-center gap-2 border border-amber-500/50 bg-amber-500/10 px-6 py-4 text-xs font-semibold uppercase tracking-wider text-amber-300 transition hover:bg-amber-500/20"
+                title={
+                  editingId
+                    ? "Yaptığınız değişiklikleri geri alıp aracın kayıtlı haline döndürür"
+                    : "Formdaki tüm alanları temizler"
+                }
+              >
+                <RotateCcw className="h-4 w-4" />
+                {editingId ? "Düzenlemeyi Sıfırla" : "Formu Sıfırla"}
+              </button>
+            </div>
 
             {savedMsg && (
-              <div className="flex items-center gap-2 border border-primary bg-primary/10 p-4 text-sm text-primary sm:col-span-2">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>{savedMsg}</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 border border-primary bg-primary/10 p-4 text-sm text-primary sm:col-span-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <span>{savedMsg}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab("manage")}
+                    className="cursor-pointer border border-primary/40 bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:border-primary hover:text-primary"
+                  >
+                    ← Araç Yönetimine Dön
+                  </button>
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearForm();
+                        setSavedMsg("");
+                      }}
+                      className="cursor-pointer border border-primary/40 bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:border-primary hover:text-primary"
+                    >
+                      + Yeni Araç Ekle
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </form>
@@ -1680,9 +1922,18 @@ function Admin() {
         {/* TAB 3: CRM INBOX */}
         {tab === "inbox" && (
           <div className="space-y-4">
-            <div className="border border-primary/40 bg-card p-4 text-xs text-muted-foreground">
-              <strong className="text-primary">Çift Kanal Talep Sistemi Aktif:</strong>{" "}
-              Müşteriler sitedeki "Site Üzerinden Teklif Ver" veya "Özel İthalat Talebi" formunu gönderdiğinde talep hem bu listeye düşer hem de otomatik olarak WhatsApp (`+90 540 061 16 34`) mesaj ekranını hazırlar.
+            <div className="flex flex-wrap items-center justify-between gap-3 border border-primary/40 bg-card p-4 text-xs text-muted-foreground">
+              <div>
+                <strong className="text-primary">Çift Kanal Talep Sistemi Aktif:</strong>{" "}
+                Müşteriler sitedeki "Site Üzerinden Teklif Ver" veya "Özel İthalat Talebi" formunu gönderdiğinde talep hem bu listeye düşer hem de otomatik olarak WhatsApp (`+90 540 061 16 34`) mesaj ekranını hazırlar.
+              </div>
+              <button
+                type="button"
+                onClick={resetInquiries}
+                className="inline-flex cursor-pointer items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Varsayılan Talepleri Yükle
+              </button>
             </div>
             {inquiries.length === 0 ? (
               <div className="border border-border bg-card p-12 text-center text-muted-foreground">
@@ -1773,7 +2024,7 @@ function Admin() {
           </div>
         )}
 
-        {/* TAB 4: SHOWCASE, FILTER & 3-TAB MODAL SETTINGS */}
+        {/* TAB 4: SHOWCASE, FILTER, 3-TAB MODAL & DATABASE BACKUP SETTINGS */}
         {tab === "settings" && (
           <div className="grid gap-6 md:grid-cols-2">
             {/* Filter Controls */}
@@ -1785,7 +2036,7 @@ function Admin() {
                 </h2>
               </div>
               <p className="mb-4 text-xs text-muted-foreground">
-                Vitrindeki koleksiyon bölümünde hangi filtrelerin müşterilere gösterileceğini buradan tek tıkla açıp kapatabilirsiniz.
+                Vitrindeki koleksiyon bölümünde hangi filtrelerin müşterilere gösterileceğini buradan tek tıkla açıp kapatabilirsiniz. Yeni eklediğiniz özel kasa, yakıt veya vites tipleri otomatik olarak filtreye dahil edilir.
               </p>
 
               <div className="space-y-3 text-sm">
@@ -1793,9 +2044,9 @@ function Admin() {
                   [
                     ["showSearchFilter", "Arama Kutusu (Marka / Model Arama)"],
                     ["showYearFilter", "Model Yılı Filtresi"],
-                    ["showBodyFilter", "Kasa Tipi (Coupe, SUV, Sedan, Cabrio) Filtresi"],
-                    ["showFuelFilter", "Yakıt Türü Filtresi"],
-                    ["showGearFilter", "Vites Tipi Filtresi"],
+                    ["showBodyFilter", "Kasa Tipi (Sınırsız Hibrit Liste) Filtresi"],
+                    ["showFuelFilter", "Yakıt Türü (Sınırsız Hibrit Liste) Filtresi"],
+                    ["showGearFilter", "Vites Tipi (Sınırsız Hibrit Liste) Filtresi"],
                     ["showStatusFilter", "Durum (Tümü / Satışta / Satılanlar) Filtresi"],
                     ["filterPanelDefaultOpen", "Gelişmiş Filtre Paneli Sayfa Açılışında Açık Gelsin"],
                   ] as [keyof typeof settings, string][]
@@ -1843,9 +2094,19 @@ function Admin() {
                       <input
                         type="checkbox"
                         checked={Boolean(settings[key])}
-                        onChange={(e) =>
-                          updateSettings({ ...settings, [key]: e.target.checked })
-                        }
+                        onChange={(e) => {
+                          const next = { ...settings, [key]: e.target.checked };
+                          if (
+                            (next.modalDefaultTab === "specs" && !next.modalShowSpecsTab) ||
+                            (next.modalDefaultTab === "extras" && !next.modalShowExtrasTab) ||
+                            (next.modalDefaultTab === "offer" && !next.modalShowOfferTab)
+                          ) {
+                            if (next.modalShowSpecsTab) next.modalDefaultTab = "specs";
+                            else if (next.modalShowExtrasTab) next.modalDefaultTab = "extras";
+                            else if (next.modalShowOfferTab) next.modalDefaultTab = "offer";
+                          }
+                          updateSettings(next);
+                        }}
                         className="h-4 w-4 accent-amber-500"
                       />
                     </label>
@@ -1929,9 +2190,102 @@ function Admin() {
                 </div>
               </div>
             </div>
+
+            {/* Database & Backup Center */}
+            <div className="border border-primary/40 bg-card p-6 md:col-span-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+                <div className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-primary" />
+                  <h2 className="font-display text-2xl font-semibold">
+                    Veritabanı & Veri Kaybı Koruma Merkezi (Cloudflare D1 & JSON)
+                  </h2>
+                </div>
+                <span className="border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                  ● Otomatik Anlık Kayıt & Undo Koruması Aktif
+                </span>
+              </div>
+
+              <div className="mb-5 grid gap-3 sm:grid-cols-4">
+                <div className="border border-border bg-background/50 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Kayıtlı Araçlar
+                  </div>
+                  <div className="font-display text-2xl font-semibold text-primary">
+                    {cars.length} Araç
+                  </div>
+                </div>
+                <div className="border border-border bg-background/50 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Toplam Galeri Fotoğrafı
+                  </div>
+                  <div className="font-display text-2xl font-semibold text-foreground">
+                    {cars.reduce((sum, c) => sum + c.images.length, 0)} Kare
+                  </div>
+                </div>
+                <div className="border border-border bg-background/50 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Gelen VIP Talepler (CRM)
+                  </div>
+                  <div className="font-display text-2xl font-semibold text-foreground">
+                    {inquiries.length} Kayıt
+                  </div>
+                </div>
+                <div className="border border-border bg-background/50 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Son Geri Alma Yedeği
+                  </div>
+                  <div className="truncate pt-1 text-xs font-semibold text-amber-300">
+                    {undoSnap ? `${undoSnap.label} (${undoSnap.timestamp})` : "Henüz işlem yok"}
+                  </div>
+                </div>
+              </div>
+
+              <p className="mb-4 text-xs text-muted-foreground">
+                Yaptığınız her araç ekleme, düzenleme, sıralama, fotoğraf sürükleme, talep durumu ve filtre ayarı değişikliği tarayıcı veritabanına anında kaydedilir ve bir önceki durum otomatik yedeklenir. Ayrıca tüm veritabanını tek tıkla <strong>JSON Yedek</strong> veya <strong>Cloudflare D1 SQLite (`.sql`)</strong> formatında indirebilir ya da geri yükleyebilirsiniz.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleExportJSON}
+                  className={goldBtn}
+                >
+                  <Download className="h-4 w-4" /> JSON Tam Yedek İndir
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportSQL}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-primary/10 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary/20"
+                >
+                  <Database className="h-4 w-4" /> Cloudflare D1 (.sql) Veritabanı İndir
+                </button>
+
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-3 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary">
+                  <Upload className="h-4 w-4" /> JSON Yedekten Geri Yükle
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleImportJSON}
+                    className="hidden"
+                  />
+                </label>
+
+                {undoSnap && (
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    className="inline-flex cursor-pointer items-center justify-center gap-2 border border-amber-500/50 bg-amber-500/10 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-amber-300 transition hover:bg-amber-500/20"
+                  >
+                    <Undo2 className="h-4 w-4" /> Son İşlemi Geri Al ({undoSnap.label})
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
+

@@ -22,9 +22,9 @@ export type Car = {
   title: string;
   year: number;
   km: number;
-  fuel: "Benzin" | "Hibrit" | "Elektrik" | "Dizel";
-  gear: "Otomatik" | "Manuel";
-  body: "Coupe" | "SUV" | "Sedan" | "Cabrio";
+  fuel: string;
+  gear: string;
+  body: string;
   sold?: boolean;
   status?: CarStatus;
   featured?: boolean;
@@ -123,6 +123,35 @@ export const ADMIN_PRESETS = {
     "Maserati",
     "Maybach",
   ],
+  bodies: [
+    "Coupe",
+    "SUV",
+    "Sedan",
+    "Cabrio",
+    "Hatchback",
+    "Station Wagon / Avant",
+    "Crossover",
+    "Roadster",
+    "Shooting Brake",
+    "VIP Minivan",
+    "Pick-up",
+  ],
+  fuels: [
+    "Benzin",
+    "Dizel",
+    "Hibrit",
+    "Plug-in Hybrid (PHEV)",
+    "Elektrik",
+    "Mild Hybrid (MHEV)",
+    "Benzin & LPG",
+  ],
+  gears: [
+    "Otomatik",
+    "Manuel",
+    "F1 / PDK Çift Kavrama",
+    "DSG / S-Tronic",
+    "Tiptronic",
+  ],
   packages: [
     "Design Paket",
     "S-Line",
@@ -203,10 +232,16 @@ export const ADMIN_PRESETS = {
 const TERM_MAP_EN: Record<string, string> = {
   Benzin: "Petrol",
   Hibrit: "Hybrid",
+  "Plug-in Hybrid (PHEV)": "Plug-in Hybrid (PHEV)",
+  "Mild Hybrid (MHEV)": "Mild Hybrid (MHEV)",
+  "Benzin & LPG": "Petrol & LPG",
   Elektrik: "Electric",
   Dizel: "Diesel",
   Otomatik: "Automatic",
   Manuel: "Manual",
+  "F1 / PDK Çift Kavrama": "F1 / PDK Dual-Clutch",
+  "DSG / S-Tronic": "DSG / S-Tronic",
+  Tiptronic: "Tiptronic",
   Yok: "None (Clean)",
   "Tramersiz (0 TL)": "Clean Record (0 TL)",
   "Yetkili Servis Kayıtlı": "Official Dealer Recorded",
@@ -247,8 +282,17 @@ export function autoGenerateEnglishDescription(
   pkg: string,
   expertise: string,
 ): string {
-  const kmText = km === 0 ? "zero kilometers (brand new)" : `${km.toLocaleString("en-US")} km`;
-  return `${year} ${title} (${brand}) featuring ${power || "high-performance"} engine and ${pkg || "Exclusive"} specification with ${kmText}. Condition: ${translateTerm(expertise, "en")}. Available via ByCar Global VIP Concierge.`;
+  const kmText =
+    km === 0 ? "zero kilometers (brand new)" : `${km.toLocaleString("en-US")} km`;
+  const cleanBrand = brand.trim();
+  const brandSuffix =
+    cleanBrand && !title.toLowerCase().includes(cleanBrand.toLowerCase())
+      ? ` (${cleanBrand})`
+      : "";
+  const cleanPower = power.trim() || "high-performance";
+  const cleanPkg = pkg.trim() || "Exclusive";
+  const cleanExp = translateTerm(expertise.trim() || "Hatasız / Boyasız / Orijinal", "en");
+  return `${year} ${title.trim() || cleanBrand || "Luxury Vehicle"}${brandSuffix} featuring ${cleanPower} engine and ${cleanPkg} specification with ${kmText}. Condition: ${cleanExp}. Available via ByCar Global VIP Concierge.`;
 }
 
 export const CARS: Car[] = [
@@ -817,16 +861,27 @@ const INQ_KEY = "bycar_inquiries_v2";
 const SETTINGS_KEY = "bycar_settings_v1";
 const LANG_KEY = "bycar_lang_v1";
 const LOCKOUT_KEY = "bycar_admin_lockout_v1";
+const UNDO_KEY = "bycar_undo_snapshot_v1";
 const SYNC_EVENT = "bycar-store-sync";
+
+export type UndoSnapshot = {
+  label: string;
+  timestamp: string;
+  cars: Car[];
+  inquiries: Inquiry[];
+  settings: SiteSettings;
+};
 
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
 const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
 const ADMIN_PBKDF2_ITERATIONS = 100000;
-let cachedExpectedHash: string | null = null;
+let cachedExpectedHashes: string[] | null = null;
 
 async function derivePBKDF2Hex(password: string): Promise<string> {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
-    return password === "bycar2024" ? "VALID_FALLBACK" : "INVALID";
+    return password === "bycar2024" || password === "bycar2026"
+      ? "VALID_FALLBACK"
+      : "INVALID";
   }
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -852,11 +907,14 @@ async function derivePBKDF2Hex(password: string): Promise<string> {
 }
 
 export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean> {
-  if (!cachedExpectedHash) {
-    cachedExpectedHash = await derivePBKDF2Hex("bycar2024");
+  if (!cachedExpectedHashes) {
+    cachedExpectedHashes = await Promise.all([
+      derivePBKDF2Hex("bycar2024"),
+      derivePBKDF2Hex("bycar2026"),
+    ]);
   }
-  const candidate = await derivePBKDF2Hex(input);
-  return candidate === cachedExpectedHash;
+  const candidate = await derivePBKDF2Hex(input.trim());
+  return cachedExpectedHashes.includes(candidate);
 }
 
 export type LockoutState = {
@@ -890,7 +948,11 @@ export function recordLoginAttempt(success: boolean): LockoutState {
   const nextAttempts = current.attempts + 1;
   const lockedUntil = nextAttempts >= 5 ? Date.now() + 15 * 60 * 1000 : null;
   const nextState: LockoutState = { attempts: nextAttempts, lockedUntil };
-  window.localStorage.setItem(LOCKOUT_KEY, JSON.stringify(nextState));
+  try {
+    window.localStorage.setItem(LOCKOUT_KEY, JSON.stringify(nextState));
+  } catch {
+    // Ignore storage quota errors
+  }
   return nextState;
 }
 
@@ -937,26 +999,81 @@ export async function compressImageToWebP(
   });
 }
 
+function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function saveUndoSnapshot(label: string) {
+  if (typeof window === "undefined") return;
+  const snap: UndoSnapshot = {
+    label,
+    timestamp: new Date().toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    cars: getStoredCars(),
+    inquiries: getStoredInquiries(),
+    settings: getStoredSettings(),
+  };
+  safeSetItem(UNDO_KEY, JSON.stringify(snap));
+  window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+export function getUndoSnapshot(): UndoSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(UNDO_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as UndoSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function restoreUndoSnapshot(): UndoSnapshot | null {
+  if (typeof window === "undefined") return null;
+  const snap = getUndoSnapshot();
+  if (!snap) return null;
+  safeSetItem(CARS_KEY, JSON.stringify(snap.cars));
+  safeSetItem(INQ_KEY, JSON.stringify(snap.inquiries));
+  safeSetItem(SETTINGS_KEY, JSON.stringify(snap.settings));
+  window.localStorage.removeItem(UNDO_KEY);
+  window.dispatchEvent(new Event(SYNC_EVENT));
+  return snap;
+}
+
 export function getStoredCars(): Car[] {
   if (typeof window === "undefined") return CARS;
   try {
     const raw = window.localStorage.getItem(CARS_KEY);
     if (!raw) return CARS;
     const parsed = JSON.parse(raw) as Car[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : CARS;
+    if (!Array.isArray(parsed) || parsed.length === 0) return CARS;
+    return parsed.map((c) => ({
+      ...c,
+      images: Array.isArray(c.images) ? Array.from(new Set(c.images)) : [],
+    }));
   } catch {
     return CARS;
   }
 }
 
-export function saveStoredCars(next: Car[]) {
+export function saveStoredCars(next: Car[], undoLabel?: string) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(CARS_KEY, JSON.stringify(next));
+  if (undoLabel) saveUndoSnapshot(undoLabel);
+  safeSetItem(CARS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
 export function resetStoredCars() {
   if (typeof window === "undefined") return;
+  saveUndoSnapshot("Varsayılan 10 Araca Sıfırlama");
   window.localStorage.removeItem(CARS_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
@@ -973,9 +1090,17 @@ export function getStoredInquiries(): Inquiry[] {
   }
 }
 
-export function saveStoredInquiries(next: Inquiry[]) {
+export function saveStoredInquiries(next: Inquiry[], undoLabel?: string) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(INQ_KEY, JSON.stringify(next));
+  if (undoLabel) saveUndoSnapshot(undoLabel);
+  safeSetItem(INQ_KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+export function resetStoredInquiries() {
+  if (typeof window === "undefined") return;
+  saveUndoSnapshot("Talepleri Varsayılana Sıfırlama");
+  window.localStorage.removeItem(INQ_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
@@ -1004,7 +1129,7 @@ export function getStoredSettings(): SiteSettings {
 
 export function saveStoredSettings(next: SiteSettings) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  safeSetItem(SETTINGS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
@@ -1016,8 +1141,125 @@ export function getStoredLang(): Lang {
 
 export function saveStoredLang(next: Lang) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(LANG_KEY, next);
+  safeSetItem(LANG_KEY, next);
   window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+export function exportDatabaseJSON(): string {
+  const payload = {
+    version: "bycar-db-v5",
+    exportedAt: new Date().toISOString(),
+    cars: getStoredCars(),
+    inquiries: getStoredInquiries(),
+    settings: getStoredSettings(),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export function importDatabaseJSON(rawJson: string): { ok: boolean; message: string } {
+  try {
+    const parsed = JSON.parse(rawJson) as {
+      cars?: Car[];
+      inquiries?: Inquiry[];
+      settings?: Partial<SiteSettings>;
+    };
+    if (!parsed || !Array.isArray(parsed.cars) || parsed.cars.length === 0) {
+      return { ok: false, message: "Geçersiz yedek dosyası: Araç listesi bulunamadı." };
+    }
+    saveUndoSnapshot("JSON Yedek Geri Yükleme Öncesi");
+    safeSetItem(CARS_KEY, JSON.stringify(parsed.cars));
+    if (Array.isArray(parsed.inquiries)) {
+      safeSetItem(INQ_KEY, JSON.stringify(parsed.inquiries));
+    }
+    if (parsed.settings) {
+      safeSetItem(
+        SETTINGS_KEY,
+        JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed.settings }),
+      );
+    }
+    window.dispatchEvent(new Event(SYNC_EVENT));
+    return {
+      ok: true,
+      message: `Veritabanı başarıyla geri yüklendi (${parsed.cars.length} araç, ${
+        parsed.inquiries?.length ?? 0
+      } talep).`,
+    };
+  } catch {
+    return { ok: false, message: "JSON dosyası okunamadı veya formatı bozuk." };
+  }
+}
+
+function sqlEsc(val: string | number | undefined | null): string {
+  if (val === undefined || val === null) return "NULL";
+  if (typeof val === "number") return String(val);
+  return `'${String(val).replace(/'/g, "''")}'`;
+}
+
+export function exportD1SqlDump(): string {
+  const cars = getStoredCars();
+  const inquiries = getStoredInquiries();
+  const settings = getStoredSettings();
+  const lines: string[] = [
+    "-- ByCar Global (bycarglobal.com) — Otomatik Üretilen Cloudflare D1 (SQLite) Veritabanı Dökümü",
+    `-- Tarih: ${new Date().toISOString()}`,
+    "PRAGMA foreign_keys = ON;",
+    "",
+    "-- 1. Araç Koleksiyonu (vehicles & vehicle_images)",
+  ];
+
+  for (const c of cars) {
+    const status: CarStatus = c.status || (c.sold ? "sold" : "active");
+    const fit: ImageFit = c.imageFit || "cover";
+    lines.push(
+      `INSERT OR REPLACE INTO vehicles (id, slug, brand, title, year, km, fuel, gear, body, power, color, package, expertise, tramer, image_fit, video_url, extras_json, extras_en_json, description_tr, description_en, status, is_featured) VALUES (${sqlEsc(
+        c.id,
+      )}, ${sqlEsc(c.id)}, ${sqlEsc(c.brand)}, ${sqlEsc(c.title)}, ${c.year}, ${
+        c.km
+      }, ${sqlEsc(c.fuel)}, ${sqlEsc(c.gear)}, ${sqlEsc(c.body)}, ${sqlEsc(
+        c.specs.power,
+      )}, ${sqlEsc(c.specs.color)}, ${sqlEsc(c.specs.package)}, ${sqlEsc(
+        c.specs.expertise,
+      )}, ${sqlEsc(c.specs.tramer)}, ${sqlEsc(fit)}, ${sqlEsc(
+        c.video || null,
+      )}, ${sqlEsc(JSON.stringify(c.extras || []))}, ${sqlEsc(
+        JSON.stringify(c.extrasEn || []),
+      )}, ${sqlEsc(c.description?.tr || "")}, ${sqlEsc(
+        c.description?.en || "",
+      )}, ${sqlEsc(status)}, ${c.featured ? 1 : 0});`,
+    );
+    c.images.forEach((imgUrl, idx) => {
+      const imgId = `${c.id}-img-${idx + 1}`;
+      lines.push(
+        `INSERT OR REPLACE INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES (${sqlEsc(
+          imgId,
+        )}, ${sqlEsc(c.id)}, ${sqlEsc(`vehicles/${c.id}/${idx + 1}.webp`)}, ${sqlEsc(
+          imgUrl,
+        )}, ${idx === 0 ? 1 : 0}, ${idx});`,
+      );
+    });
+  }
+
+  lines.push("", "-- 2. Müşteri Teklif & Özel İthalat Talepleri (inquiries)");
+  for (const inq of inquiries) {
+    lines.push(
+      `INSERT OR REPLACE INTO inquiries (id, type, car_title, customer_name, phone, offer_or_budget, details, status) VALUES (${sqlEsc(
+        inq.id,
+      )}, ${sqlEsc(inq.type)}, ${sqlEsc(inq.car)}, ${sqlEsc(inq.name)}, ${sqlEsc(
+        inq.phone,
+      )}, ${sqlEsc(inq.offerOrBudget)}, ${sqlEsc(inq.details || null)}, ${sqlEsc(
+        inq.status,
+      )});`,
+    );
+  }
+
+  lines.push("", "-- 3. Vitrin & Modal Ayarları (site_settings)");
+  lines.push(
+    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('global_config', ${sqlEsc(
+      JSON.stringify(settings),
+    )});`,
+  );
+
+  return lines.join("\n");
 }
 
 export function useByCarStore() {
@@ -1025,6 +1267,7 @@ export function useByCarStore() {
   const [inquiries, setInquiries] = useState<Inquiry[]>(INITIAL_INQUIRIES);
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
   const [lang, setLangState] = useState<Lang>("tr");
+  const [undoSnap, setUndoSnap] = useState<UndoSnapshot | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -1032,6 +1275,7 @@ export function useByCarStore() {
       setInquiries(getStoredInquiries());
       setSettings(getStoredSettings());
       setLangState(getStoredLang());
+      setUndoSnap(getUndoSnapshot());
     };
     sync();
     window.addEventListener(SYNC_EVENT, sync);
@@ -1047,12 +1291,15 @@ export function useByCarStore() {
     inquiries,
     settings,
     lang,
+    undoSnap,
     setLang: saveStoredLang,
     updateCars: saveStoredCars,
     resetCars: resetStoredCars,
     updateInquiries: saveStoredInquiries,
+    resetInquiries: resetStoredInquiries,
     addInquiry: addStoredInquiry,
     updateSettings: saveStoredSettings,
+    restoreUndo: restoreUndoSnapshot,
   };
 }
 

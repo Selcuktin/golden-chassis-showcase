@@ -114,6 +114,46 @@ function Index() {
     [visibleCars],
   );
 
+  const availableBodies = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "Coupe",
+          "SUV",
+          "Sedan",
+          "Cabrio",
+          ...visibleCars.map((c) => c.body).filter(Boolean),
+        ]),
+      ),
+    [visibleCars],
+  );
+
+  const availableFuels = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "Benzin",
+          "Hibrit",
+          "Elektrik",
+          "Dizel",
+          ...visibleCars.map((c) => c.fuel).filter(Boolean),
+        ]),
+      ),
+    [visibleCars],
+  );
+
+  const availableGears = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "Otomatik",
+          "Manuel",
+          ...visibleCars.map((c) => c.gear).filter(Boolean),
+        ]),
+      ),
+    [visibleCars],
+  );
+
   const activeFilterCount = useMemo(
     () =>
       [
@@ -416,7 +456,7 @@ function Index() {
                 v={body}
                 set={setBody}
                 label={lang === "tr" ? "Kasa Tipi" : "Body Type"}
-                opts={["Coupe", "SUV", "Sedan", "Cabrio"].map((b) => ({
+                opts={availableBodies.map((b) => ({
                   value: b,
                   label: b,
                 }))}
@@ -429,7 +469,7 @@ function Index() {
                     v={fuel}
                     set={setFuel}
                     label={lang === "tr" ? "Yakıt" : "Fuel"}
-                    opts={["Benzin", "Hibrit", "Elektrik", "Dizel"].map((f) => ({
+                    opts={availableFuels.map((f) => ({
                       value: f,
                       label: translateTerm(f, lang),
                     }))}
@@ -440,7 +480,7 @@ function Index() {
                     v={gear}
                     set={setGear}
                     label={lang === "tr" ? "Vites" : "Gear"}
-                    opts={["Otomatik", "Manuel"].map((g) => ({
+                    opts={availableGears.map((g) => ({
                       value: g,
                       label: translateTerm(g, lang),
                     }))}
@@ -1135,10 +1175,16 @@ function DetailModal({
   const [copied, setCopied] = useState(false);
   const isSold = Boolean(car.sold || car.status === "sold");
 
-  const defaultTab =
-    settings.modalDefaultTab === "offer" && isSold
-      ? "specs"
-      : settings.modalDefaultTab || "specs";
+  const defaultTab = (() => {
+    const preferred = settings.modalDefaultTab || "specs";
+    if (preferred === "specs" && settings.modalShowSpecsTab) return "specs";
+    if (preferred === "extras" && settings.modalShowExtrasTab) return "extras";
+    if (preferred === "offer" && settings.modalShowOfferTab && !isSold) return "offer";
+    if (settings.modalShowSpecsTab) return "specs";
+    if (settings.modalShowExtrasTab) return "extras";
+    if (settings.modalShowOfferTab && !isSold) return "offer";
+    return "specs";
+  })();
   const [activeTab, setActiveTab] = useState<"specs" | "extras" | "offer">(defaultTab);
 
   const prevImg = () => {
@@ -1442,7 +1488,9 @@ function DetailModal({
           </a>
           <button
             onClick={() =>
-              activeTab === "offer" ? onOffer() : setActiveTab("offer")
+              activeTab === "offer" || !settings.modalShowOfferTab
+                ? onOffer()
+                : setActiveTab("offer")
             }
             className={outlineBtn}
           >

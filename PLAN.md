@@ -90,3 +90,20 @@ Soru-Cevap oturumunda netleşen 4 temel karar:
 - [x] **T009 (`MEDIUM`):** `EN` dil modunda kalan tüm rozet (`FOTOĞRAF`, `VİDEO`), yakıt/vites/kasa ve donanım maddelerini %100 İngilizceye çevir; `schema.sql` ve `sitemap.xml` dosyalarını güncelle.
 - [x] **T010 (`LOW`):** Alt kısımda **VIP Çerez (Cookie) Onay Banner'ı**, `DetailModal` klavye yön tuşları (`←`, `→`, `Esc`) ve `vitest` test doğrulamasını tamamla (`✓ 3/3 passed`).
 
+---
+
+## 6. ✅ Faz 7: Tam Tarama (`/debugger` & `/browser`), Sınırsız Yazılabilir Alanlar & Veritabanı Yedekleme Merkezi
+
+- [x] **T011 (Fotoğraf Sürükle-Sırala & Canlı Vitrin/Galeri Önizlemesi):** Fotoğraf küçük resimlerini sürüklerken oluşan çoğalma (duplication) hatası giderildi (`e.stopPropagation()` + `dataTransfer.types.includes("Files")` kontrolü). Sürüklerken anlık canlı vitrin önizlemesi (`previewImages`) eklendi.
+- [x] **T012 ("Düzenlemeyi Sıfırla" / "Formu Sıfırla" Butonu & Sekme Koruması):** Araç düzenlerken veya yeni araç eklerken hem formun üst barına hem de alt "Kaydet" butonunun yanına **"Düzenlemeyi Sıfırla"** (`resetCurrentEdit`) ve **"Yeni Araç Formuna Geç"** butonları eklendi. Sekmeler arası geçişte (`Araç Yönetimi` ↔ `Araç Düzenle`) form verilerinin silinmesi engellendi; kayıt sonrasında düzenlenen araç ekranda korunur hale getirildi.
+- [x] **T013 (Hiçbir Sınırlama Olmadan Tıklanabilir + Yazılabilir Kasa Tipi, Yakıt, Vites, Yıl, KM):**
+  - **Kasa Tipi (`body`)**, **Yakıt Türü (`fuel`)** ve **Vites Tipi (`gear`)** alanları sabit `<select>` olmaktan çıkarılıp hem **11+ hazır tıklanabilir etiket (`Coupe`, `SUV`, `Sedan`, `Cabrio`, `Hatchback`, `Station Wagon / Avant`, `Crossover`, `Roadster`, `Shooting Brake`, `VIP Minivan`, `Pick-up` vb.)** hem de **serbest yazılabilir `<input />`** yapıldı.
+  - `Model Yılı` ve `Kilometre` alanlarındaki üst/alt sınır kısıtlamaları kaldırıldı.
+  - Ana sayfadaki gelişmiş filtre panelinde `Kasa Tipi`, `Yakıt` ve `Vites` listeleri **Hibrit Dinamik** yapıldı (Admin'de elle yazılan her yeni kasa/yakıt/vites tipi otomatik olarak ana sayfa filtrelerinde görünür).
+  - `schema.sql` içerisindeki sabit `CHECK (body IN (...))` kısıtları kaldırılarak Cloudflare D1 / SQLite veritabanında sınırsız özel kasa/yakıt/vites tiplerinin hatasız kaydedilmesi sağlandı.
+- [x] **T014 (`/debugger` & `/browser` Hata Ayıklama + Veritabanı / Veri Kaybı Koruma Merkezi):**
+  - `/admin` rotasında `sessionStorage` kaynaklı SSR Hydration uyuşmazlığı giderildi.
+  - Hızlı marka etiketlerine üst üste tıklanması durumunda model başlığının otomatik güncellenmesi düzeltildi.
+  - Detay modalında varsayılan sekme Admin'den kapatıldığında otomatik olarak ilk aktif sekmeye (`specs` -> `extras` -> `offer`) düşmesi sağlandı.
+  - **Otomatik Geri Alma (`Son İşlemi Geri Al` / Undo Snapshot)**, **JSON Tam Yedek İndir / Geri Yükle** ve **Cloudflare D1 SQLite (`.sql`) Veritabanı Dışa Aktarma (`exportD1SqlDump`)** özellikleri eklendi.
+

@@ -7,7 +7,13 @@ import {
   ADMIN_PRESETS,
   CARS,
   T,
+  exportD1SqlDump,
+  exportDatabaseJSON,
+  getStoredCars,
+  importDatabaseJSON,
   recordLoginAttempt,
+  restoreUndoSnapshot,
+  saveStoredCars,
   translateTerm,
   verifyAdminPasswordPBKDF2,
 } from "@/lib/bycar";
@@ -45,14 +51,19 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     }
   });
 
-  it("provides complete bilingual TR/EN translations, presets, and PBKDF2 + Brute-Force security", async () => {
+  it("provides complete bilingual TR/EN translations, unrestricted presets, PBKDF2 + Brute-Force security, and DB Undo/Export", async () => {
     expect(T.tr.faqs.length).toBe(5);
     expect(T.en.faqs.length).toBe(5);
     expect(translateTerm("Benzin", "en")).toBe("Petrol");
     expect(translateTerm("Otomatik", "en")).toBe("Automatic");
+    expect(translateTerm("Station Wagon / Avant", "en")).toBe("Station Wagon / Avant");
     expect(ADMIN_PRESETS.extras.length).toBeGreaterThanOrEqual(20);
+    expect(ADMIN_PRESETS.bodies.length).toBeGreaterThanOrEqual(10);
+    expect(ADMIN_PRESETS.fuels.length).toBeGreaterThanOrEqual(6);
+    expect(ADMIN_PRESETS.gears.length).toBeGreaterThanOrEqual(5);
 
     expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(true);
+    expect(await verifyAdminPasswordPBKDF2("bycar2026")).toBe(true);
     expect(await verifyAdminPasswordPBKDF2("wrong-pass")).toBe(false);
 
     recordLoginAttempt(true); // reset
@@ -63,5 +74,35 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(fifth.attempts).toBe(5);
     expect(fifth.lockedUntil).not.toBeNull();
     recordLoginAttempt(true); // clean up
+
+    // Test unrestricted custom body/fuel/gear persistence + Undo + JSON/SQL export
+    const customCar = {
+      ...CARS[0],
+      id: "custom-shooting-brake-2026",
+      body: "Özel Shooting Brake GT",
+      fuel: "Hidrojen / E-Fuel",
+      gear: "9G-Tronic Speedshift",
+    };
+    saveStoredCars([customCar, ...CARS], "Özel araç eklendi");
+    expect(getStoredCars()[0].body).toBe("Özel Shooting Brake GT");
+
+    const jsonBackup = exportDatabaseJSON();
+    expect(jsonBackup).toContain("Özel Shooting Brake GT");
+
+    const sqlDump = exportD1SqlDump();
+    expect(sqlDump).toContain("INSERT OR REPLACE INTO vehicles");
+    expect(sqlDump).toContain("Özel Shooting Brake GT");
+
+    const restored = restoreUndoSnapshot();
+    expect(restored).not.toBeNull();
+    expect(getStoredCars().length).toBe(CARS.length);
+
+    const importRes = importDatabaseJSON(jsonBackup);
+    expect(importRes.ok).toBe(true);
+    expect(getStoredCars()[0].id).toBe("custom-shooting-brake-2026");
+
+    // Reset back to default CARS
+    saveStoredCars(CARS, "Test temizliği");
   });
 });
+

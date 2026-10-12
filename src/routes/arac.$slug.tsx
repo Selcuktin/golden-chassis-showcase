@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   CARS,
   PHONE_RAW,
   T,
+  getStoredCars,
   translateTerm,
   useByCarStore,
   waLink,
@@ -23,11 +24,14 @@ import { QuickOfferForm } from "./index";
 
 export const Route = createFileRoute("/arac/$slug")({
   head: ({ params }) => {
-    const found = CARS.find((c) => c.id === params.slug && c.status !== "draft");
+    const pool = typeof window !== "undefined" ? getStoredCars() : CARS;
+    const found =
+      pool.find((c) => c.id === params.slug && c.status !== "draft") ||
+      CARS.find((c) => c.id === params.slug && c.status !== "draft");
     if (!found) {
       return {
         meta: [
-          { title: "Araç Bulunamadı (404) — ByCar Global" },
+          { title: "Araç Detayı — ByCar Global" },
           { name: "robots", content: "noindex" },
         ],
       };
@@ -62,6 +66,14 @@ function VehicleDetailPage() {
   const [copied, setCopied] = useState(false);
 
   const car = cars.find((c) => c.id === slug && c.status !== "draft");
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = car
+        ? `${car.year} ${car.title} | ByCar — Exclusive Automotive`
+        : "Araç Bulunamadı (404) — ByCar Global";
+    }
+  }, [car]);
 
   if (!car) {
     return (
