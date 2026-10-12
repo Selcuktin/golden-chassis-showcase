@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MessageCircle,
   Phone,
@@ -15,6 +15,12 @@ import {
   ShieldCheck,
   Sparkles,
   Lock,
+  Menu,
+  SlidersHorizontal,
+  RotateCcw,
+  Share2,
+  ExternalLink,
+  Star,
 } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import {
@@ -26,8 +32,10 @@ import {
   waLink,
   useByCarStore,
   addStoredInquiry,
+  translateTerm,
   type Car,
   type Lang,
+  type SiteSettings,
 } from "@/lib/bycar";
 
 export const Route = createFileRoute("/")({
@@ -37,7 +45,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Cupra, Ferrari, Porsche, Lamborghini, Rolls-Royce, Mercedes-AMG, BMW M, Audi ve Bentley. Özel koleksiyon ve VIP araç ithalatı.",
+          "Cupra, Audi, Ferrari, Porsche, Lamborghini, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS ve Bentley. Özel koleksiyon ve VIP araç ithalatı.",
       },
       { property: "og:title", content: "ByCar — Exclusive Automotive" },
       {
@@ -58,8 +66,7 @@ const input =
   "w-full bg-background border border-input px-4 py-3 text-sm outline-none focus:border-primary placeholder:text-muted-foreground";
 
 function Index() {
-  const { cars } = useByCarStore();
-  const [lang, setLang] = useState<Lang>("tr");
+  const { cars, settings, lang, setLang } = useByCarStore();
   const t = T[lang];
   const [brand, setBrand] = useState("");
   const [q, setQ] = useState("");
@@ -68,15 +75,36 @@ function Index() {
   const [fuel, setFuel] = useState("");
   const [gear, setGear] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "sold">("all");
+  const [showFilters, setShowFilters] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [detail, setDetail] = useState<Car | null>(null);
   const [offerFor, setOfferFor] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [showKvkk, setShowKvkk] = useState(false);
+  const [cookieAccepted, setCookieAccepted] = useState(true);
+
+  useEffect(() => {
+    setShowFilters(settings.filterPanelDefaultOpen);
+  }, [settings.filterPanelDefaultOpen]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("bycar_cookie_consent_v1");
+      setCookieAccepted(saved === "1");
+    }
+  }, []);
 
   const visibleCars = useMemo(
     () => cars.filter((c) => c.status !== "draft"),
     [cars],
   );
+
+  // Hybrid Brand List: Pinned luxury brands + any new custom brands from added vehicles
+  const hybridBrands = useMemo(() => {
+    const base = settings.pinnedBrands?.length ? settings.pinnedBrands : BRANDS;
+    const dynamic = visibleCars.map((c) => c.brand).filter(Boolean);
+    return Array.from(new Set([...base, ...dynamic]));
+  }, [settings.pinnedBrands, visibleCars]);
 
   const availableYears = useMemo(
     () =>
@@ -86,14 +114,46 @@ function Index() {
     [visibleCars],
   );
 
+  const activeFilterCount = useMemo(
+    () =>
+      [
+        brand,
+        q,
+        year,
+        body,
+        fuel,
+        gear,
+        statusFilter !== "all" ? statusFilter : "",
+      ].filter(Boolean).length,
+    [brand, q, year, body, fuel, gear, statusFilter],
+  );
+
+  const resetAllFilters = () => {
+    setBrand("");
+    setQ("");
+    setYear("");
+    setBody("");
+    setFuel("");
+    setGear("");
+    setStatusFilter("all");
+  };
+
   const list = useMemo(
     () =>
       visibleCars.filter((c) => {
         const isSold = Boolean(c.sold || c.status === "sold");
         if (statusFilter === "available" && isSold) return false;
         if (statusFilter === "sold" && !isSold) return false;
+
+        const brandMatches =
+          !brand ||
+          c.brand === brand ||
+          (brand === "Audi" && c.brand.startsWith("Audi")) ||
+          (brand === "Audi RS" &&
+            (c.brand === "Audi RS" || c.title.toLowerCase().includes("rs")));
+
         return (
-          (!brand || c.brand === brand) &&
+          brandMatches &&
           (!year || String(c.year) === year) &&
           (!body || c.body === body) &&
           (!fuel || c.fuel === fuel) &&
@@ -121,6 +181,7 @@ function Index() {
         },
         makesOffer: visibleCars.map((c) => ({
           "@type": "Offer",
+          url: `https://bycarglobal.com/arac/${c.id}`,
           availability:
             c.sold || c.status === "sold"
               ? "https://schema.org/SoldOut"
@@ -152,6 +213,7 @@ function Index() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLd }}
       />
+
       {/* HEADER */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
@@ -163,9 +225,12 @@ function Index() {
             />
             <div>
               <div className="font-display text-2xl font-bold tracking-[0.3em]">BYCAR</div>
-              <div className="text-[9px] tracking-[0.35em] text-primary">EXCLUSIVE AUTOMOTIVE</div>
+              <div className="text-[9px] tracking-[0.35em] text-primary">
+                EXCLUSIVE AUTOMOTIVE
+              </div>
             </div>
           </a>
+
           <nav className="hidden gap-6 text-xs uppercase tracking-widest lg:flex">
             {t.nav.map((n, i) => (
               <a
@@ -177,7 +242,8 @@ function Index() {
               </a>
             ))}
           </nav>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2.5">
             <div className="flex border border-border text-xs">
               {(["tr", "en"] as Lang[]).map((l) => (
                 <button
@@ -201,8 +267,50 @@ function Index() {
             >
               <MessageCircle className="h-4 w-4" /> VIP WhatsApp
             </a>
+            <button
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label="Menü"
+              className="inline-flex cursor-pointer items-center justify-center border border-border p-2 text-foreground transition hover:border-primary hover:text-primary lg:hidden"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* MOBILE VIP DRAWER MENU */}
+        {mobileMenuOpen && (
+          <div className="border-t border-border bg-background/95 px-4 py-5 backdrop-blur-md lg:hidden">
+            <nav className="flex flex-col space-y-3 text-xs uppercase tracking-widest">
+              {t.nav.map((n, i) => (
+                <a
+                  key={n}
+                  href={`#${ids[i]}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="border-b border-border/50 pb-2 text-foreground transition hover:text-primary"
+                >
+                  {n}
+                </a>
+              ))}
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <a
+                  href={waLink()}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${goldBtn} flex-1 !py-2.5 !text-xs`}
+                >
+                  <MessageCircle className="h-4 w-4" /> VIP WhatsApp
+                </a>
+                <Link
+                  to="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="inline-flex items-center gap-1.5 border border-border px-4 py-2.5 text-xs text-primary"
+                >
+                  <Lock className="h-3.5 w-3.5" /> Admin
+                </Link>
+              </div>
+            </nav>
+          </div>
+        )}
       </header>
 
       {/* HERO */}
@@ -236,79 +344,131 @@ function Index() {
       <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
         <SectionTitle kicker="Collection" title={t.collection} />
 
-        {/* Brand Pills */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          {["", ...BRANDS].map((b) => (
+        {/* Hybrid Brand Pills + Filter Panel Toggle */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {["", ...hybridBrands].map((b) => (
+              <button
+                key={b}
+                onClick={() => setBrand(b)}
+                className={`cursor-pointer border px-4 py-2 text-xs uppercase tracking-wider transition ${
+                  brand === b
+                    ? "border-primary bg-primary font-semibold text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                {b || t.all}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {activeFilterCount > 0 && (
+              <button
+                onClick={resetAllFilters}
+                className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {lang === "tr"
+                  ? `Filtreleri Temizle (${activeFilterCount})`
+                  : `Reset Filters (${activeFilterCount})`}
+              </button>
+            )}
             <button
-              key={b}
-              onClick={() => setBrand(b)}
-              className={`cursor-pointer border px-4 py-2 text-xs uppercase tracking-wider transition ${
-                brand === b
-                  ? "border-primary bg-primary font-semibold text-primary-foreground"
+              onClick={() => setShowFilters((v) => !v)}
+              aria-label="Gelişmiş Filtreler"
+              className={`inline-flex cursor-pointer items-center gap-2 border px-3.5 py-2 text-xs font-semibold uppercase tracking-wider transition ${
+                showFilters
+                  ? "border-primary bg-primary/15 text-primary"
                   : "border-border text-muted-foreground hover:border-primary hover:text-primary"
               }`}
             >
-              {b || t.all}
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>{lang === "tr" ? "Gelişmiş Filtre" : "Filters"}</span>
             </button>
-          ))}
+          </div>
         </div>
 
-        {/* Advanced Filter Bar */}
-        <div className="mb-10 grid gap-3 md:grid-cols-6">
-          <div className="relative md:col-span-2">
-            <Search className="
-              pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground
-            " />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t.search}
-              className={`${input} pl-10`}
-            />
+        {/* Advanced Filter Bar (Admin-Configurable) */}
+        {showFilters && (
+          <div className="mb-10 grid gap-3 border border-border/70 bg-card/40 p-4 md:grid-cols-6">
+            {settings.showSearchFilter && (
+              <div className="relative md:col-span-2">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder={t.search}
+                  className={`${input} pl-10`}
+                />
+              </div>
+            )}
+            {settings.showYearFilter && (
+              <Sel
+                v={year}
+                set={setYear}
+                label={lang === "tr" ? "Model Yılı" : "Model Year"}
+                opts={availableYears.map((y) => ({ value: y, label: y }))}
+              />
+            )}
+            {settings.showBodyFilter && (
+              <Sel
+                v={body}
+                set={setBody}
+                label={lang === "tr" ? "Kasa Tipi" : "Body Type"}
+                opts={["Coupe", "SUV", "Sedan", "Cabrio"].map((b) => ({
+                  value: b,
+                  label: b,
+                }))}
+              />
+            )}
+            {(settings.showFuelFilter || settings.showGearFilter) && (
+              <div className="grid grid-cols-2 gap-3">
+                {settings.showFuelFilter && (
+                  <Sel
+                    v={fuel}
+                    set={setFuel}
+                    label={lang === "tr" ? "Yakıt" : "Fuel"}
+                    opts={["Benzin", "Hibrit", "Elektrik", "Dizel"].map((f) => ({
+                      value: f,
+                      label: translateTerm(f, lang),
+                    }))}
+                  />
+                )}
+                {settings.showGearFilter && (
+                  <Sel
+                    v={gear}
+                    set={setGear}
+                    label={lang === "tr" ? "Vites" : "Gear"}
+                    opts={["Otomatik", "Manuel"].map((g) => ({
+                      value: g,
+                      label: translateTerm(g, lang),
+                    }))}
+                  />
+                )}
+              </div>
+            )}
+            {settings.showStatusFilter && (
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as "all" | "available" | "sold")
+                }
+                className={input}
+              >
+                <option value="all">{t.statusAll}</option>
+                <option value="available">{t.statusAvailable}</option>
+                <option value="sold">{t.statusSold}</option>
+              </select>
+            )}
           </div>
-          <Sel
-            v={year}
-            set={setYear}
-            label={lang === "tr" ? "Model Yılı" : "Model Year"}
-            opts={availableYears}
-          />
-          <Sel
-            v={body}
-            set={setBody}
-            label={lang === "tr" ? "Kasa Tipi" : "Body Type"}
-            opts={["Coupe", "SUV", "Sedan", "Cabrio"]}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Sel
-              v={fuel}
-              set={setFuel}
-              label={lang === "tr" ? "Yakıt" : "Fuel"}
-              opts={["Benzin", "Hibrit", "Elektrik", "Dizel"]}
-            />
-            <Sel
-              v={gear}
-              set={setGear}
-              label={lang === "tr" ? "Vites" : "Gear"}
-              opts={["Otomatik", "Manuel"]}
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as "all" | "available" | "sold")
-            }
-            className={input}
-          >
-            <option value="all">{t.statusAll}</option>
-            <option value="available">{t.statusAvailable}</option>
-            <option value="sold">{t.statusSold}</option>
-          </select>
-        </div>
+        )}
 
         {/* Vehicle Grid */}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((c) => {
             const isSold = Boolean(c.sold || c.status === "sold");
+            const fitMode = c.imageFit || settings.defaultCardFit || "cover";
             return (
               <article
                 key={c.id}
@@ -316,30 +476,66 @@ function Index() {
               >
                 <button
                   onClick={() => setDetail(c)}
-                  className="relative block w-full cursor-pointer overflow-hidden text-left"
+                  className="relative block aspect-[16/10] w-full cursor-pointer overflow-hidden bg-black text-left"
                 >
-                  <img
-                    src={c.images[0]}
-                    alt={c.title}
-                    loading="lazy"
-                    width={1280}
-                    height={832}
-                    className={`aspect-[16/10] w-full object-cover transition duration-700 group-hover:scale-105 ${
-                      isSold ? "grayscale-[60%]" : ""
-                    }`}
-                  />
-                  {/* Angle / Video Badge */}
-                  <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 bg-background/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-primary backdrop-blur-sm">
-                    <span>{c.images.length} FOTOĞRAF</span>
+                  {fitMode === "contain" ? (
+                    <>
+                      {/* Luxury Blurred Studio Reflection Backdrop */}
+                      <img
+                        src={c.images[0]}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-xl brightness-50"
+                      />
+                      {/* Uncropped Full Vehicle Image (Fits Plate & Roof 100%) */}
+                      <img
+                        src={c.images[0]}
+                        alt={c.title}
+                        loading="lazy"
+                        width={1280}
+                        height={832}
+                        className={`relative z-10 h-full w-full object-contain transition duration-700 group-hover:scale-105 ${
+                          isSold ? "grayscale-[60%]" : ""
+                        }`}
+                      />
+                    </>
+                  ) : (
+                    <img
+                      src={c.images[0]}
+                      alt={c.title}
+                      loading="lazy"
+                      width={1280}
+                      height={832}
+                      className={`h-full w-full object-cover transition duration-700 group-hover:scale-105 ${
+                        isSold ? "grayscale-[60%]" : ""
+                      }`}
+                    />
+                  )}
+
+                  {/* Featured Badge */}
+                  {c.featured && !isSold && (
+                    <div className="absolute left-2.5 top-2.5 z-20 inline-flex items-center gap-1 border border-primary/60 bg-background/85 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary backdrop-blur-sm">
+                      <Star className="h-2.5 w-2.5 fill-primary text-primary" />
+                      <span>{lang === "tr" ? "ÖNE ÇIKAN" : "FEATURED"}</span>
+                    </div>
+                  )}
+
+                  {/* Angle / Video Badge (100% Localized TR / EN) */}
+                  <div className="absolute bottom-2.5 right-2.5 z-20 flex items-center gap-1.5 bg-background/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-primary backdrop-blur-sm">
+                    <span>
+                      {c.images.length} {lang === "tr" ? "FOTOĞRAF" : "PHOTOS"}
+                    </span>
                     {c.video && (
                       <span className="inline-flex items-center gap-1 border-l border-border pl-1.5 text-foreground">
-                        <Play className="h-2.5 w-2.5 fill-primary text-primary" /> VİDEO
+                        <Play className="h-2.5 w-2.5 fill-primary text-primary" />{" "}
+                        {lang === "tr" ? "VİDEO" : "VIDEO"}
                       </span>
                     )}
                   </div>
+
                   {/* Sold Overlay Badge */}
                   {isSold && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/55">
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/55">
                       <span className="rotate-[-10deg] border-2 border-destructive bg-background/90 px-6 py-2 text-xl font-bold tracking-[0.35em] text-destructive shadow-lg">
                         {t.sold}
                       </span>
@@ -352,9 +548,9 @@ function Index() {
                     <div className="mb-3 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                       {[
                         c.year,
-                        `${c.km.toLocaleString("tr-TR")} KM`,
-                        c.fuel,
-                        c.gear,
+                        `${c.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM`,
+                        translateTerm(c.fuel, lang),
+                        translateTerm(c.gear, lang),
                         c.body,
                       ].map((x) => (
                         <span key={x} className="border border-border px-2 py-0.5">
@@ -369,7 +565,8 @@ function Index() {
                       {c.title}
                     </h3>
                     <p className="mb-5 text-xs text-muted-foreground">
-                      {c.specs.power} · {c.specs.color}
+                      {translateTerm(c.specs.power, lang)} ·{" "}
+                      {translateTerm(c.specs.color, lang)}
                     </p>
                   </div>
 
@@ -430,7 +627,11 @@ function Index() {
               </div>
             </div>
           </div>
-          <ImportRequestForm t={t} />
+          <ImportRequestForm
+            t={t}
+            lang={lang}
+            autoWhatsApp={settings.whatsappAutoOpenOnForm}
+          />
         </div>
       </section>
 
@@ -578,11 +779,40 @@ function Index() {
               to="/admin"
               className="inline-flex items-center gap-1.5 text-primary transition hover:underline"
             >
-              <Lock className="h-3.5 w-3.5" /> VIP Yönetim Paneli (Admin)
+              <Lock className="h-3.5 w-3.5" />{" "}
+              {lang === "tr" ? "VIP Yönetim Paneli (Admin)" : "VIP Admin Dashboard"}
             </Link>
           </div>
         </div>
       </footer>
+
+      {/* VIP COOKIE CONSENT BANNER (F10) */}
+      {!cookieAccepted && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/40 bg-background/95 px-4 py-3.5 shadow-2xl backdrop-blur-md">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs">
+            <p className="text-muted-foreground">
+              {lang === "tr"
+                ? "ByCar Global, size özel dil ve koleksiyon tercihlerinizi hatırlamak için KVKK uyumlu zorunlu çerezler kullanır."
+                : "ByCar Global uses essential GDPR/KVKK-compliant cookies to remember your language and showroom preferences."}
+              <button
+                onClick={() => setShowKvkk(true)}
+                className="ml-2 cursor-pointer text-primary underline"
+              >
+                {t.privacy}
+              </button>
+            </p>
+            <button
+              onClick={() => {
+                window.localStorage.setItem("bycar_cookie_consent_v1", "1");
+                setCookieAccepted(true);
+              }}
+              className={`${goldBtn} !px-5 !py-2 !text-xs`}
+            >
+              {lang === "tr" ? "Kabul Et" : "Accept"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* FLOATING VIP WHATSAPP BUTTON */}
       <a
@@ -606,6 +836,7 @@ function Index() {
           car={detail}
           t={t}
           lang={lang}
+          settings={settings}
           onClose={() => setDetail(null)}
           onOffer={() => {
             const title = detail.title;
@@ -620,7 +851,12 @@ function Index() {
         <Modal onClose={() => setOfferFor(null)}>
           <h3 className="mb-1 text-3xl font-semibold">{t.form}</h3>
           <p className="mb-6 text-sm text-primary">{offerFor}</p>
-          <QuickOfferForm carTitle={offerFor} t={t} />
+          <QuickOfferForm
+            carTitle={offerFor}
+            t={t}
+            lang={lang}
+            autoWhatsApp={settings.whatsappAutoOpenOnForm}
+          />
         </Modal>
       )}
 
@@ -666,33 +902,52 @@ function Sel({
   v: string;
   set: (s: string) => void;
   label: string;
-  opts: string[];
+  opts: { value: string; label: string }[];
 }) {
   return (
     <select value={v} onChange={(e) => set(e.target.value)} className={input}>
       <option value="">{label}</option>
       {opts.map((o) => (
-        <option key={o} value={o}>
-          {o}
+        <option key={o.value} value={o.value}>
+          {o.label}
         </option>
       ))}
     </select>
   );
 }
 
-function ImportRequestForm({ t }: { t: (typeof T)["tr"] }) {
-  const [done, setDone] = useState(false);
-  if (done) {
+function ImportRequestForm({
+  t,
+  lang,
+  autoWhatsApp,
+}: {
+  t: (typeof T)["tr"];
+  lang: Lang;
+  autoWhatsApp: boolean;
+}) {
+  const [doneUrl, setDoneUrl] = useState<string | null>(null);
+  if (doneUrl) {
     return (
       <div className="flex flex-col items-start justify-center border border-primary bg-background/60 p-8">
         <CheckCircle2 className="mb-3 h-8 w-8 text-primary" />
         <p className="text-base text-foreground">{t.sent}</p>
-        <button
-          onClick={() => setDone(false)}
-          className="mt-4 text-xs uppercase tracking-wider text-primary underline cursor-pointer"
-        >
-          Yeni Talep Gönder
-        </button>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <a
+            href={doneUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={`${goldBtn} !px-4 !py-2.5 !text-xs`}
+          >
+            <MessageCircle className="h-4 w-4" />
+            {lang === "tr" ? "WhatsApp ile Anında Gönder" : "Send via WhatsApp Now"}
+          </a>
+          <button
+            onClick={() => setDoneUrl(null)}
+            className="cursor-pointer border border-border px-4 py-2.5 text-xs uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            {lang === "tr" ? "Yeni Talep Gönder" : "Submit Another Request"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -708,6 +963,8 @@ function ImportRequestForm({ t }: { t: (typeof T)["tr"] }) {
         const country = String(fd.get("country") || "");
         const name = String(fd.get("name") || "");
         const phone = String(fd.get("phone") || "");
+
+        // 1. Save to Admin Inbox
         addStoredInquiry({
           type: "İthalat",
           name,
@@ -715,7 +972,14 @@ function ImportRequestForm({ t }: { t: (typeof T)["tr"] }) {
           car: `${model} (${year})`,
           offerOrBudget: `${budget} ${currency} — ${country}`,
         });
-        setDone(true);
+
+        // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
+        const waMsg = `Merhaba ByCar Global, web sitenizden Özel İthalat Talebi gönderdim:\n• Araç: ${model} (${year})\n• Bütçe / Ülke: ${budget} ${currency} (${country})\n• Ad Soyad: ${name}\n• Telefon: ${phone}`;
+        const url = waLink(undefined, waMsg);
+        setDoneUrl(url);
+        if (autoWhatsApp && typeof window !== "undefined") {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
       }}
       className="grid gap-3 sm:grid-cols-2"
     >
@@ -739,20 +1003,41 @@ function ImportRequestForm({ t }: { t: (typeof T)["tr"] }) {
   );
 }
 
-function QuickOfferForm({
+export function QuickOfferForm({
   carTitle,
   t,
+  lang = "tr",
+  autoWhatsApp = true,
 }: {
   carTitle: string;
   t: (typeof T)["tr"];
+  lang?: Lang;
+  autoWhatsApp?: boolean;
 }) {
-  const [done, setDone] = useState(false);
-  if (done) {
+  const [doneUrl, setDoneUrl] = useState<string | null>(null);
+  if (doneUrl) {
     return (
-      <div className="border border-primary bg-background/50 p-6 text-primary">
-        <div className="flex items-center gap-2 font-semibold">
+      <div className="border border-primary bg-background/50 p-6">
+        <div className="flex items-center gap-2 font-semibold text-primary">
           <CheckCircle2 className="h-5 w-5" />
           <span>{t.sent}</span>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <a
+            href={doneUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={`${goldBtn} !px-4 !py-2 !text-xs`}
+          >
+            <MessageCircle className="h-4 w-4" />
+            {lang === "tr" ? "WhatsApp ile Anında Gönder" : "Send via WhatsApp Now"}
+          </a>
+          <button
+            onClick={() => setDoneUrl(null)}
+            className="cursor-pointer border border-border px-4 py-2 text-xs uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            {lang === "tr" ? "Yeni Teklif Gönder" : "Send Another Offer"}
+          </button>
         </div>
       </div>
     );
@@ -762,14 +1047,26 @@ function QuickOfferForm({
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
+        const name = String(fd.get("name") || "");
+        const phone = String(fd.get("phone") || "");
+        const offer = String(fd.get("offer") || "");
+
+        // 1. Save to Admin Inbox
         addStoredInquiry({
           type: "Teklif",
-          name: String(fd.get("name") || ""),
-          phone: String(fd.get("phone") || ""),
+          name,
+          phone,
           car: carTitle,
-          offerOrBudget: String(fd.get("offer") || ""),
+          offerOrBudget: offer,
         });
-        setDone(true);
+
+        // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
+        const waMsg = `Merhaba ByCar Global, web sitenizdeki "${carTitle}" aracınız için teklif/bilgi talebim:\n• Ad Soyad: ${name}\n• Telefon: ${phone}\n• Teklif / Not: ${offer}`;
+        const url = waLink(undefined, waMsg);
+        setDoneUrl(url);
+        if (autoWhatsApp && typeof window !== "undefined") {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
       }}
       className="grid gap-3 sm:grid-cols-2"
     >
@@ -822,19 +1119,47 @@ function DetailModal({
   car,
   t,
   lang,
+  settings,
   onClose,
   onOffer,
 }: {
   car: Car;
   t: (typeof T)["tr"];
   lang: Lang;
+  settings: SiteSettings;
   onClose: () => void;
   onOffer: () => void;
 }) {
   const [img, setImg] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
-  const [activeTab, setActiveTab] = useState<"specs" | "extras" | "offer">("specs");
+  const [copied, setCopied] = useState(false);
   const isSold = Boolean(car.sold || car.status === "sold");
+
+  const defaultTab =
+    settings.modalDefaultTab === "offer" && isSold
+      ? "specs"
+      : settings.modalDefaultTab || "specs";
+  const [activeTab, setActiveTab] = useState<"specs" | "extras" | "offer">(defaultTab);
+
+  const prevImg = () => {
+    setShowVideo(false);
+    setImg((prev) => (prev === 0 ? car.images.length - 1 : prev - 1));
+  };
+  const nextImg = () => {
+    setShowVideo(false);
+    setImg((prev) => (prev === car.images.length - 1 ? 0 : prev + 1));
+  };
+
+  // Keyboard Navigation (ArrowLeft, ArrowRight, Escape)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") prevImg();
+      if (e.key === "ArrowRight") nextImg();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   const labels =
     lang === "tr"
@@ -853,19 +1178,23 @@ function DetailModal({
           color: "Exterior / Interior Color",
         };
 
-  const prevImg = () => {
-    setShowVideo(false);
-    setImg((prev) => (prev === 0 ? car.images.length - 1 : prev - 1));
-  };
-  const nextImg = () => {
-    setShowVideo(false);
-    setImg((prev) => (prev === car.images.length - 1 ? 0 : prev + 1));
+  const localizedExtras =
+    lang === "en" && car.extrasEn && car.extrasEn.length > 0
+      ? car.extrasEn
+      : (car.extras || []).map((item) => translateTerm(item, lang));
+
+  const copyShareUrl = () => {
+    if (typeof window === "undefined") return;
+    const url = `${window.location.origin}/arac/${car.id}`;
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
     <Modal onClose={onClose}>
       {/* Main Media Viewer (Multi-Angle Photo or MP4 Video) */}
-      <div className="relative mb-3 overflow-hidden border border-border bg-background">
+      <div className="relative mb-3 overflow-hidden border border-border bg-black">
         {showVideo && car.video ? (
           <video
             src={car.video}
@@ -873,6 +1202,20 @@ function DetailModal({
             autoPlay
             className="aspect-[16/10] w-full bg-black object-contain"
           />
+        ) : car.imageFit === "contain" ? (
+          <div className="relative aspect-[16/10] w-full overflow-hidden">
+            <img
+              src={car.images[img]}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl brightness-50"
+            />
+            <img
+              src={car.images[img]}
+              alt={`${car.title} - Açı ${img + 1}`}
+              className="relative z-10 h-full w-full object-contain"
+            />
+          </div>
         ) : (
           <img
             src={car.images[img]}
@@ -886,21 +1229,21 @@ function DetailModal({
             <button
               onClick={prevImg}
               aria-label="Önceki Açı"
-              className="absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
+              className="absolute left-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               onClick={nextImg}
               aria-label="Sonraki Açı"
-              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
+              className="absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
           </>
         )}
 
-        <div className="absolute bottom-3 left-3 bg-background/85 px-3 py-1 text-xs font-medium text-primary backdrop-blur-sm">
+        <div className="absolute bottom-3 left-3 z-20 bg-background/85 px-3 py-1 text-xs font-medium text-primary backdrop-blur-sm">
           {showVideo
             ? lang === "tr"
               ? "Video İnceleme"
@@ -937,24 +1280,52 @@ function DetailModal({
             }`}
           >
             <Play className="h-5 w-5 fill-current" />
-            <span>VİDEO</span>
+            <span>{lang === "tr" ? "VİDEO" : "VIDEO"}</span>
           </button>
         )}
       </div>
 
-      {/* Title & Badges */}
+      {/* Title, Badges & Share / Direct Link */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
           <h3 className="text-3xl font-semibold md:text-4xl">{car.title}</h3>
         </div>
-        <div className="flex flex-wrap gap-1.5 text-xs uppercase tracking-wider">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs uppercase tracking-wider">
           <span className="border border-border bg-background px-3 py-1">{car.year}</span>
           <span className="border border-border bg-background px-3 py-1">
-            {car.km.toLocaleString("tr-TR")} KM
+            {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
           </span>
-          <span className="border border-border bg-background px-3 py-1">{car.fuel}</span>
-          <span className="border border-border bg-background px-3 py-1">{car.gear}</span>
+          <span className="border border-border bg-background px-3 py-1">
+            {translateTerm(car.fuel, lang)}
+          </span>
+          <span className="border border-border bg-background px-3 py-1">
+            {translateTerm(car.gear, lang)}
+          </span>
+          <button
+            onClick={copyShareUrl}
+            className="inline-flex cursor-pointer items-center gap-1 border border-primary/50 bg-background px-2.5 py-1 text-primary transition hover:bg-primary hover:text-primary-foreground"
+            title="İlan Bağlantısını Kopyala"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            <span>
+              {copied
+                ? lang === "tr"
+                  ? "Kopyalandı!"
+                  : "Copied!"
+                : lang === "tr"
+                  ? "Paylaş"
+                  : "Share"}
+            </span>
+          </button>
+          <Link
+            to="/arac/$slug"
+            params={{ slug: car.id }}
+            className="inline-flex items-center gap-1 border border-border bg-background px-2.5 py-1 text-muted-foreground transition hover:border-primary hover:text-primary"
+            title="Tam Sayfa İlan Görünümü"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </div>
 
@@ -964,31 +1335,35 @@ function DetailModal({
         </p>
       )}
 
-      {/* Modal Detail Tabs */}
+      {/* Modal Detail Tabs (Admin-Configurable) */}
       <div className="mb-6 flex border-b border-border">
-        <button
-          onClick={() => setActiveTab("specs")}
-          className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-            activeTab === "specs"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {lang === "tr" ? "Teknik & Ekspertiz" : "Specs & Inspection"}
-        </button>
-        <button
-          onClick={() => setActiveTab("extras")}
-          className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-            activeTab === "extras"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {lang === "tr"
-            ? `Donanım & Opsiyonlar (${car.extras?.length || 0})`
-            : `Equipment & Options (${car.extras?.length || 0})`}
-        </button>
-        {!isSold && (
+        {settings.modalShowSpecsTab && (
+          <button
+            onClick={() => setActiveTab("specs")}
+            className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+              activeTab === "specs"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {lang === "tr" ? "Teknik & Ekspertiz" : "Specs & Inspection"}
+          </button>
+        )}
+        {settings.modalShowExtrasTab && (
+          <button
+            onClick={() => setActiveTab("extras")}
+            className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+              activeTab === "extras"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {lang === "tr"
+              ? `Donanım & Opsiyonlar (${localizedExtras.length})`
+              : `Equipment & Options (${localizedExtras.length})`}
+          </button>
+        )}
+        {settings.modalShowOfferTab && !isSold && (
           <button
             onClick={() => setActiveTab("offer")}
             className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
@@ -1002,24 +1377,26 @@ function DetailModal({
         )}
       </div>
 
-      {activeTab === "specs" && (
+      {activeTab === "specs" && settings.modalShowSpecsTab && (
         <table className="mb-6 w-full text-sm">
           <tbody>
             {(Object.keys(labels) as (keyof typeof labels)[]).map((k) => (
               <tr key={k} className="border-b border-border">
                 <td className="py-2.5 text-muted-foreground">{labels[k]}</td>
-                <td className="py-2.5 text-right font-medium">{car.specs[k]}</td>
+                <td className="py-2.5 text-right font-medium">
+                  {translateTerm(car.specs[k], lang)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
 
-      {activeTab === "extras" && (
+      {activeTab === "extras" && settings.modalShowExtrasTab && (
         <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
-          {(car.extras && car.extras.length > 0
-            ? car.extras
-            : [car.specs.package, car.specs.expertise]
+          {(localizedExtras.length > 0
+            ? localizedExtras
+            : [translateTerm(car.specs.package, lang), translateTerm(car.specs.expertise, lang)]
           ).map((item, idx) => (
             <div
               key={idx}
@@ -1032,9 +1409,14 @@ function DetailModal({
         </div>
       )}
 
-      {activeTab === "offer" && !isSold && (
+      {activeTab === "offer" && settings.modalShowOfferTab && !isSold && (
         <div className="mb-6">
-          <QuickOfferForm carTitle={car.title} t={t} />
+          <QuickOfferForm
+            carTitle={car.title}
+            t={t}
+            lang={lang}
+            autoWhatsApp={settings.whatsappAutoOpenOnForm}
+          />
         </div>
       )}
 

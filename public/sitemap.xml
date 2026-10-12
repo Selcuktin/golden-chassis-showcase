@@ -6,28 +6,48 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://bycarglobal.com/#koleksiyon</loc>
-    <changefreq>daily</changefreq>
+    <loc>https://bycarglobal.com/arac/cupra-formentor-2023</loc>
+    <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://bycarglobal.com/#ithalat</loc>
+    <loc>https://bycarglobal.com/arac/audi-q2-design-2016</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://bycarglobal.com/#surec</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://bycarglobal.com/arac/ferrari-296-gts</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://bycarglobal.com/#kurucu</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://bycarglobal.com/arac/porsche-911-gt3-weissach</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://bycarglobal.com/#sss</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://bycarglobal.com/arac/lamborghini-urus-se</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://bycarglobal.com/arac/rolls-royce-spectre</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://bycarglobal.com/arac/mercedes-g63-grand-edition</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://bycarglobal.com/arac/bmw-m4-competition-2025</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://bycarglobal.com/arac/audi-rs6-performance</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
 </urlset>

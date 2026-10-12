@@ -14,6 +14,7 @@ export const waLink = (car?: string, customText?: string) =>
   )}`;
 
 export type CarStatus = "active" | "sold" | "draft";
+export type ImageFit = "contain" | "cover";
 
 export type Car = {
   id: string;
@@ -26,6 +27,8 @@ export type Car = {
   body: "Coupe" | "SUV" | "Sedan" | "Cabrio";
   sold?: boolean;
   status?: CarStatus;
+  featured?: boolean;
+  imageFit?: ImageFit;
   video?: string;
   images: string[];
   specs: {
@@ -36,6 +39,7 @@ export type Car = {
     tramer: string;
   };
   extras?: string[];
+  extrasEn?: string[];
   description?: {
     tr: string;
     en: string;
@@ -54,17 +58,198 @@ export type Inquiry = {
   status: "Yeni" | "İletişime Geçildi" | "Tamamlandı";
 };
 
+export type SiteSettings = {
+  showSearchFilter: boolean;
+  showYearFilter: boolean;
+  showBodyFilter: boolean;
+  showFuelFilter: boolean;
+  showGearFilter: boolean;
+  showStatusFilter: boolean;
+  filterPanelDefaultOpen: boolean;
+  modalShowSpecsTab: boolean;
+  modalShowExtrasTab: boolean;
+  modalShowOfferTab: boolean;
+  modalDefaultTab: "specs" | "extras" | "offer";
+  defaultCardFit: ImageFit;
+  whatsappAutoOpenOnForm: boolean;
+  pinnedBrands: string[];
+};
+
 export const BRANDS = [
   "Cupra",
+  "Audi",
+  "Audi RS",
   "Ferrari",
   "Porsche",
   "Lamborghini",
   "Rolls-Royce",
   "Mercedes-AMG",
   "BMW M",
-  "Audi",
   "Bentley",
 ];
+
+export const DEFAULT_SETTINGS: SiteSettings = {
+  showSearchFilter: true,
+  showYearFilter: true,
+  showBodyFilter: true,
+  showFuelFilter: true,
+  showGearFilter: true,
+  showStatusFilter: true,
+  filterPanelDefaultOpen: true,
+  modalShowSpecsTab: true,
+  modalShowExtrasTab: true,
+  modalShowOfferTab: true,
+  modalDefaultTab: "specs",
+  defaultCardFit: "cover",
+  whatsappAutoOpenOnForm: true,
+  pinnedBrands: BRANDS,
+};
+
+export const ADMIN_PRESETS = {
+  brands: [
+    "Cupra",
+    "Audi",
+    "Audi RS",
+    "Ferrari",
+    "Porsche",
+    "Lamborghini",
+    "Rolls-Royce",
+    "Mercedes-AMG",
+    "BMW M",
+    "Bentley",
+    "Aston Martin",
+    "McLaren",
+    "Range Rover",
+    "Maserati",
+    "Maybach",
+  ],
+  packages: [
+    "Design Paket",
+    "S-Line",
+    "Competition M xDrive",
+    "Weissach Package",
+    "Assetto Fiorano / Carbon",
+    "Grand Edition (1 of 1000)",
+    "First Edition",
+    "RS Performance Dynamic Plus",
+    "Bespoke Starlight",
+    "AMG Night Package",
+    "Mulliner Bespoke",
+  ],
+  powers: [
+    "150 HP (1.5 TSI ACT)",
+    "116 HP (1.6 TDI S-Tronic)",
+    "510 HP (4.0 Atmosferik Boxer)",
+    "530 HP (3.0 M TwinPower Turbo)",
+    "585 HP (4.0 V8 Biturbo)",
+    "630 HP (4.0 V8 TFSI)",
+    "782 HP (4.0 V8 Ultra Hybrid)",
+    "800 HP (4.0 V8 Twin-Turbo PHEV)",
+    "830 HP (3.0 V6 Plug-in Hybrid)",
+  ],
+  colors: [
+    "Manyetik Gri / Bakır Detay",
+    "Buzul Beyazı / Kontrast Gri",
+    "Jet Siyah / Bordo Deri",
+    "Nardo Gri / Valcona Deri",
+    "Brooklyn Gri / Kyalami Turuncu",
+    "Rosso Corsa / Nero Deri",
+    "Oak Green Metallic Neo",
+    "Grigio Titans (Mat Füme)",
+    "MANUFAKTUR Gece Siyahı Magno / Altın",
+    "Bespoke Çift Ton Bordo / Gümüş",
+  ],
+  expertises: [
+    "Hatasız / Boyasız / Orijinal",
+    "Tamamen Yetkili Servis Bakımlı",
+    "Sıfır KM / Hatasız / Boyasız",
+    "Hatasız / Boyasız / Bayi Çıkışlı",
+    "Yetkili Bayi Orijinal Değişen / Harici Hatasız",
+    "1 Parça Lokal Boyalı / Harici Hatasız",
+  ],
+  tramers: [
+    "Yok",
+    "Tramersiz (0 TL)",
+    "Yetkili Servis Kayıtlı",
+  ],
+  extras: [
+    { tr: "Açılabilir Panoramik Cam Tavan", en: "Panoramic Sliding Glass Sunroof" },
+    { tr: "Bang & Olufsen 3D Premium Ses Sistemi", en: "Bang & Olufsen 3D Premium Sound System" },
+    { tr: "Burmester 3D Surround Ses Sistemi", en: "Burmester 3D Surround Sound System" },
+    { tr: "Karbon Seramik Fren Sistemi", en: "Carbon Ceramic Brake System" },
+    { tr: "Ön Aks Yükseltme (Lift) Sistemi", en: "Front Axle Lift System" },
+    { tr: "360° Çevre Görüş Kamerası & Park Asistanı", en: "360° Surround View Camera & Park Assist" },
+    { tr: "Geri Görüş Kamerası & Ön-Arka Park Sensörü", en: "Rear View Camera & Front/Rear Park Sensors" },
+    { tr: "Isıtmalı & Soğutmalı Ön Koltuklar", en: "Heated & Ventilated Front Seats" },
+    { tr: "Elektrikli & Hafızalı Spor Koltuklar", en: "Power Adjustable & Memory Sport Seats" },
+    { tr: "Masaj Fonksiyonlu Deri Koltuklar", en: "Massage Function Leather Seats" },
+    { tr: "Isıtmalı Çok Fonksiyonlu Direksiyon", en: "Heated Multifunction Steering Wheel" },
+    { tr: "Head-Up Display (Ön Cam Yansıtma)", en: "Head-Up Display (HUD)" },
+    { tr: "Vakumlu Kapılar (Soft Close)", en: "Soft-Close Automatic Doors" },
+    { tr: "Eller Serbest Elektrikli Bagaj Kapağı", en: "Hands-Free Power Tailgate" },
+    { tr: "Anahtarsız Giriş ve Çalıştırma (Keyless-Go)", en: "Keyless Entry & Start System" },
+    { tr: "Kablosuz Apple CarPlay & Android Auto", en: "Wireless Apple CarPlay & Android Auto" },
+    { tr: "Kablosuz Şarj Ünitesi & Dijital Kokpit", en: "Wireless Charging & Digital Cockpit" },
+    { tr: "Adaptif Hız Sabitleyici (ACC) & Şerit Takip", en: "Adaptive Cruise Control (ACC) & Lane Assist" },
+    { tr: "Kör Nokta Uyarı & Çarpışma Önleme Sistemi", en: "Blind Spot Monitor & Collision Prevention" },
+    { tr: "HD Matrix LED / Lazer Farlar & Kayar Stoplar", en: "HD Matrix LED / Laser Headlights & Dynamic Taillights" },
+    { tr: "Karbon Fiber İç Trim & Direksiyon Paketi", en: "Carbon Fiber Interior Trim & Steering Package" },
+    { tr: "Arka Aks Yönlendirme & Havalı Süspansiyon", en: "Rear-Axle Steering & Adaptive Air Suspension" },
+    { tr: "Valfli Spor Egzoz Sistemi", en: "Switchable Sports Exhaust System" },
+    { tr: "Çok Renkli Akıllı Ambiyans Aydınlatma", en: "Multi-Color Ambient Interior Lighting" },
+  ],
+};
+
+const TERM_MAP_EN: Record<string, string> = {
+  Benzin: "Petrol",
+  Hibrit: "Hybrid",
+  Elektrik: "Electric",
+  Dizel: "Diesel",
+  Otomatik: "Automatic",
+  Manuel: "Manual",
+  Yok: "None (Clean)",
+  "Tramersiz (0 TL)": "Clean Record (0 TL)",
+  "Yetkili Servis Kayıtlı": "Official Dealer Recorded",
+  "Hatasız / Boyasız / Orijinal": "Accident-Free / Original Paint",
+  "Hatasız / Boyasız / Değişensiz": "Accident-Free / Original Paint / No Replaced Parts",
+  "Tamamen Yetkili Servis Bakımlı": "Full Official Dealer Service History",
+  "Sıfır KM / Hatasız / Boyasız": "Zero KM / Brand New / Original Paint",
+  "Hatasız / Boyasız / Bayi Çıkışlı": "Accident-Free / Official Dealer Delivered",
+  "Hatasız / Boyasız / Borusan Çıkışlı": "Accident-Free / Official Borusan Delivered",
+  "Hatasız / Boyasız / Koleksiyondan Teslim Edildi": "Accident-Free / Delivered from Collection",
+  "Sağ Ön Kapı & Çamurluk Yetkili Bayi Orijinal Değişen / Harici Hatasız Boyasız":
+    "Right Front Door & Fender Replaced at Official Audi Dealer / Otherwise Original Paint",
+  "83.475 TL (Yetkili Servis Kayıtlı)": "83,475 TL (Official Audi Service Invoice)",
+};
+
+export function translateTerm(value: string, lang: Lang): string {
+  if (lang === "tr" || !value) return value;
+  if (TERM_MAP_EN[value]) return TERM_MAP_EN[value];
+  const presetMatch = ADMIN_PRESETS.extras.find((e) => e.tr === value);
+  if (presetMatch) return presetMatch.en;
+  return value
+    .replace(/Hatasız/gi, "Accident-Free")
+    .replace(/Boyasız/gi, "Original Paint")
+    .replace(/Orijinal/gi, "Original")
+    .replace(/Yetkili Servis Bakımlı/gi, "Official Dealer Serviced")
+    .replace(/Sıfır KM/gi, "Zero KM")
+    .replace(/Yok/gi, "None")
+    .replace(/Atmosferik/gi, "Naturally Aspirated")
+    .replace(/Çıkışlı/gi, "Delivered");
+}
+
+export function autoGenerateEnglishDescription(
+  title: string,
+  brand: string,
+  year: number,
+  km: number,
+  power: string,
+  pkg: string,
+  expertise: string,
+): string {
+  const kmText = km === 0 ? "zero kilometers (brand new)" : `${km.toLocaleString("en-US")} km`;
+  return `${year} ${title} (${brand}) featuring ${power || "high-performance"} engine and ${pkg || "Exclusive"} specification with ${kmText}. Condition: ${translateTerm(expertise, "en")}. Available via ByCar Global VIP Concierge.`;
+}
 
 export const CARS: Car[] = [
   {
@@ -77,6 +262,8 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "SUV",
     status: "active",
+    featured: true,
+    imageFit: "contain",
     video: "/cars/cupra/video.mp4",
     images: [
       "/cars/cupra/1.jpg",
@@ -110,6 +297,25 @@ export const CARS: Car[] = [
       "Adaptif Hız Sabitleyici (ACC) & Ön Bölge Asistanı (Front Assist)",
       "Kör Nokta Tespit Sistemi, Şerit Takip ve Uzun Far Asistanı",
     ],
+    extrasEn: [
+      "19\" 'Exclusive' Matte Black / Silver Alloy Wheels",
+      "Bucket Sport Seats (Factory Option)",
+      "Power Adjustable & Memory Driver Seat (Factory Option)",
+      "Hands-Free Power Tailgate / Virtual Pedal (Factory Option)",
+      "Rear View Camera (Factory Option)",
+      "Advanced Driver Assistance Package (Factory Option)",
+      "Front Park Sensors & Automatic Park Assist (Factory Option)",
+      "Full LED Lens Headlights & Infinite LED Taillights",
+      "Multi-Color Smart Ambient Lighting",
+      "Keyless Entry & Start System (Kessy)",
+      "12\" Touchscreen Infotainment & Digital Cockpit",
+      "Wireless Charger & Wireless Full Link (Apple CarPlay / Android Auto)",
+      "Three-Zone Automatic Climate Control (Climatronic)",
+      "Panoramic Sliding Glass Sunroof",
+      "Heated Front Seats & Heated Multifunction Leather Steering Wheel",
+      "Adaptive Cruise Control (ACC) & Front Assist",
+      "Blind Spot Detection, Lane Assist & High Beam Assist",
+    ],
     description: {
       tr: "ByCar (@bycar.eu) özel seçkisi. Fabrika çıkışlı ekstra opsiyon paketli (Bucket koltuklar, hafızalı elektrikli sürücü koltuğu, sanal pedallı elektrikli bagaj, ileri sürüş destek paketi). Ekspertiz garantili, hatasız ve boyasız kondisyonda.",
       en: "Exclusive ByCar (@bycar.eu) selection. Factory optioned with Bucket seats, memory power driver seat, hands-free power tailgate, and advanced driver assistance package. Accident-free and original paint.",
@@ -125,6 +331,8 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "SUV",
     status: "active",
+    featured: true,
+    imageFit: "cover",
     images: [
       "/cars/audi-q2/1.jpg",
       "/cars/audi-q2/2.jpg",
@@ -152,6 +360,16 @@ export const CARS: Car[] = [
       "Elektrikli Isıtmalı Yan Aynalar & Çift Bölgeli Dijital Klima",
       "Triger Seti, Şanzıman Yağı ve Güçlendirilmiş Mekatronik Tüpü Yeni",
     ],
+    extrasEn: [
+      "Full Official Audi Dealer Service History (2017 Registered)",
+      "Audi Drive Select — Sport Driving Mode",
+      "Xenon Headlights & Dynamic Sweeping LED Taillights",
+      "Rear View Camera & Front/Rear Parking Sensors",
+      "Cruise Control & Speed Limiter",
+      "Bluetooth / USB / MMI Infotainment Display",
+      "Power Heated Side Mirrors & Dual-Zone Digital Climate Control",
+      "Timing Belt Set, Transmission Fluid & Reinforced Mechatronic Newly Serviced",
+    ],
     description: {
       tr: "2016 model 2017 çıkışlı, bakımlarının tamamı Audi Eröz Yetkili Servisinde yapılmış Audi Q2 1.6 TDI Design. Triger kayışı, şanzıman yağı ve güçlendirilmiş mekatronik tüpü yeni değişmiş; şase, podye, direkler ve airbagler tamamen hatasızdır.",
       en: "2016 (2017 registered) Audi Q2 1.6 TDI Design with full official Audi dealer service history. Timing belt and S-Tronic transmission service recently completed.",
@@ -167,6 +385,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "Cabrio",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/ferrari-296-gts/1.jpg",
       "/cars/ferrari-296-gts/2.jpg",
@@ -192,6 +411,16 @@ export const CARS: Car[] = [
       "JBL Profesyonel Ses Sistemi & Apple CarPlay",
       "360 Derece Çevre Görüş Kamerası",
     ],
+    extrasEn: [
+      "Carbon Fiber Daytona Racing Seats",
+      "Carbon Fiber Driver Zone + LEDs Steering Wheel",
+      "Front Suspension Lifter System",
+      "Scuderia Ferrari Fender Shields",
+      "Carbon Ceramic Brakes with Yellow Calipers",
+      "Passenger Display Screen",
+      "JBL Professional Sound System & Apple CarPlay",
+      "360-Degree Surround View Camera",
+    ],
     description: {
       tr: "Fermas yetkili bayi çıkışlı, tam karbon iç ve dış opsiyon paketine sahip 830 HP gücünde Ferrari 296 GTS Spider. Katlanabilir hard-top tavan ve kusursuz koleksiyon kondisyonu.",
       en: "Official dealer delivered 830 HP Ferrari 296 GTS Spider with full carbon interior and exterior package, Carbon Racing seats, and front suspension lifter.",
@@ -207,6 +436,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "Coupe",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/porsche-911-gt3/1.jpg",
       "/cars/porsche-911-gt3/2.jpg",
@@ -232,6 +462,16 @@ export const CARS: Car[] = [
       "Race-Tex & Deri Weissach Logolu İç Mekan",
       "Merkezi Kilitli Hafif Alaşım GT3 Jantlar",
     ],
+    extrasEn: [
+      "Weissach Package (Exposed Carbon Hood, Roof & Rear Wing)",
+      "918 Spyder Full Carbon Bucket Seats",
+      "Front Axle Lift System",
+      "Porsche Ceramic Composite Brake (PCCB)",
+      "Sport Chrono Package & PDLS+ Matrix LED Headlights",
+      "BOSE Surround Sound System",
+      "Race-Tex & Leather Interior with Weissach Embroidery",
+      "Center-Lock Forged Lightweight GT3 Wheels",
+    ],
     description: {
       tr: "Yeni 992.2 kasa makyajlı Porsche 911 GT3 Weissach Paket. Özel Oak Green Metallic Neo rengi, 9.000 d/d çeviren 4.0 litre atmosferik motoru ve sıfır kilometre kondisyonuyla teslime hazır.",
       en: "Facelifted 992.2 Porsche 911 GT3 with the coveted Weissach Package in Oak Green Metallic Neo. 9,000 RPM naturally aspirated 4.0L flat-six, zero kilometers.",
@@ -247,6 +487,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "SUV",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/lamborghini-urus-se/1.jpg",
       "/cars/lamborghini-urus-se/2.jpg",
@@ -272,6 +513,16 @@ export const CARS: Car[] = [
       "Gece Görüş Asistanı (Night Vision) & Head-Up Display",
       "Vakumlu Kapılar (Soft Close) & 360 Derece 3D Kamera",
     ],
+    extrasEn: [
+      "Bang & Olufsen 3D Advanced Sound System",
+      "Rear-Axle Steering & Adaptive Air Suspension",
+      "23\" Galanthus Gloss Black Wheels & Carbon Ceramic Brakes",
+      "Panoramic Sliding Glass Sunroof",
+      "Massage, Heated & Ventilated Q-Citura Leather Seats",
+      "Full Carbon Interior Package & Ambient Lighting",
+      "Night Vision Assistant & Head-Up Display",
+      "Soft-Close Automatic Doors & 360° 3D Camera",
+    ],
     description: {
       tr: "Yeni nesil 800 HP Lamborghini Urus SE. Ad Personam özel mat füme dış renk, Bang & Olufsen 3D ses sistemi ve arka aks yönlendirme ile süper SUV segmentinin zirvesi.",
       en: "Next-generation 800 HP Lamborghini Urus SE in Grigio Titans matte finish with Bang & Olufsen 3D audio, rear-axle steering, and full carbon interior.",
@@ -287,6 +538,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "Coupe",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/rolls-royce-spectre/1.jpg",
       "/cars/rolls-royce-spectre/2.jpg",
@@ -312,6 +564,16 @@ export const CARS: Car[] = [
       "Masaj ve Havalandırmalı Bespoke Deri Koltuklar",
       "Planar Süspansiyon & Dört Tekerlekten Yönlendirme",
     ],
+    extrasEn: [
+      "Shooting Starlight Headliner & Starlight Doors (4,796 Stars)",
+      "Illuminated Pantheon Grille & Spirit of Ecstasy",
+      "23\" Seven-Spoke Polished Aero Wheels",
+      "Hand-Painted Bespoke Coachline",
+      "Rolls-Royce Bespoke Studio Audio System",
+      "Effortless E-Latch Power Doors",
+      "Massage & Ventilated Bespoke Leather Seats",
+      "Planar Suspension & Four-Wheel Steering",
+    ],
     description: {
       tr: "Rolls-Royce'un ultra lüks elektrikli süper coupe modeli Spectre. Starlight kapı içi ve tavan döşemesi, 23 inç jantlar ve el işçiliği Coachline ile eşsiz bir sanat eseri.",
       en: "Rolls-Royce Spectre ultra-luxury electric super coupe featuring Starlight doors and headliner, hand-painted Coachline, 23-inch wheels, and Bespoke interior.",
@@ -327,6 +589,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "SUV",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/mercedes-g63/1.jpg",
       "/cars/mercedes-g63/2.jpg",
@@ -352,6 +615,16 @@ export const CARS: Car[] = [
       "AMG Ride Control & Performans Egzoz Sistemi",
       "360 Derece Kamera & Distronic Plus Sürüş Asistanı",
     ],
+    extrasEn: [
+      "Limited 'Grand Edition' Series (1 of 1,000 Worldwide)",
+      "Kalahari Gold Magno Accents & 22\" AMG Forged Wheels",
+      "MANUFAKTUR Black Nappa Leather with Gold Stitching",
+      "AMG Carbon Fiber Trim with Copper Thread",
+      "Burmester Surround Sound System",
+      "Active Multicontour Massage & Ventilated Front Seats",
+      "AMG Ride Control & Performance Exhaust System",
+      "360° Camera & Distronic Plus Driver Assistance",
+    ],
     description: {
       tr: "Dünya genelinde yalnızca 1.000 adet üretilen koleksiyonluk Mercedes-AMG G 63 Grand Edition. MANUFAKTUR Gece Siyahı Magno gövde ve Kalahari Altın detaylarıyla ByCar siyah-altın ruhunu yansıtan özel seri.",
       en: "Limited to 1,000 units worldwide: Mercedes-AMG G 63 Grand Edition in MANUFAKTUR Night Black Magno with Kalahari Gold Magno accents and 22-inch forged wheels.",
@@ -367,6 +640,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "Coupe",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/bmw-m4/1.jpg",
       "/cars/bmw-m4/2.jpg",
@@ -391,6 +665,15 @@ export const CARS: Car[] = [
       "Isıtmalı ve Elektrikli Hafızalı M Spor Koltuklar",
       "Sürüş Asistanı Profesyonel & Park Asistanı Plus (360 Kamera)",
     ],
+    extrasEn: [
+      "M Carbon Roof & M Carbon Interior Trim Package",
+      "M xDrive Intelligent AWD (4WD / 4WD Sport / 2WD Drift Mode)",
+      "Harman Kardon Surround Sound System",
+      "BMW Curved Display & M Head-Up Display",
+      "Adaptive M Suspension & M Compound Brakes",
+      "Heated & Power Memory M Sport Seats",
+      "Driving Assistant Professional & Parking Assistant Plus (360° Camera)",
+    ],
     description: {
       tr: "Borusan Otomotiv yetkili bayi çıkışlı 2025 BMW M4 Competition Coupe M xDrive. 530 HP güç üreten makyajlı LCI versiyon, karbon tavan ve tam dolu donanım.",
       en: "Official dealer delivered 2025 BMW M4 Competition Coupe M xDrive (LCI 530 HP) with carbon roof, M carbon interior trim, and Harman Kardon sound.",
@@ -398,7 +681,7 @@ export const CARS: Car[] = [
   },
   {
     id: "audi-rs6-performance",
-    brand: "Audi",
+    brand: "Audi RS",
     title: "Audi RS6 Avant Performance 4.0 TFSI Quattro",
     year: 2024,
     km: 0,
@@ -406,6 +689,7 @@ export const CARS: Car[] = [
     gear: "Otomatik",
     body: "Sedan",
     status: "active",
+    imageFit: "cover",
     images: [
       "/cars/audi-rs6/1.jpg",
       "/cars/audi-rs6/2.jpg",
@@ -430,6 +714,15 @@ export const CARS: Car[] = [
       "Bal Peteği Dikişli Havalandırmalı Valcona Deri RS Koltuklar",
       "Panoramik Cam Tavan, Vakumlu Kapılar & Head-Up Display",
     ],
+    extrasEn: [
+      "RS Sports Exhaust System & Dynamic Driving Package",
+      "All-Wheel Steering (Rear Axle) & RS Adaptive Air Suspension",
+      "22\" Lightweight RS Performance Wheels",
+      "HD Matrix LED Laser Headlights & Dynamic Turn Signals",
+      "Bang & Olufsen 3D Premium Sound System",
+      "Honeycomb-Stitched Ventilated Valcona Leather RS Seats",
+      "Panoramic Sunroof, Soft-Close Doors & Head-Up Display",
+    ],
     description: {
       tr: "630 HP gücündeki 2024 Audi RS6 Avant Performance. İkonik Nardo Gri rengi, arka aks yönlendirme, Bang & Olufsen ses sistemi ve sıfır kilometre kondisyonuyla.",
       en: "630 HP 2024 Audi RS6 Avant Performance in iconic Nardo Grey with rear-axle steering, RS sports exhaust, and Bang & Olufsen 3D sound system.",
@@ -446,6 +739,7 @@ export const CARS: Car[] = [
     body: "Coupe",
     sold: true,
     status: "sold",
+    imageFit: "cover",
     images: [
       "/cars/bentley-gt/1.jpg",
       "/cars/bentley-gt/2.jpg",
@@ -468,6 +762,14 @@ export const CARS: Car[] = [
       "Mulliner Elmas Kapitone Deri & Wellness Koltuk Paketi",
       "Elektronik Dört Tekerlekten Yönlendirme & Aktif Roll Kontrol",
       "First Edition Özel Dış ve İç Rozetler",
+    ],
+    extrasEn: [
+      "Naim For Bentley 2,200W Reference Audio System",
+      "Bentley Rotating Display",
+      "Carbon Ceramic Brakes & 22\" Speed Wheels",
+      "Mulliner Diamond Quilted Leather & Wellness Seating",
+      "Electronic All-Wheel Steering & Active Roll Control",
+      "First Edition Bespoke Exterior & Interior Badges",
     ],
     description: {
       tr: "782 HP Ultra Performance Hybrid motorlu yeni Bentley Continental GT Speed First Edition. Naim ses sistemi ve döner ekran donanımlı aracımız VIP müşterimize teslim edilmiştir.",
@@ -510,9 +812,130 @@ export const INITIAL_INQUIRIES: Inquiry[] = [
   },
 ];
 
-const CARS_KEY = "bycar_fleet_v4";
+const CARS_KEY = "bycar_fleet_v5";
 const INQ_KEY = "bycar_inquiries_v2";
+const SETTINGS_KEY = "bycar_settings_v1";
+const LANG_KEY = "bycar_lang_v1";
+const LOCKOUT_KEY = "bycar_admin_lockout_v1";
 const SYNC_EVENT = "bycar-store-sync";
+
+// Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
+const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
+const ADMIN_PBKDF2_ITERATIONS = 100000;
+let cachedExpectedHash: string | null = null;
+
+async function derivePBKDF2Hex(password: string): Promise<string> {
+  if (typeof window === "undefined" || !window.crypto?.subtle) {
+    return password === "bycar2024" ? "VALID_FALLBACK" : "INVALID";
+  }
+  const enc = new TextEncoder();
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"],
+  );
+  const bits = await window.crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: enc.encode(ADMIN_PBKDF2_SALT),
+      iterations: ADMIN_PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256,
+  );
+  return Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean> {
+  if (!cachedExpectedHash) {
+    cachedExpectedHash = await derivePBKDF2Hex("bycar2024");
+  }
+  const candidate = await derivePBKDF2Hex(input);
+  return candidate === cachedExpectedHash;
+}
+
+export type LockoutState = {
+  attempts: number;
+  lockedUntil: number | null;
+};
+
+export function getLoginLockoutState(): LockoutState {
+  if (typeof window === "undefined") return { attempts: 0, lockedUntil: null };
+  try {
+    const raw = window.localStorage.getItem(LOCKOUT_KEY);
+    if (!raw) return { attempts: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as LockoutState;
+    if (parsed.lockedUntil && Date.now() > parsed.lockedUntil) {
+      window.localStorage.removeItem(LOCKOUT_KEY);
+      return { attempts: 0, lockedUntil: null };
+    }
+    return parsed;
+  } catch {
+    return { attempts: 0, lockedUntil: null };
+  }
+}
+
+export function recordLoginAttempt(success: boolean): LockoutState {
+  if (typeof window === "undefined") return { attempts: 0, lockedUntil: null };
+  if (success) {
+    window.localStorage.removeItem(LOCKOUT_KEY);
+    return { attempts: 0, lockedUntil: null };
+  }
+  const current = getLoginLockoutState();
+  const nextAttempts = current.attempts + 1;
+  const lockedUntil = nextAttempts >= 5 ? Date.now() + 15 * 60 * 1000 : null;
+  const nextState: LockoutState = { attempts: nextAttempts, lockedUntil };
+  window.localStorage.setItem(LOCKOUT_KEY, JSON.stringify(nextState));
+  return nextState;
+}
+
+// Client-Side HTML5 Canvas WebP Compression (prevents storage overflow & speeds up loading)
+export async function compressImageToWebP(
+  file: File,
+  maxWidth = 1600,
+  quality = 0.82,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Dosya okunamadı"));
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      if (typeof document === "undefined") {
+        resolve(dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onerror = () => resolve(dataUrl);
+      img.onload = () => {
+        try {
+          const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          const webpUrl = canvas.toDataURL("image/webp", quality);
+          resolve(webpUrl.startsWith("data:image/webp") ? webpUrl : dataUrl);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export function getStoredCars(): Car[] {
   if (typeof window === "undefined") return CARS;
@@ -568,14 +991,47 @@ export function addStoredInquiry(item: Omit<Inquiry, "id" | "time" | "status">) 
   return created;
 }
 
+export function getStoredSettings(): SiteSettings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<SiteSettings>) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export function saveStoredSettings(next: SiteSettings) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+export function getStoredLang(): Lang {
+  if (typeof window === "undefined") return "tr";
+  const raw = window.localStorage.getItem(LANG_KEY);
+  return raw === "en" ? "en" : "tr";
+}
+
+export function saveStoredLang(next: Lang) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LANG_KEY, next);
+  window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
 export function useByCarStore() {
   const [cars, setCars] = useState<Car[]>(CARS);
   const [inquiries, setInquiries] = useState<Inquiry[]>(INITIAL_INQUIRIES);
+  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
+  const [lang, setLangState] = useState<Lang>("tr");
 
   useEffect(() => {
     const sync = () => {
       setCars(getStoredCars());
       setInquiries(getStoredInquiries());
+      setSettings(getStoredSettings());
+      setLangState(getStoredLang());
     };
     sync();
     window.addEventListener(SYNC_EVENT, sync);
@@ -589,10 +1045,14 @@ export function useByCarStore() {
   return {
     cars,
     inquiries,
+    settings,
+    lang,
+    setLang: saveStoredLang,
     updateCars: saveStoredCars,
     resetCars: resetStoredCars,
     updateInquiries: saveStoredInquiries,
     addInquiry: addStoredInquiry,
+    updateSettings: saveStoredSettings,
   };
 }
 
@@ -604,7 +1064,7 @@ export const T = {
     explore: "Koleksiyonu Keşfet",
     importReq: "Özel İthalat Talebi",
     collection: "Seçkin Koleksiyon",
-    search: "Ara: Formentor, 296 GTS, GT3, Urus, G63…",
+    search: "Ara: Formentor, Q2, 296 GTS, GT3, Urus, G63…",
     all: "Tümü",
     statusLabel: "Durum",
     statusAll: "Tüm Araçlar",
@@ -617,7 +1077,7 @@ export const T = {
     call: "VIP Danışmanı Ara",
     form: "Site Üzerinden Teklif Ver",
     send: "Talebi VIP Danışmana İlet",
-    sent: "Talebiniz başarıyla VIP müşteri temsilcimize iletildi. En kısa sürede sizinle iletişime geçeceğiz.",
+    sent: "Talebiniz VIP yönetim sistemimize kaydedildi ve WhatsApp danışman hattımız hazırlandı.",
     process: "Uluslararası İthalat Süreci",
     steps: [
       ["Talep & Küresel Pazar Analizi", "Aradığınız spesifikasyonu Avrupa ve küresel yetkili bayi ağımızda analiz ediyoruz."],
@@ -683,7 +1143,7 @@ export const T = {
     explore: "Explore the Collection",
     importReq: "Private Import Request",
     collection: "Curated Collection",
-    search: "Search: Formentor, 296 GTS, GT3, Urus, G63…",
+    search: "Search: Formentor, Q2, 296 GTS, GT3, Urus, G63…",
     all: "All",
     statusLabel: "Status",
     statusAll: "All Vehicles",
@@ -696,7 +1156,7 @@ export const T = {
     call: "Call VIP Advisor",
     form: "Make an Offer Online",
     send: "Submit to VIP Advisor",
-    sent: "Your request has been received. Our VIP automotive advisor will contact you shortly.",
+    sent: "Your request has been saved to our VIP system and prepared for immediate WhatsApp consultation.",
     process: "International Import Process",
     steps: [
       ["Request & Global Market Analysis", "We analyze the global authorized dealer network for your exact specification."],
