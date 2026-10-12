@@ -18,6 +18,10 @@ import {
   UploadCloud,
   Film,
   Maximize2,
+  GripVertical,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   ADMIN_PRESETS,
@@ -111,6 +115,9 @@ function Admin() {
   const [savedMsg, setSavedMsg] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [previewIdx, setPreviewIdx] = useState<number>(0);
 
   const maxAllowedYear = new Date().getFullYear() + 1;
 
@@ -165,7 +172,10 @@ function Admin() {
     setDescTr(c.description?.tr || "");
     setDescEn(c.description?.en || "");
     setSelectedExtras(c.extras || []);
-    setImages(c.images);
+    setImages(Array.from(new Set(c.images)));
+    setPreviewIdx(0);
+    setDragIdx(null);
+    setDragOverIdx(null);
     setTab("add");
   };
 
@@ -197,6 +207,9 @@ function Admin() {
     ]);
     setCustomExtraInput("");
     setImages([]);
+    setPreviewIdx(0);
+    setDragIdx(null);
+    setDragOverIdx(null);
     setImgUrlInput("");
   };
 
@@ -225,7 +238,13 @@ function Admin() {
         const webpDataUrl = await compressImageToWebP(file, 1600, 0.82);
         compressed.push(webpDataUrl);
       }
-      setImages((prev) => [...prev, ...compressed]);
+      setImages((prev) => {
+        const next = [...prev];
+        for (const item of compressed) {
+          if (!next.includes(item)) next.push(item);
+        }
+        return next;
+      });
     } finally {
       setUploading(false);
     }
@@ -234,20 +253,23 @@ function Admin() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     void processFiles(files);
+    e.target.value = "";
   };
 
   const addImageUrl = () => {
     const trimmed = imgUrlInput.trim();
     if (!trimmed) return;
-    setImages((prev) => [...prev, trimmed]);
+    setImages((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
     setImgUrlInput("");
   };
 
   const setAsCover = (idx: number) => {
     setImages((prev) => {
       const chosen = prev[idx];
+      if (!chosen) return prev;
       return [chosen, ...prev.filter((_, i) => i !== idx)];
     });
+    setPreviewIdx(0);
   };
 
   const moveImage = (idx: number, dir: -1 | 1) => {
@@ -260,10 +282,56 @@ function Admin() {
       copy[target] = temp;
       return copy;
     });
+    setPreviewIdx((prevIdx) => {
+      const target = idx + dir;
+      if (prevIdx === idx && target >= 0 && target < images.length) return target;
+      return prevIdx;
+    });
   };
+
+  const reorderImages = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+    setImages((prev) => {
+      if (fromIdx >= prev.length || toIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+    setPreviewIdx(toIdx);
+  };
+
+  const deduplicateImages = () => {
+    setImages((prev) => Array.from(new Set(prev)));
+    setPreviewIdx(0);
+  };
+
+  const previewImages = (() => {
+    if (
+      dragIdx === null ||
+      dragOverIdx === null ||
+      dragIdx === dragOverIdx ||
+      dragIdx < 0 ||
+      dragOverIdx < 0 ||
+      dragIdx >= images.length ||
+      dragOverIdx >= images.length
+    ) {
+      return images;
+    }
+    const next = [...images];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(dragOverIdx, 0, moved);
+    return next;
+  })();
+
+  const activePreviewIndex =
+    dragOverIdx !== null && dragOverIdx < previewImages.length
+      ? dragOverIdx
+      : Math.min(previewIdx, Math.max(0, previewImages.length - 1));
 
   const removeImage = (idx: number) => {
     setImages((prev) => prev.filter((_, i) => i !== idx));
+    setPreviewIdx((prev) => Math.max(0, Math.min(prev, images.length - 2)));
   };
 
   const handleStatusChange = (id: string, nextStatus: CarStatus) => {
@@ -1190,40 +1258,58 @@ function Admin() {
               </div>
             </div>
 
-            {/* 10. DRAG & DROP WEBP PHOTO UPLOADER + COVER & ORDERING */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                const files = Array.from(e.dataTransfer.files || []);
-                void processFiles(files);
-              }}
-              className={`border-2 border-dashed p-5 transition sm:col-span-2 ${
-                isDragging
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-background/50"
-              }`}
-            >
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            {/* 10. DRAG & DROP WEBP PHOTO UPLOADER + LIVE PREVIEW + DRAG-TO-REORDER */}
+            <div className="space-y-4 border border-border bg-background/50 p-5 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
-                  <ImageIcon className="h-4 w-4" /> Çok Açılı Fotoğraf Galerisi (Sürükle-Bırak + Otomatik WebP Sıkıştırma)
+                  <ImageIcon className="h-4 w-4" /> Çok Açılı Fotoğraf Galerisi (Sürükle-Sırala + Canlı Vitrin Önizlemesi)
                 </label>
-                {uploading && (
-                  <span className="text-xs text-primary">
-                    Fotoğraflar WebP formatında optimize ediliyor...
-                  </span>
-                )}
+                <div className="flex items-center gap-3">
+                  {new Set(images).size !== images.length && (
+                    <button
+                      type="button"
+                      onClick={deduplicateImages}
+                      className="cursor-pointer border border-primary bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary hover:text-primary-foreground"
+                    >
+                      Tekrarlanan Kopyaları Temizle
+                    </button>
+                  )}
+                  {uploading && (
+                    <span className="text-xs text-primary">
+                      Fotoğraflar WebP formatında optimize ediliyor...
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              {/* A. ISOLATED FILE UPLOAD DROPZONE (Ignores internal thumbnail drags) */}
+              <div
+                onDragOver={(e) => {
+                  if (dragIdx !== null || e.dataTransfer.types.includes("text/x-bycar-thumb")) {
+                    return;
+                  }
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  setIsDragging(false);
+                  if (dragIdx !== null || e.dataTransfer.types.includes("text/x-bycar-thumb")) {
+                    return;
+                  }
+                  e.preventDefault();
+                  const files = Array.from(e.dataTransfer.files || []);
+                  void processFiles(files);
+                }}
+                className={`grid gap-3 border-2 border-dashed p-4 transition sm:grid-cols-2 ${
+                  isDragging
+                    ? "border-primary bg-primary/10"
+                    : "border-border/80 bg-card/60"
+                }`}
+              >
                 <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground">
                   <UploadCloud className="h-4 w-4" />
-                  <span>Fotoğrafları Seçin veya Buraya Sürükleyin</span>
+                  <span>Bilgisayardan Fotoğraf Seçin veya Buraya Bırakın</span>
                   <input
                     type="file"
                     multiple
@@ -1237,6 +1323,12 @@ function Admin() {
                   <input
                     value={imgUrlInput}
                     onChange={(e) => setImgUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addImageUrl();
+                      }
+                    }}
                     placeholder="veya Fotoğraf URL'si yapıştırın (https://...)"
                     className={input}
                   />
@@ -1250,64 +1342,324 @@ function Admin() {
                 </div>
               </div>
 
-              {images.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {images.map((src, idx) => (
-                    <div
-                      key={idx}
-                      className={`relative w-36 border-2 bg-card p-1.5 ${
-                        idx === 0 ? "border-primary" : "border-border"
-                      }`}
-                    >
+              {/* B. LIVE SHOWCASE & GALLERY PREVIEW PANEL */}
+              {previewImages.length > 0 && (
+                <div className="grid gap-4 border border-primary/30 bg-card/90 p-4 lg:grid-cols-12">
+                  {/* Left: Large Interactive Gallery Angle Preview */}
+                  <div className="space-y-2 lg:col-span-7">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                        <Eye className="h-3.5 w-3.5" />
+                        Canlı Galeri Önizlemesi — Açı #{activePreviewIndex + 1} / {previewImages.length}
+                        {activePreviewIndex === 0 && " (★ KAPAK GÖRSELİ)"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {dragIdx !== null
+                          ? "Sürükleniyor: Yeni sıra canlı önizleniyor..."
+                          : "Fotoğrafları sürükleyerek sırasını değiştirebilirsiniz"}
+                      </span>
+                    </div>
+
+                    <div className="group relative aspect-video w-full overflow-hidden border border-border bg-black">
+                      {imageFit === "contain" && (
+                        <img
+                          src={previewImages[activePreviewIndex]}
+                          alt=""
+                          aria-hidden="true"
+                          draggable={false}
+                          className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-35 blur-xl"
+                        />
+                      )}
                       <img
-                        src={src}
-                        alt=""
-                        className="aspect-video w-full object-contain bg-black"
+                        src={previewImages[activePreviewIndex]}
+                        alt="Canlı Önizleme"
+                        draggable={false}
+                        className={`relative z-10 h-full w-full select-none transition-all duration-300 ${
+                          imageFit === "contain" ? "object-contain p-1.5" : "object-cover"
+                        }`}
                       />
-                      <div className="mt-1.5 flex items-center justify-between text-[10px]">
-                        {idx === 0 ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-primary">
-                            <Star className="h-3 w-3 fill-primary" /> KAPAK
+
+                      <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5">
+                        {activePreviewIndex === 0 ? (
+                          <span className="inline-flex items-center gap-1 bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow">
+                            <Star className="h-3 w-3 fill-primary-foreground" /> #1 ANA VITRIN KAPAĞI
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => setAsCover(idx)}
-                            className="cursor-pointer text-muted-foreground hover:text-primary"
-                          >
-                            Kapak Yap
-                          </button>
+                          <span className="border border-primary/50 bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary backdrop-blur-md">
+                            GALERİ AÇISI #{activePreviewIndex + 1}
+                          </span>
                         )}
-                        <div className="flex items-center gap-1">
+                      </div>
+
+                      {previewImages.length > 1 && (
+                        <>
                           <button
                             type="button"
-                            disabled={idx === 0}
-                            onClick={() => moveImage(idx, -1)}
-                            className="cursor-pointer p-0.5 text-muted-foreground hover:text-primary disabled:opacity-30"
-                            title="Sola Taşı"
+                            onClick={() =>
+                              setPreviewIdx(
+                                (activePreviewIndex - 1 + previewImages.length) %
+                                  previewImages.length,
+                              )
+                            }
+                            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-1.5 text-foreground backdrop-blur-sm transition hover:border-primary hover:text-primary"
+                            title="Önceki Açı"
                           >
-                            <ArrowLeft className="h-3 w-3" />
+                            <ChevronLeft className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
-                            disabled={idx === images.length - 1}
-                            onClick={() => moveImage(idx, 1)}
-                            className="cursor-pointer p-0.5 text-muted-foreground hover:text-primary disabled:opacity-30"
-                            title="Sağa Taşı"
+                            onClick={() =>
+                              setPreviewIdx((activePreviewIndex + 1) % previewImages.length)
+                            }
+                            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-1.5 text-foreground backdrop-blur-sm transition hover:border-primary hover:text-primary"
+                            title="Sonraki Açı"
                           >
-                            <ArrowRight className="h-3 w-3" />
+                            <ChevronRight className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => removeImage(idx)}
-                            className="cursor-pointer text-destructive"
-                          >
-                            Sil
-                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Live Homepage Vitrin Card Replica */}
+                  <div className=" flex flex-col justify-between space-y-2 lg:col-span-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                        Ana Sayfa Vitrin Kartı Önizlemesi (#1 Kapak)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setImageFit((prev) => (prev === "contain" ? "cover" : "contain"))
+                        }
+                        className="cursor-pointer border border-primary/50 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary hover:bg-primary hover:text-primary-foreground"
+                      >
+                        Kadraj: {imageFit === "contain" ? "Tam Sığdır" : "Tam Doldur"}
+                      </button>
+                    </div>
+
+                    <div className="overflow-hidden border border-border bg-background shadow-lg">
+                      <div className="relative aspect-video overflow-hidden bg-black">
+                        {imageFit === "contain" && (
+                          <img
+                            src={previewImages[0]}
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                            className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-35 blur-xl"
+                          />
+                        )}
+                        <img
+                          src={previewImages[0]}
+                          alt="Vitrin Kapak Önizlemesi"
+                          draggable={false}
+                          className={`relative z-10 h-full w-full select-none ${
+                            imageFit === "contain" ? "object-contain p-1" : "object-cover"
+                          }`}
+                        />
+                        <div className="absolute left-2.5 top-2.5 z-20 flex flex-wrap gap-1">
+                          <span className="border border-primary/40 bg-background/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary">
+                            {year || "2025"} • {brand}
+                          </span>
+                          <span className="border border-border bg-background/90 px-2 py-0.5 text-[9px] font-semibold uppercase text-foreground">
+                            {body}
+                          </span>
+                        </div>
+                        <div className="absolute bottom-2 right-2 z-20 border border-border bg-background/85 px-2 py-0.5 text-[9px] font-semibold text-primary">
+                          1/{previewImages.length} Fotoğraf
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <div className="truncate font-serif text-sm font-bold text-foreground">
+                          {title || `${brand} Koleksiyon Aracı`}
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {power} • {color}
+                        </p>
+                        <div className="mt-2 grid grid-cols-3 gap-1 border-t border-border/60 pt-2 text-[10px] text-muted-foreground">
+                          <span>{km || "0"} KM</span>
+                          <span>{fuel}</span>
+                          <span>{gear}</span>
                         </div>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                </div>
+              )}
+
+              {/* C. DRAG-TO-REORDER THUMBNAIL GRID */}
+              {images.length > 0 && (
+                <div
+                  onDragOver={(e) => {
+                    if (dragIdx !== null) e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    if (dragIdx !== null && dragOverIdx !== null) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      reorderImages(dragIdx, dragOverIdx);
+                      setDragIdx(null);
+                      setDragOverIdx(null);
+                    }
+                  }}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      Sıralamak için fotoğrafları basılı tutup sürükleyin (1. sıradaki fotoğraf vitrin kapağı olur):
+                    </span>
+                    <span className="font-semibold text-primary">
+                      Toplam {images.length} Açı
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    {images.map((_, idx) => {
+                      const src = previewImages[idx] ?? images[idx];
+                      const isTargetSlot = dragOverIdx === idx && dragIdx !== null;
+                      const isSelectedPreview = activePreviewIndex === idx;
+                      return (
+                        <div
+                          key={idx}
+                          draggable
+                          onClick={() => setPreviewIdx(idx)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/x-bycar-thumb", String(idx));
+                            setDragIdx(idx);
+                            setDragOverIdx(idx);
+                            setPreviewIdx(idx);
+                          }}
+                          onDragOver={(e) => {
+                            if (dragIdx === null) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = "move";
+                            if (dragOverIdx !== idx) {
+                              setDragOverIdx(idx);
+                            }
+                          }}
+                          onDrop={(e) => {
+                            if (dragIdx === null) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            reorderImages(dragIdx, idx);
+                            setDragIdx(null);
+                            setDragOverIdx(null);
+                          }}
+                          onDragEnd={() => {
+                            if (dragIdx !== null && dragOverIdx !== null && dragIdx !== dragOverIdx) {
+                              reorderImages(dragIdx, dragOverIdx);
+                            }
+                            setDragIdx(null);
+                            setDragOverIdx(null);
+                          }}
+                          className={`group relative cursor-grab select-none border-2 bg-card p-1.5 transition active:cursor-grabbing ${
+                            isTargetSlot
+                              ? "scale-[1.03] border-primary ring-2 ring-primary/50"
+                              : idx === 0
+                                ? "border-primary"
+                                : isSelectedPreview
+                                  ? "border-primary/70"
+                                  : "border-border hover:border-primary/40"
+                          }`}
+                        >
+                          {/* Top Order Badge + Drag Handle */}
+                          <div className="mb-1 flex items-center justify-between text-[10px]">
+                            <span
+                              className={`inline-flex items-center gap-1 font-bold uppercase ${
+                                idx === 0 ? "text-primary" : "text-muted-foreground"
+                              }`}
+                            >
+                              <GripVertical className="h-3.5 w-3.5 text-primary/80" />
+                              {idx === 0 ? (
+                                <>
+                                  <Star className="h-3 w-3 fill-primary text-primary" /> #1 KAPAK
+                                </>
+                              ) : (
+                                `#${idx + 1} AÇI`
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewIdx(idx);
+                              }}
+                              className="cursor-pointer text-[10px] text-muted-foreground hover:text-primary"
+                              title="Büyük Önizlemede Göster"
+                            >
+                              Önizle
+                            </button>
+                          </div>
+
+                          {/* Thumbnail Preview (draggable={false} prevents browser file-duplication!) */}
+                          <div className="relative aspect-video w-full overflow-hidden bg-black">
+                            <img
+                              src={src}
+                              alt={`Açı ${idx + 1}`}
+                              draggable={false}
+                              className="pointer-events-none h-full w-full select-none object-contain"
+                            />
+                          </div>
+
+                          {/* Bottom Action Controls */}
+                          <div className="mt-1.5 flex items-center justify-between text-[10px]">
+                            {idx === 0 ? (
+                              <span className="font-semibold text-primary">Ana Vitrin</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAsCover(idx);
+                                }}
+                                className="cursor-pointer font-semibold text-muted-foreground hover:text-primary"
+                              >
+                                Kapak Yap
+                              </button>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveImage(idx, -1);
+                                }}
+                                className="cursor-pointer p-0.5 text-muted-foreground hover:text-primary disabled:opacity-30"
+                                title="Sola Taşı"
+                              >
+                                <ArrowLeft className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === images.length - 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveImage(idx, 1);
+                                }}
+                                className="cursor-pointer p-0.5 text-muted-foreground hover:text-primary disabled:opacity-30"
+                                title="Sağa Taşı"
+                              >
+                                <ArrowRight className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeImage(idx);
+                                }}
+                                className="cursor-pointer font-semibold text-destructive hover:underline"
+                              >
+                                Sil
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
