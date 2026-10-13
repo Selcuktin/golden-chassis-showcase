@@ -20,6 +20,7 @@ import {
   Shield,
   Radio,
   FileCode2,
+  Trash2,
 } from "lucide-react";
 import {
   type SiteCMSConfig,
@@ -62,6 +63,8 @@ export function AdminSystemTab({
   const [form, setForm] = useState<SiteCMSConfig>(cmsConfig);
   const [msg, setMsg] = useState("");
   const [serverMsg, setServerMsg] = useState("");
+  const [gcRunning, setGcRunning] = useState(false);
+  const [gcMsg, setGcMsg] = useState("");
 
   // Password change form
   const [newPw, setNewPw] = useState("");
@@ -112,6 +115,70 @@ export function AdminSystemTab({
     } catch {
       setServerMsg("⚠️ Sunucu senkronizasyonunda hata oluştu.");
       setTimeout(() => setServerMsg(""), 4000);
+    }
+  };
+
+  const handleRunMediaGc = async () => {
+    const token =
+      typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+    if (!token) {
+      setGcMsg("⚠️ Medya temizliği için oturum açmalısınız.");
+      return;
+    }
+    setGcRunning(true);
+    setGcMsg("R2 Medya deposu taranıyor ve yetim dosyalar temizleniyor...");
+    try {
+      let cursor: string | undefined = undefined;
+      let totalDeleted = 0;
+      let totalScanned = 0;
+      let totalRetained = 0;
+      let page = 0;
+
+      do {
+        page++;
+        setGcMsg(`R2 kova taraması yürütülüyor (Sayfa ${page})...`);
+        const res = await fetch("/api/admin/media/gc", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "full", autoDrain: true, cursor }),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as {
+          ok: boolean;
+          bucketScan?: {
+            scanned: number;
+            historicalDeleted: number;
+            activeRetained: number;
+            truncated: boolean;
+            nextCursor?: string;
+          };
+          queue?: { deleted: number };
+        };
+
+        if (data.ok) {
+          totalDeleted += (data.bucketScan?.historicalDeleted || 0) + (data.queue?.deleted || 0);
+          totalScanned += data.bucketScan?.scanned || 0;
+          totalRetained += data.bucketScan?.activeRetained || 0;
+          cursor = data.bucketScan?.truncated ? data.bucketScan.nextCursor : undefined;
+        } else {
+          break;
+        }
+      } while (cursor && page < 20);
+
+      setGcMsg(
+        `✓ Medya temizliği tamamlandı: ${totalDeleted} yetim görsel silindi, ${totalRetained} aktif görsel muhafaza edildi (${totalScanned} nesne incelendi).`,
+      );
+      setTimeout(() => setGcMsg(""), 8000);
+    } catch (err) {
+      setGcMsg(`⚠️ Medya temizliğinde hata oluştu: ${String(err)}`);
+      setTimeout(() => setGcMsg(""), 6000);
+    } finally {
+      setGcRunning(false);
     }
   };
 
@@ -543,6 +610,12 @@ export function AdminSystemTab({
           </div>
         )}
 
+        {gcMsg && (
+          <div className="border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-300">
+            {gcMsg}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <button
             type="button"
@@ -552,6 +625,16 @@ export function AdminSystemTab({
           >
             <Cloud className="h-4 w-4" />{" "}
             {isSyncing ? "Senkronize Ediliyor..." : "Buluta Şimdi Senkronize Et (D1 Sync)"}
+          </button>
+
+          <button
+            type="button"
+            disabled={gcRunning}
+            onClick={handleRunMediaGc}
+            className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />{" "}
+            {gcRunning ? "Medya Temizleniyor..." : "R2 Medya Temizliği (GC)"}
           </button>
 
           <button

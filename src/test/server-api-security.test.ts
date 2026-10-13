@@ -1073,14 +1073,28 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const noRevData = (await noRevRes?.json()) as { ok: boolean; error: string };
     expect(noRevData.error).toContain("revision");
 
-    // Explicit force: true allows authorized bypass
+    // Explicit force: true with required forceExpectedRevision and forceReason allows authorized bypass
+    const cmsGet = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/cms", {
+        headers: { authorization: `Bearer ${loginData.token}` },
+      }),
+      {},
+    );
+    const cmsData = (await cmsGet?.json()) as { revision?: number };
+    const currentRev = cmsData.revision || 1;
+
     const forceReq = new Request("https://bycarglobal.com/api/cms", {
       method: "POST",
       headers: {
         authorization: `Bearer ${loginData.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ settings: { title: "Force Override" }, force: true }),
+      body: JSON.stringify({
+        settings: { title: "Force Override" },
+        force: true,
+        forceExpectedRevision: currentRev,
+        forceReason: "Emergency maintenance override",
+      }),
     });
     const forceRes = await handleApiRequest(forceReq, {});
     expect(forceRes?.status).toBe(200);
@@ -1482,7 +1496,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       exec: async () => ({ count: 0, duration: 0 }),
     };
 
-    // Client sends outdated revision 10, BUT provides force: true
+    // Client sends outdated revision 10, BUT provides force: true with matching forceExpectedRevision
     const req = new Request("https://bycarglobal.com/api/cms", {
       method: "POST",
       headers: {
@@ -1493,6 +1507,8 @@ describe("Server API, D1 Security & Stability Engine", () => {
       body: JSON.stringify({
         revision: 10,
         force: true,
+        forceExpectedRevision: 42,
+        forceReason: "Acil vitrin guncellemesi",
         settings: { phone: "+90 532 000 00 00" },
       }),
     });
@@ -1510,15 +1526,19 @@ describe("Server API, D1 Security & Stability Engine", () => {
       ip: string;
       clientRevision: number;
       previousRevision: number;
+      forceExpectedRevision: number;
+      forceReason: string;
       forcedAt: string;
     };
     expect(audit.ip).toBe("203.0.113.195");
     expect(audit.clientRevision).toBe(10);
     expect(audit.previousRevision).toBe(42);
+    expect(audit.forceExpectedRevision).toBe(42);
+    expect(audit.forceReason).toBe("Acil vitrin guncellemesi");
     expect(audit.forcedAt).toBeDefined();
   });
 
-  it("Regression Test 5f: Server response enforces strict CSP with exact Google Fonts origins and no unsafe-eval", async () => {
+  it("Regression Test 5f: Server response enforces strict CSP with exact Google Fonts origins, connect-src self, and no unsafe-eval", async () => {
     const res = await serverWorker.fetch(
       new Request("https://bycarglobal.com/api/health", { method: "GET" }),
       {},
@@ -1530,10 +1550,186 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(csp).toBeTruthy();
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
     expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com;");
+    expect(csp).toContain("connect-src 'self';");
+    expect(csp).not.toContain("connect-src 'self' https:;");
     expect(csp).not.toContain("style-src 'self' 'unsafe-inline' https:;");
     expect(csp).not.toContain("font-src 'self' data: https:;");
     expect(csp).not.toContain("unsafe-eval");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("form-action 'self'");
+  });
+
+  it("Regression Test 6a: Historical GC respects 24-hour grace period and protects freshly uploaded media", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const deletedKeys: string[] = [];
+    const nowMs = Date.now();
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => ({ count: 0 }),
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => ({ count: 0 }),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedKeys.push(key);
+      },
+      list: async () => ({
+        objects: [
+          // Freshly uploaded 10 minutes ago (within 24h grace period)
+          {
+            key: `vehicles/draft-car/${nowMs - 10 * 60 * 1000}-fresh.webp`,
+            uploaded: new Date(nowMs - 10 * 60 * 1000),
+          },
+          // Old orphan uploaded 48 hours ago (outside grace period)
+          {
+            key: `vehicles/old-car/${nowMs - 48 * 3600 * 1000}-abandoned.webp`,
+            uploaded: new Date(nowMs - 48 * 3600 * 1000),
+          },
+        ],
+        truncated: false,
+      }),
+    };
+
+    const req = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ mode: "scan" }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+
+    const body = (await res?.json()) as {
+      ok: boolean;
+      bucketScan: { scanned: number; historicalDeleted: number; activeRetained: number };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.bucketScan.scanned).toBe(2);
+    expect(body.bucketScan.historicalDeleted).toBe(1);
+    expect(body.bucketScan.activeRetained).toBe(1); // Fresh upload was retained by grace period!
+    expect(deletedKeys).toContain(`vehicles/old-car/${nowMs - 48 * 3600 * 1000}-abandoned.webp`);
+    expect(deletedKeys).not.toContain(`vehicles/draft-car/${nowMs - 10 * 60 * 1000}-fresh.webp`);
+  });
+
+  it("Regression Test 6b: POST /api/cms rejects stale force: true when forceExpectedRevision mismatches", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => (sql.includes("cms_revision") ? { value: "50" } : null),
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? { value: "50" } : null),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    // Stale client attempts force sync expecting revision 45, but current revision in D1 is 50
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        force: true,
+        forceExpectedRevision: 45,
+        forceReason: "Stale attempt",
+        settings: { title: "Stale Override" },
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(409);
+
+    const body = (await res?.json()) as { ok: boolean; conflict: boolean; currentRevision: number };
+    expect(body.ok).toBe(false);
+    expect(body.conflict).toBe(true);
+    expect(body.currentRevision).toBe(50);
+  });
+
+  it("Regression Test 6c: POST /api/cms rejects payload with more than 35 vehicles to guarantee single-batch ACID atomicity", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // 36 vehicles (exceeds 35 cap)
+    const excessCars = Array.from({ length: 36 }, (_, i) => ({
+      id: `car-limit-${i}`,
+      brand: "Mercedes-Benz",
+      title: `G 63 AMG #${i}`,
+      year: 2024,
+      km: 1000,
+      fuel: "Benzin",
+      gear: "Otomatik",
+      body: "SUV",
+      specs: {},
+      imageFit: "cover",
+      images: [],
+      extras: [],
+      extrasEn: [],
+      description: { tr: "", en: "" },
+      status: "active",
+      featured: false,
+    }));
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cars: excessCars, revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(400);
+
+    const body = (await res?.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain("cars");
   });
 });

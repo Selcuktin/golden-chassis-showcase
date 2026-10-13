@@ -171,19 +171,33 @@ export const VehicleSchema = z.object({
 
 export const CmsPayloadSchema = z
   .object({
-    cars: z.array(VehicleSchema).optional(),
+    cars: z.array(VehicleSchema).max(35).optional(),
     settings: z.record(z.unknown()).optional(),
     cmsConfig: z.record(z.unknown()).optional(),
     allowEmptyCatalog: z.boolean().optional(),
     deletedCarIds: z.array(z.string().min(1).max(100)).max(100).optional(),
     revision: z.number().int().nonnegative().optional(),
     force: z.boolean().optional(),
+    forceExpectedRevision: z.number().int().nonnegative().optional(),
+    forceReason: z.string().min(3).max(255).optional(),
   })
-  .refine((data) => typeof data.revision === "number" || data.force === true, {
-    message:
-      "Eşzamanlılık koruması ve CAS doğrulaması için geçerli bir 'revision' numarası zorunludur (veya force: true belirtilmelidir).",
-    path: ["revision"],
-  });
+  .refine(
+    (data) => {
+      if (data.force === true) {
+        return (
+          typeof data.forceExpectedRevision === "number" &&
+          typeof data.forceReason === "string" &&
+          data.forceReason.trim().length >= 3
+        );
+      }
+      return typeof data.revision === "number";
+    },
+    {
+      message:
+        "Eşzamanlılık koruması için geçerli bir 'revision' numarası zorunludur. Zorla yazma (force: true) durumunda üzerine yazılacak geçerli revizyon ('forceExpectedRevision') ve işlem gerekçesi ('forceReason') zorunludur.",
+      path: ["revision"],
+    },
+  );
 
 export const InquiryStatusSchema = z.object({
   id: z.string().min(1),
@@ -1315,8 +1329,30 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       if (mode !== "queue" && resolvedEnv.BUCKET && typeof resolvedEnv.BUCKET.list === "function") {
         try {
+          // Optimization: Pre-fetch all active image keys in D1 in a single query (eliminates N+1 queries)
+          let activeR2KeySet: Set<string> | null = null;
+          try {
+            const activeImagesRes = await db
+              .prepare("SELECT r2_key, public_url FROM vehicle_images")
+              .all<{ r2_key: string; public_url: string }>();
+            if (Array.isArray(activeImagesRes.results) && activeImagesRes.results.length > 0) {
+              activeR2KeySet = new Set<string>();
+              for (const row of activeImagesRes.results) {
+                if (row.r2_key) activeR2KeySet.add(row.r2_key);
+                if (row.public_url && row.public_url.startsWith("/api/media/")) {
+                  const k = decodeURIComponent(row.public_url.replace("/api/media/", ""));
+                  activeR2KeySet.add(k);
+                }
+              }
+            }
+          } catch {
+            // Fallback to per-object lookup
+          }
+
           const maxPages = autoDrain === false ? 1 : maxPagesCap || 10;
           let currentCursor = scanCursor;
+          const GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24-hour grace period for freshly uploaded media
+          const nowMs = Date.now();
 
           while (pagesProcessed < maxPages) {
             const listOptions: { prefix: string; limit: number; cursor?: string } = {
@@ -1335,21 +1371,46 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             nextCursor = listResult.cursor;
 
             for (const obj of objects) {
-              // Check if key is used by ANY vehicle in D1
-              const inUseRow = await db
-                .prepare(
-                  "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
-                )
-                .bind(obj.key, `%${encodeURIComponent(obj.key)}%`)
-                .first<{ count: number }>();
+              // 1. Grace Period Protection:
+              // Protect newly uploaded media (younger than 24h) from premature cleanup
+              // while the admin is still filling the vehicle form in the browser.
+              let objectAgeMs = Infinity;
+              const uploadedVal = (obj as unknown as { uploaded?: Date | string }).uploaded;
+              if (uploadedVal) {
+                objectAgeMs = nowMs - new Date(uploadedVal).getTime();
+              } else {
+                const tsMatch = obj.key.match(/\/(\d{13})-/);
+                if (tsMatch && tsMatch[1]) {
+                  objectAgeMs = nowMs - parseInt(tsMatch[1], 10);
+                }
+              }
 
-              if ((inUseRow?.count || 0) === 0) {
-                // Historical orphan! Never referenced by any car in D1
+              if (objectAgeMs < GRACE_PERIOD_MS) {
+                historicalRetainedCount++;
+                continue;
+              }
+
+              // 2. Active reference check in D1
+              let isReferenced = false;
+              if (activeR2KeySet) {
+                isReferenced = activeR2KeySet.has(obj.key);
+              } else {
+                const inUseRow = await db
+                  .prepare(
+                    "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+                  )
+                  .bind(obj.key, `%${encodeURIComponent(obj.key)}%`)
+                  .first<{ count: number }>();
+                isReferenced = (inUseRow?.count || 0) > 0;
+              }
+
+              if (!isReferenced) {
+                // Historical orphan older than 24h!
                 try {
                   await resolvedEnv.BUCKET.delete(obj.key);
                   historicalDeletedCount++;
                 } catch (delErr) {
-                  // Item 5: If deletion fails during historical sweep, enqueue into r2_cleanup_queue for retry
+                  // If deletion fails during historical sweep, enqueue into r2_cleanup_queue for retry
                   try {
                     await db
                       .prepare(
@@ -1740,11 +1801,29 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
         // Log audit trail for CAS bypass with force: true
         if (payload.force === true) {
+          if (
+            typeof payload.forceExpectedRevision === "number" &&
+            payload.forceExpectedRevision !== currentRevision
+          ) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                conflict: true,
+                currentRevision,
+                clientExpectedRevision: payload.forceExpectedRevision,
+                error: `Zorla yazma reddedildi: Üzerine yazılmak istenen revizyon (${payload.forceExpectedRevision}) sunucudaki güncel revizyon (${currentRevision}) ile eşleşmiyor. Başka bir sekme veya yönetici yeni bir değişiklik kaydetmiş olabilir.`,
+              }),
+              { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
           const forceAuditRecord = {
             forcedAt: new Date().toISOString(),
             ip,
             clientRevision: payload.revision ?? null,
             previousRevision: currentRevision,
+            forceExpectedRevision: payload.forceExpectedRevision ?? null,
+            forceReason: payload.forceReason ?? "Yönetici doğrudan zorla senkronizasyon",
           };
           stmts.push(
             db
@@ -2013,6 +2092,23 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           );
         }
 
+        if (
+          payload.force === true &&
+          typeof payload.forceExpectedRevision === "number" &&
+          payload.forceExpectedRevision !== preBatchRevision
+        ) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              conflict: true,
+              currentRevision: preBatchRevision,
+              clientExpectedRevision: payload.forceExpectedRevision,
+              error: `Zorla yazma reddedildi: Eşzamanlı başka bir işlem revizyonu (${preBatchRevision}) güncelledi.`,
+            }),
+            { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+
         // Batch execution:
         // Cloudflare D1 executes a single batch call as an atomic ACID transaction.
         // For standard catalog sizes (<= 90 statements), this provides 100% all-or-nothing atomicity.
@@ -2158,11 +2254,29 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
 
         if (payload.force === true) {
+          if (
+            typeof payload.forceExpectedRevision === "number" &&
+            payload.forceExpectedRevision !== currentRevision
+          ) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                conflict: true,
+                currentRevision,
+                clientExpectedRevision: payload.forceExpectedRevision,
+                error: `Zorla yazma reddedildi: Üzerine yazılmak istenen revizyon (${payload.forceExpectedRevision}) sunucudaki güncel revizyon (${currentRevision}) ile eşleşmiyor.`,
+              }),
+              { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
           const forceAuditRecord = {
             forcedAt: new Date().toISOString(),
             ip,
             clientRevision: payload.revision ?? null,
             previousRevision: currentRevision,
+            forceExpectedRevision: payload.forceExpectedRevision ?? null,
+            forceReason: payload.forceReason ?? "Yönetici doğrudan zorla senkronizasyon",
           };
           if (!memoryStore.settings || typeof memoryStore.settings !== "object") {
             memoryStore.settings = {};
