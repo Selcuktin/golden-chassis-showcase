@@ -602,8 +602,9 @@ function Index() {
                 key={c.id}
                 className="group relative flex flex-col overflow-hidden border border-border bg-card transition hover:border-primary/60"
               >
-                <button
-                  onClick={() => setDetail(c)}
+                <Link
+                  to="/arac/$slug"
+                  params={{ slug: c.id }}
                   className="relative block aspect-[16/10] w-full cursor-pointer overflow-hidden bg-black text-left"
                 >
                   {fitMode === "contain" ? (
@@ -668,7 +669,7 @@ function Index() {
                       </span>
                     </div>
                   )}
-                </button>
+                </Link>
 
                 <div className="flex flex-1 flex-col justify-between p-5">
                   <div>
@@ -685,12 +686,13 @@ function Index() {
                         </span>
                       ))}
                     </div>
-                    <h3
-                      onClick={() => setDetail(c)}
-                      className="mb-2 cursor-pointer text-2xl font-semibold transition hover:text-primary"
+                    <Link
+                      to="/arac/$slug"
+                      params={{ slug: c.id }}
+                      className="mb-2 block cursor-pointer transition hover:text-primary"
                     >
-                      {c.title}
-                    </h3>
+                      <h3 className="text-2xl font-semibold">{c.title}</h3>
+                    </Link>
                     <p className="mb-5 text-xs text-muted-foreground">
                       {translateTerm(c.specs.power, lang)} ·{" "}
                       {translateTerm(c.specs.color, lang)}
@@ -714,12 +716,13 @@ function Index() {
                       >
                         <MessageCircle className="h-3.5 w-3.5 shrink-0" /> {t.quote}
                       </a>
-                      <button
-                        onClick={() => setDetail(c)}
+                      <Link
+                        to="/arac/$slug"
+                        params={{ slug: c.id }}
                         className={`${outlineBtn} !px-3 !text-xs min-h-[44px] flex items-center justify-center active:scale-[0.98] transition-transform`}
                       >
                         {lang === "tr" ? "Detay & Teklif" : "Details & Offer"}
-                      </button>
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -1286,9 +1289,11 @@ export function QuickOfferForm({
 function Modal({
   children,
   onClose,
+  maxWidth = "max-w-4xl",
 }: {
   children: React.ReactNode;
   onClose: () => void;
+  maxWidth?: string;
 }) {
   // Prevent background scroll while modal is open
   useEffect(() => {
@@ -1306,7 +1311,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className="relative flex flex-col max-h-[94dvh] sm:max-h-[92dvh] w-full max-w-4xl border border-border bg-popover shadow-2xl rounded-t-2xl sm:rounded-none overflow-hidden"
+        className={`relative flex flex-col max-h-[94dvh] sm:max-h-[92dvh] w-full ${maxWidth} border border-border bg-popover shadow-2xl rounded-t-2xl sm:rounded-none overflow-hidden`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sticky Mobile/Desktop Top Bar with Persistent Close Button */}
@@ -1419,266 +1424,234 @@ function DetailModal({
   };
 
   return (
-    <Modal onClose={onClose}>
-      {/* Main Media Viewer (Multi-Angle Photo or MP4 Video) */}
-      <div className="relative mb-3 overflow-hidden border border-border bg-black">
-        {showVideo && car.video ? (
-          <video
-            src={car.video}
-            controls
-            autoPlay
-            className="aspect-[16/10] w-full bg-black object-contain"
-          />
-        ) : car.imageFit === "contain" ? (
-          <div className="relative aspect-[16/10] w-full overflow-hidden">
-            <div
-              className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
-              style={{ backgroundImage: `url(${car.images[img]})` }}
-            />
-            <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
-            <img
-              src={car.images[img]}
-              alt={`${car.title} - Açı ${img + 1}`}
-              className="relative z-10 h-full w-full object-contain p-1"
-            />
-          </div>
-        ) : (
-          <img
-            src={car.images[img]}
-            alt={`${car.title} - Açı ${img + 1}`}
-            className="aspect-[16/10] w-full object-cover"
-          />
-        )}
+    <Modal onClose={onClose} maxWidth="max-w-6xl">
+      <div className="grid gap-8 lg:grid-cols-12 min-w-0">
+        {/* Left: Gallery (lg:col-span-7) */}
+        <div className="min-w-0 lg:col-span-7">
+          {/* Main Media Viewer */}
+          <div className="relative mb-3 overflow-hidden border border-border bg-black">
+            {showVideo && car.video ? (
+              <video
+                src={car.video}
+                controls
+                autoPlay
+                className="aspect-[16/10] w-full bg-black object-contain"
+              />
+            ) : car.imageFit === "contain" ? (
+              <div className="relative aspect-[16/10] w-full overflow-hidden">
+                <div
+                  className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
+                  style={{ backgroundImage: `url(${car.images[img]})` }}
+                />
+                <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
+                <img
+                  src={car.images[img]}
+                  alt={`${car.title} - Açı ${img + 1}`}
+                  className="relative z-10 h-full w-full object-contain p-1"
+                />
+              </div>
+            ) : (
+              <img
+                src={car.images[img]}
+                alt={`${car.title} - Açı ${img + 1}`}
+                className="aspect-[16/10] w-full object-cover"
+              />
+            )}
 
-        {!showVideo && car.images.length > 1 && (
-          <>
-            <button
-              onClick={prevImg}
-              aria-label="Önceki Açı"
-              className="absolute left-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              onClick={nextImg}
-              aria-label="Sonraki Açı"
-              className="absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        )}
+            {!showVideo && car.images.length > 1 && (
+              <>
+                <button
+                  onClick={prevImg}
+                  aria-label="Önceki Açı"
+                  className="absolute left-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary active:scale-95"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={nextImg}
+                  aria-label="Sonraki Açı"
+                  className="absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground transition hover:border-primary hover:text-primary active:scale-95"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </>
+            )}
 
-        <div className="absolute bottom-3 left-3 z-20 bg-background/85 px-3 py-1 text-xs font-medium text-primary backdrop-blur-sm">
-          {showVideo
-            ? lang === "tr"
-              ? "Video İnceleme"
-              : "Video Tour"
-            : `${lang === "tr" ? "Açı" : "Angle"} ${img + 1} / ${car.images.length}`}
-        </div>
-      </div>
-
-      {/* Multi-Angle Thumbnail Strip + Video Button */}
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
-        {car.images.map((s, i) => (
-          <button
-            key={i}
-            onClick={() => {
-              setShowVideo(false);
-              setImg(i);
-            }}
-            className={`w-24 shrink-0 cursor-pointer border-2 transition ${
-              !showVideo && i === img
-                ? "border-primary opacity-100"
-                : "border-transparent opacity-55 hover:opacity-90"
-            }`}
-          >
-            <img src={s} alt="" className="aspect-video w-full object-cover" />
-          </button>
-        ))}
-        {car.video && (
-          <button
-            onClick={() => setShowVideo(true)}
-            className={`flex w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 border-2 bg-card text-xs font-semibold uppercase tracking-wider transition ${
-              showVideo
-                ? "border-primary text-primary"
-                : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
-          >
-            <Play className="h-5 w-5 fill-current" />
-            <span>{lang === "tr" ? "VİDEO" : "VIDEO"}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Title, Badges & Share / Direct Link */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
-          <h3 className="text-3xl font-semibold md:text-4xl">{car.title}</h3>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs uppercase tracking-wider">
-          <span className="border border-border bg-background px-3 py-1">{car.year}</span>
-          <span className="border border-border bg-background px-3 py-1">
-            {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
-          </span>
-          <span className="border border-border bg-background px-3 py-1">
-            {translateTerm(car.fuel, lang)}
-          </span>
-          <span className="border border-border bg-background px-3 py-1">
-            {translateTerm(car.gear, lang)}
-          </span>
-          <button
-            onClick={copyShareUrl}
-            className="inline-flex cursor-pointer items-center gap-1 border border-primary/50 bg-background px-2.5 py-1 text-primary transition hover:bg-primary hover:text-primary-foreground"
-            title="İlan Bağlantısını Kopyala"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            <span>
-              {copied
+            <div className="absolute bottom-3 left-3 z-20 bg-background/85 px-3 py-1 text-xs font-medium text-primary backdrop-blur-sm">
+              {showVideo
                 ? lang === "tr"
-                  ? "Kopyalandı!"
-                  : "Copied!"
-                : lang === "tr"
-                  ? "Paylaş"
-                  : "Share"}
+                  ? "Video İnceleme"
+                  : "Video Tour"
+                : `${lang === "tr" ? "Açı" : "Angle"} ${img + 1} / ${car.images.length}`}
+            </div>
+          </div>
+
+          {/* Multi-Angle Thumbnail Strip + Video Button */}
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            {car.images.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setShowVideo(false);
+                  setImg(i);
+                }}
+                className={`w-24 shrink-0 cursor-pointer border-2 transition ${
+                  !showVideo && i === img
+                    ? "border-primary opacity-100"
+                    : "border-transparent opacity-55 hover:opacity-90"
+                }`}
+              >
+                <img src={s} alt="" className="aspect-video w-full object-cover" />
+              </button>
+            ))}
+            {car.video && (
+              <button
+                onClick={() => setShowVideo(true)}
+                className={`flex w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 border-2 bg-card text-xs font-semibold uppercase tracking-wider transition ${
+                  showVideo
+                    ? "border-primary text-primary"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                <Play className="h-5 w-5 fill-current" />
+                <span>{lang === "tr" ? "VİDEO" : "VIDEO"}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Info, Specs Table & Action Buttons / Offer Form (lg:col-span-5) */}
+        <div className="min-w-0 lg:col-span-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyShareUrl}
+                className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                title="İlan Bağlantısını Kopyala"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                <span>
+                  {copied
+                    ? lang === "tr"
+                      ? "Kopyalandı"
+                      : "Copied"
+                    : lang === "tr"
+                      ? "Linki Kopyala"
+                      : "Copy Link"}
+                </span>
+              </button>
+              <Link
+                to="/arac/$slug"
+                params={{ slug: car.id }}
+                className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                title="Tam Sayfa İlan Görünümü"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          <h2 className="mt-1 font-display text-2xl sm:text-3xl font-semibold">
+            {car.title}
+          </h2>
+
+          <div className="my-3 flex flex-wrap gap-1.5 text-xs uppercase">
+            <span className="border border-border bg-card px-2.5 py-0.5">{car.year}</span>
+            <span className="border border-border bg-card px-2.5 py-0.5">
+              {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
             </span>
-          </button>
-          <Link
-            to="/arac/$slug"
-            params={{ slug: car.id }}
-            className="inline-flex items-center gap-1 border border-border bg-background px-2.5 py-1 text-muted-foreground transition hover:border-primary hover:text-primary"
-            title="Tam Sayfa İlan Görünümü"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+            <span className="border border-border bg-card px-2.5 py-0.5">
+              {translateTerm(car.fuel, lang)}
+            </span>
+            <span className="border border-border bg-card px-2.5 py-0.5">
+              {translateTerm(car.gear, lang)}
+            </span>
+            <span className="border border-border bg-card px-2.5 py-0.5">{car.body}</span>
+          </div>
+
+          {car.description && (
+            <p className="mb-4 text-xs sm:text-sm leading-relaxed text-muted-foreground">
+              {car.description[lang]}
+            </p>
+          )}
+
+          {/* Technical Specs Box */}
+          <div className="mb-5 border border-border bg-card p-3.5 text-xs sm:text-sm">
+            {(Object.keys(labels) as (keyof typeof labels)[]).map((k, idx) => (
+              <div
+                key={k}
+                className={`flex justify-between py-2 ${
+                  idx < Object.keys(labels).length - 1 ? "border-b border-border" : ""
+                }`}
+              >
+                <span className="text-muted-foreground">{labels[k]}</span>
+                <span className="text-right font-medium">
+                  {translateTerm(car.specs[k], lang)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Action Buttons & Quick Offer Form */}
+          {!isSold && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <a
+                  href={waLink(car.title)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-2 bg-gold px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"
+                >
+                  <MessageCircle className="h-4 w-4" /> {t.waQuote}
+                </a>
+                <a
+                  href={`tel:+${PHONE_RAW}`}
+                  className="inline-flex items-center justify-center gap-2 border border-primary px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-transform"
+                >
+                  <Phone className="h-4 w-4" /> {t.call}
+                </a>
+              </div>
+
+              <div className="border border-border bg-card p-4">
+                <h3 className="mb-3 font-display text-lg font-semibold">{t.form}</h3>
+                <QuickOfferForm
+                  carTitle={car.title}
+                  t={t}
+                  lang={lang}
+                  autoWhatsApp={settings.whatsappAutoOpenOnForm}
+                />
+              </div>
+            </div>
+          )}
+
+          {isSold && (
+            <div className="border border-destructive/40 bg-destructive/10 p-4 text-center text-xs font-semibold uppercase tracking-widest text-destructive">
+              {t.soldBtn}
+            </div>
+          )}
         </div>
       </div>
 
-      {car.description && (
-        <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
-          {car.description[lang]}
-        </p>
-      )}
-
-      {/* Modal Detail Tabs (Admin-Configurable) */}
-      <div className="mb-6 flex border-b border-border">
-        {settings.modalShowSpecsTab && (
-          <button
-            onClick={() => setActiveTab("specs")}
-            className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-              activeTab === "specs"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {lang === "tr" ? "Teknik & Ekspertiz" : "Specs & Inspection"}
-          </button>
-        )}
-        {settings.modalShowExtrasTab && (
-          <button
-            onClick={() => setActiveTab("extras")}
-            className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-              activeTab === "extras"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
+      {/* Equipment & Options Grid (Below Split View) */}
+      {localizedExtras.length > 0 && (
+        <div className="mt-8 border-t border-border pt-6">
+          <h3 className="mb-4 font-display text-xl font-semibold">
             {lang === "tr"
               ? `Donanım & Opsiyonlar (${localizedExtras.length})`
               : `Equipment & Options (${localizedExtras.length})`}
-          </button>
-        )}
-        {settings.modalShowOfferTab && !isSold && (
-          <button
-            onClick={() => setActiveTab("offer")}
-            className={`cursor-pointer border-b-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-              activeTab === "offer"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t.form}
-          </button>
-        )}
-      </div>
-
-      {activeTab === "specs" && settings.modalShowSpecsTab && (
-        <table className="mb-6 w-full text-sm">
-          <tbody>
-            {(Object.keys(labels) as (keyof typeof labels)[]).map((k) => (
-              <tr key={k} className="border-b border-border">
-                <td className="py-2.5 text-muted-foreground">{labels[k]}</td>
-                <td className="py-2.5 text-right font-medium">
-                  {translateTerm(car.specs[k], lang)}
-                </td>
-              </tr>
+          </h3>
+          <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3">
+            {localizedExtras.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex items-start gap-2 border border-border bg-card p-3 text-xs"
+              >
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>{item}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
-      )}
-
-      {activeTab === "extras" && settings.modalShowExtrasTab && (
-        <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
-          {(localizedExtras.length > 0
-            ? localizedExtras
-            : [translateTerm(car.specs.package, lang), translateTerm(car.specs.expertise, lang)]
-          ).map((item, idx) => (
-            <div
-              key={idx}
-              className="flex items-start gap-2 border border-border/60 bg-background/50 px-3.5 py-2.5 text-xs"
-            >
-              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              <span>{item}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {activeTab === "offer" && settings.modalShowOfferTab && !isSold && (
-        <div className="mb-6">
-          <QuickOfferForm
-            carTitle={car.title}
-            t={t}
-            lang={lang}
-            autoWhatsApp={settings.whatsappAutoOpenOnForm}
-          />
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      {isSold ? (
-        <div className="border border-destructive/40 bg-destructive/10 p-4 text-center text-xs font-semibold uppercase tracking-widest text-destructive">
-          {t.soldBtn}
-        </div>
-      ) : (
-        <div className={`grid gap-3 ${activeTab === "offer" ? "grid-cols-2" : "sm:grid-cols-3"}`}>
-          <a
-            href={waLink(car.title)}
-            target="_blank"
-            rel="noreferrer"
-            className={goldBtn}
-          >
-            <MessageCircle className="h-4 w-4" />
-            {t.waQuote}
-          </a>
-          <a href={`tel:+${PHONE_RAW}`} className={outlineBtn}>
-            <Phone className="h-4 w-4" />
-            {t.call}
-          </a>
-          {activeTab !== "offer" && (
-            <button
-              onClick={() =>
-                !settings.modalShowOfferTab
-                  ? onOffer()
-                  : setActiveTab("offer")
-              }
-              className={outlineBtn}
-            >
-              <FileText className="h-4 w-4" />
-              {t.form}
-            </button>
-          )}
+          </div>
         </div>
       )}
     </Modal>

@@ -91,6 +91,7 @@ function VehicleDetailPage() {
         </p>
         <Link
           to="/"
+          hash="koleksiyon"
           className="mt-8 inline-flex items-center gap-2 bg-gold px-6 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -153,6 +154,7 @@ function VehicleDetailPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
           <Link
             to="/"
+            hash="koleksiyon"
             className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary hover:underline"
           >
             <ArrowLeft className="h-4 w-4" />
