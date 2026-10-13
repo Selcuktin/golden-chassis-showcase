@@ -723,7 +723,7 @@ export const CARS: Car[] = [
     fuel: "Dizel",
     gear: "Otomatik",
     body: "SUV",
-    status: "active",
+    status: "draft",
     featured: true,
     imageFit: "cover",
     images: [
@@ -777,7 +777,7 @@ export const CARS: Car[] = [
     fuel: "Hibrit",
     gear: "Otomatik",
     body: "Cabrio",
-    status: "active",
+    status: "draft",
     imageFit: "cover",
     images: [
       "/cars/ferrari-296-gts/1.jpg",
@@ -930,7 +930,7 @@ export const CARS: Car[] = [
     fuel: "Elektrik",
     gear: "Otomatik",
     body: "Coupe",
-    status: "active",
+    status: "draft",
     imageFit: "cover",
     images: [
       "/cars/rolls-royce-spectre/1.jpg",
@@ -1032,7 +1032,7 @@ export const CARS: Car[] = [
     fuel: "Benzin",
     gear: "Otomatik",
     body: "Coupe",
-    status: "active",
+    status: "draft",
     imageFit: "cover",
     images: [
       "/cars/bmw-m4/1.jpg",
@@ -1205,7 +1205,7 @@ export const INITIAL_INQUIRIES: Inquiry[] = [
   },
 ];
 
-const CARS_KEY = "bycar_fleet_v6";
+const CARS_KEY = "bycar_fleet_v7";
 const INQ_KEY = "bycar_inquiries_v3";
 const SETTINGS_KEY = "bycar_settings_v2";
 const CMS_KEY = "bycar_cms_v2";
@@ -1220,6 +1220,7 @@ const LEGACY_KEYS = [
   "bycar_fleet_v3",
   "bycar_fleet_v4",
   "bycar_fleet_v5",
+  "bycar_fleet_v6",
   "bycar_cars_v8",
   "bycar_inquiries_v1",
   "bycar_inquiries_v2",

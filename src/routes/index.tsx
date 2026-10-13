@@ -101,7 +101,7 @@ function Index() {
   const [fuel, setFuel] = useState("");
   const [gear, setGear] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "sold">("all");
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [detail, setDetail] = useState<Car | null>(null);
   const [offerFor, setOfferFor] = useState<string | null>(null);
@@ -110,7 +110,11 @@ function Index() {
   const [cookieAccepted, setCookieAccepted] = useState(true);
 
   useEffect(() => {
-    setShowFilters(settings.filterPanelDefaultOpen);
+    if (typeof window !== "undefined" && window.innerWidth >= 768) {
+      setShowFilters(settings.filterPanelDefaultOpen);
+    } else {
+      setShowFilters(false);
+    }
   }, [settings.filterPanelDefaultOpen]);
 
   useEffect(() => {
@@ -1504,21 +1508,21 @@ function DetailModal({
   };
 
   return (
-    <Modal onClose={onClose} maxWidth="max-w-6xl">
-      <div className="grid gap-8 lg:grid-cols-12 min-w-0">
-        {/* Left: Gallery (lg:col-span-7) */}
-        <div className="min-w-0 lg:col-span-7">
-          {/* Main Media Viewer */}
-          <div className="relative mb-3 overflow-hidden border border-border bg-black">
+    <Modal onClose={onClose} maxWidth="max-w-7xl">
+      <div className="grid gap-6 lg:gap-8 lg:grid-cols-12 min-w-0">
+        {/* Left: Gallery & Desktop Offer Form (lg:col-span-7) */}
+        <div className="min-w-0 lg:col-span-7 flex flex-col">
+          {/* Main Media Viewer - Enlarged Aspect Ratio */}
+          <div className="relative mb-2.5 overflow-hidden border border-border bg-black">
             {showVideo && car.video ? (
               <video
                 src={car.video}
                 controls
                 autoPlay
-                className="aspect-[16/10] w-full bg-black object-contain"
+                className="aspect-[16/9] w-full bg-black object-contain"
               />
             ) : car.imageFit === "contain" ? (
-              <div className="relative aspect-[16/10] w-full overflow-hidden">
+              <div className="relative aspect-[16/9] w-full overflow-hidden">
                 <div
                   className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
                   style={{ backgroundImage: `url(${car.images[img]})` }}
@@ -1534,7 +1538,7 @@ function DetailModal({
               <img
                 src={car.images[img]}
                 alt={`${car.title} - Açı ${img + 1}`}
-                className="aspect-[16/10] w-full object-cover"
+                className="aspect-[16/9] w-full object-cover"
               />
             )}
 
@@ -1566,8 +1570,8 @@ function DetailModal({
             </div>
           </div>
 
-          {/* Multi-Angle Thumbnail Strip + Video Button */}
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          {/* Compact Multi-Angle Thumbnail Strip + Video Button */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1.5 no-scrollbar">
             {car.images.map((s, i) => (
               <button
                 key={i}
@@ -1575,7 +1579,7 @@ function DetailModal({
                   setShowVideo(false);
                   setImg(i);
                 }}
-                className={`w-24 shrink-0 cursor-pointer border-2 transition ${
+                className={`w-16 sm:w-20 shrink-0 cursor-pointer border-2 transition ${
                   !showVideo && i === img
                     ? "border-primary opacity-100"
                     : "border-transparent opacity-55 hover:opacity-90"
@@ -1587,96 +1591,109 @@ function DetailModal({
             {car.video && (
               <button
                 onClick={() => setShowVideo(true)}
-                className={`flex w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 border-2 bg-card text-xs font-semibold uppercase tracking-wider transition ${
+                className={`flex w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-2 bg-card text-[10px] font-semibold uppercase tracking-wider transition ${
                   showVideo
                     ? "border-primary text-primary"
                     : "border-border text-muted-foreground hover:border-primary hover:text-primary"
                 }`}
               >
-                <Play className="h-5 w-5 fill-current" />
+                <Play className="h-4 w-4 fill-current" />
                 <span>{lang === "tr" ? "VİDEO" : "VIDEO"}</span>
               </button>
             )}
           </div>
+
+          {/* Desktop Only: Quick Offer Form placed in left column under the gallery to balance layout */}
+          {!isSold && (
+            <div className="mt-4 hidden lg:block border border-border bg-card p-4">
+              <h3 className="mb-2.5 font-display text-base font-semibold">{t.form}</h3>
+              <QuickOfferForm
+                carTitle={car.title}
+                t={t}
+                lang={lang}
+                autoWhatsApp={settings.whatsappAutoOpenOnForm}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Right: Info, Specs Table & Action Buttons / Offer Form (lg:col-span-5) */}
-        <div className="min-w-0 lg:col-span-5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={copyShareUrl}
-                className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-                title="İlan Bağlantısını Kopyala"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                <span>
-                  {copied
-                    ? lang === "tr"
-                      ? "Kopyalandı"
-                      : "Copied"
-                    : lang === "tr"
-                      ? "Linki Kopyala"
-                      : "Copy Link"}
-                </span>
-              </button>
-              <Link
-                to="/arac/$slug"
-                params={{ slug: car.id }}
-                className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-                title="Tam Sayfa İlan Görünümü"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          </div>
-
-          <h2 className="mt-1 font-display text-2xl sm:text-3xl font-semibold">
-            {car.title}
-          </h2>
-
-          <div className="my-3 flex flex-wrap gap-1.5 text-xs uppercase">
-            <span className="border border-border bg-card px-2.5 py-0.5">{car.year}</span>
-            <span className="border border-border bg-card px-2.5 py-0.5">
-              {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
-            </span>
-            <span className="border border-border bg-card px-2.5 py-0.5">
-              {translateTerm(car.fuel, lang)}
-            </span>
-            <span className="border border-border bg-card px-2.5 py-0.5">
-              {translateTerm(car.gear, lang)}
-            </span>
-            <span className="border border-border bg-card px-2.5 py-0.5">{car.body}</span>
-          </div>
-
-          {car.description && (
-            <p className="mb-4 text-xs sm:text-sm leading-relaxed text-muted-foreground">
-              {car.description[lang]}
-            </p>
-          )}
-
-          {/* Technical Specs Box */}
-          <div className="mb-5 border border-border bg-card p-3.5 text-xs sm:text-sm">
-            {(Object.keys(labels) as (keyof typeof labels)[]).map((k, idx) => (
-              <div
-                key={k}
-                className={`flex justify-between py-2 ${
-                  idx < Object.keys(labels).length - 1 ? "border-b border-border" : ""
-                }`}
-              >
-                <span className="text-muted-foreground">{labels[k]}</span>
-                <span className="text-right font-medium">
-                  {translateTerm(car.specs[k], lang)}
-                </span>
+        {/* Right: Info, Specs Table & Action Buttons (lg:col-span-5) */}
+        <div className="min-w-0 lg:col-span-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyShareUrl}
+                  className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                  title="İlan Bağlantısını Kopyala"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  <span>
+                    {copied
+                      ? lang === "tr"
+                        ? "Kopyalandı"
+                        : "Copied"
+                      : lang === "tr"
+                        ? "Linki Kopyala"
+                        : "Copy Link"}
+                  </span>
+                </button>
+                <Link
+                  to="/arac/$slug"
+                  params={{ slug: car.id }}
+                  className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                  title="Tam Sayfa İlan Görünümü"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Link>
               </div>
-            ))}
-          </div>
+            </div>
 
-          {/* Action Buttons & Quick Offer Form */}
-          {!isSold && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <h2 className="mt-1 font-display text-2xl sm:text-3xl font-semibold">
+              {car.title}
+            </h2>
+
+            <div className="my-2.5 flex flex-wrap gap-1.5 text-xs uppercase">
+              <span className="border border-border bg-card px-2.5 py-0.5">{car.year}</span>
+              <span className="border border-border bg-card px-2.5 py-0.5">
+                {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
+              </span>
+              <span className="border border-border bg-card px-2.5 py-0.5">
+                {translateTerm(car.fuel, lang)}
+              </span>
+              <span className="border border-border bg-card px-2.5 py-0.5">
+                {translateTerm(car.gear, lang)}
+              </span>
+              <span className="border border-border bg-card px-2.5 py-0.5">{car.body}</span>
+            </div>
+
+            {car.description && (
+              <p className="mb-3.5 text-xs sm:text-sm leading-relaxed text-muted-foreground">
+                {car.description[lang]}
+              </p>
+            )}
+
+            {/* Technical Specs Box */}
+            <div className="mb-4 border border-border bg-card p-3.5 text-xs sm:text-sm">
+              {(Object.keys(labels) as (keyof typeof labels)[]).map((k, idx) => (
+                <div
+                  key={k}
+                  className={`flex justify-between py-2 ${
+                    idx < Object.keys(labels).length - 1 ? "border-b border-border" : ""
+                  }`}
+                >
+                  <span className="text-muted-foreground">{labels[k]}</span>
+                  <span className="text-right font-medium">
+                    {translateTerm(car.specs[k], lang)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            {!isSold && (
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <a
                   href={waLink(car.title)}
                   target="_blank"
@@ -1692,9 +1709,18 @@ function DetailModal({
                   <Phone className="h-4 w-4" /> {t.call}
                 </a>
               </div>
+            )}
 
-              <div className="border border-border bg-card p-4">
-                <h3 className="mb-3 font-display text-lg font-semibold">{t.form}</h3>
+            {isSold && (
+              <div className="border border-destructive/40 bg-destructive/10 p-4 text-center text-xs font-semibold uppercase tracking-widest text-destructive">
+                {t.soldBtn}
+              </div>
+            )}
+
+            {/* Mobile Only: Quick Offer Form */}
+            {!isSold && (
+              <div className="block lg:hidden border border-border bg-card p-4">
+                <h3 className="mb-2.5 font-display text-base font-semibold">{t.form}</h3>
                 <QuickOfferForm
                   carTitle={car.title}
                   t={t}
@@ -1702,33 +1728,28 @@ function DetailModal({
                   autoWhatsApp={settings.whatsappAutoOpenOnForm}
                 />
               </div>
-            </div>
-          )}
-
-          {isSold && (
-            <div className="border border-destructive/40 bg-destructive/10 p-4 text-center text-xs font-semibold uppercase tracking-widest text-destructive">
-              {t.soldBtn}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* Equipment & Options Grid (Below Split View) */}
       {localizedExtras.length > 0 && (
-        <div className="mt-8 border-t border-border pt-6">
-          <h3 className="mb-4 font-display text-xl font-semibold">
+        <div className="mt-6 border-t border-border pt-5">
+          <h3 className="mb-3 font-display text-lg sm:text-xl font-semibold">
             {lang === "tr"
               ? `Donanım & Opsiyonlar (${localizedExtras.length})`
               : `Equipment & Options (${localizedExtras.length})`}
           </h3>
-          <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3">
+          {/* Responsive Compact Grid: 2 tight columns on mobile (no long scroll!), 3 columns on desktop */}
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2.5 md:grid-cols-3">
             {localizedExtras.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-start gap-2 border border-border bg-card p-3 text-xs"
+                className="flex items-start gap-1.5 sm:gap-2 border border-border/80 bg-card/60 p-2 sm:p-2.5 text-[11px] sm:text-xs leading-tight"
               >
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <span>{item}</span>
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="line-clamp-2 sm:line-clamp-none">{item}</span>
               </div>
             ))}
           </div>

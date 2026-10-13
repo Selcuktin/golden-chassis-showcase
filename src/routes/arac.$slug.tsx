@@ -180,20 +180,21 @@ function VehicleDetailPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10 pb-28 lg:pb-12">
-        <div className="grid gap-10 lg:grid-cols-12 min-w-0">
-          {/* Left: Multi-Angle Gallery */}
-          <div className="min-w-0 lg:col-span-7">
-            <div className="relative mb-3 overflow-hidden border border-border bg-black">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10 pb-28 lg:pb-12">
+        <div className="grid gap-6 lg:gap-8 lg:grid-cols-12 min-w-0">
+          {/* Left: Multi-Angle Gallery & Desktop Offer Form (lg:col-span-7) */}
+          <div className="min-w-0 lg:col-span-7 flex flex-col">
+            {/* Main Media Viewer - Enlarged Aspect Ratio */}
+            <div className="relative mb-2.5 overflow-hidden border border-border bg-black">
               {showVideo && car.video ? (
                 <video
                   src={car.video}
                   controls
                   autoPlay
-                  className="aspect-[16/10] w-full bg-black object-contain"
+                  className="aspect-[16/9] w-full bg-black object-contain"
                 />
               ) : car.imageFit === "contain" ? (
-                <div className="relative aspect-[16/10] w-full overflow-hidden">
+                <div className="relative aspect-[16/9] w-full overflow-hidden">
                   <div
                     className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
                     style={{ backgroundImage: `url(${car.images[img]})` }}
@@ -209,7 +210,7 @@ function VehicleDetailPage() {
                 <img
                   src={car.images[img]}
                   alt={`${car.title} - ${img + 1}`}
-                  className="aspect-[16/10] w-full object-cover"
+                  className="aspect-[16/9] w-full object-cover"
                 />
               )}
 
@@ -233,7 +234,8 @@ function VehicleDetailPage() {
               )}
             </div>
 
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+            {/* Compact Multi-Angle Thumbnail Strip */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1.5">
               {car.images.map((s, i) => (
                 <button
                   key={i}
@@ -241,7 +243,7 @@ function VehicleDetailPage() {
                     setShowVideo(false);
                     setImg(i);
                   }}
-                  className={`w-24 shrink-0 cursor-pointer border-2 transition ${
+                  className={`w-16 sm:w-20 shrink-0 cursor-pointer border-2 transition ${
                     !showVideo && i === img
                       ? "border-primary opacity-100"
                       : "border-transparent opacity-55 hover:opacity-90"
@@ -253,146 +255,164 @@ function VehicleDetailPage() {
               {car.video && (
                 <button
                   onClick={() => setShowVideo(true)}
-                  className={`flex w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 border-2 bg-card text-xs font-semibold uppercase ${
+                  className={`flex w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-2 bg-card text-[10px] font-semibold uppercase ${
                     showVideo ? "border-primary text-primary" : "border-border text-muted-foreground"
                   }`}
                 >
-                  <Play className="h-5 w-5 fill-current" />
+                  <Play className="h-4 w-4 fill-current" />
                   <span>{lang === "tr" ? "VİDEO" : "VIDEO"}</span>
                 </button>
               )}
             </div>
+
+            {/* Desktop Only: Quick Offer Form under Gallery to balance empty space */}
+            {!isSold && (
+              <div className="mt-4 hidden lg:block border border-border bg-card p-4">
+                <h2 className="mb-2.5 font-display text-base font-semibold">{t.form}</h2>
+                <QuickOfferForm
+                  carTitle={car.title}
+                  t={t}
+                  lang={lang}
+                  autoWhatsApp={settings.whatsappAutoOpenOnForm}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Right: Specs & Offer */}
-          <div className="min-w-0 lg:col-span-5">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(window.location.href);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                {copied
-                  ? lang === "tr"
-                    ? "Kopyalandı"
-                    : "Copied"
-                  : lang === "tr"
-                    ? "Linki Kopyala"
-                    : "Copy Link"}
-              </button>
-            </div>
-            <h1 className="mt-1 font-display text-3xl font-semibold md:text-4xl">
-              {car.title}
-            </h1>
+          {/* Right: Specs & Action Buttons (lg:col-span-5) */}
+          <div className="min-w-0 lg:col-span-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(window.location.href);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  {copied
+                    ? lang === "tr"
+                      ? "Kopyalandı"
+                      : "Copied"
+                    : lang === "tr"
+                      ? "Linki Kopyala"
+                      : "Copy Link"}
+                </button>
+              </div>
+              <h1 className="mt-1 font-display text-2xl sm:text-3xl font-semibold md:text-4xl">
+                {car.title}
+              </h1>
 
-            <div className="my-4 flex flex-wrap gap-2 text-xs uppercase">
-              <span className="border border-border bg-card px-3 py-1">{car.year}</span>
-              <span className="border border-border bg-card px-3 py-1">
-                {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
-              </span>
-              <span className="border border-border bg-card px-3 py-1">
-                {translateTerm(car.fuel, lang)}
-              </span>
-              <span className="border border-border bg-card px-3 py-1">
-                {translateTerm(car.gear, lang)}
-              </span>
-              <span className="border border-border bg-card px-3 py-1">{car.body}</span>
-            </div>
+              <div className="my-3 flex flex-wrap gap-1.5 text-xs uppercase">
+                <span className="border border-border bg-card px-2.5 py-0.5">{car.year}</span>
+                <span className="border border-border bg-card px-2.5 py-0.5">
+                  {car.km.toLocaleString(lang === "tr" ? "tr-TR" : "en-US")} KM
+                </span>
+                <span className="border border-border bg-card px-2.5 py-0.5">
+                  {translateTerm(car.fuel, lang)}
+                </span>
+                <span className="border border-border bg-card px-2.5 py-0.5">
+                  {translateTerm(car.gear, lang)}
+                </span>
+                <span className="border border-border bg-card px-2.5 py-0.5">{car.body}</span>
+              </div>
 
-            {car.description && (
-              <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
-                {car.description[lang]}
-              </p>
-            )}
+              {car.description && (
+                <p className="mb-4 text-xs sm:text-sm leading-relaxed text-muted-foreground">
+                  {car.description[lang]}
+                </p>
+              )}
 
-            <div className="mb-6 border border-border bg-card p-4 text-sm">
-              <div className="flex justify-between border-b border-border py-2">
-                <span className="text-muted-foreground">
-                  {lang === "tr" ? "Motor Gücü" : "Engine Power"}
-                </span>
-                <span className="font-medium">{translateTerm(car.specs.power, lang)}</span>
-              </div>
-              <div className="flex justify-between border-b border-border py-2">
-                <span className="text-muted-foreground">
-                  {lang === "tr" ? "Dış / İç Renk" : "Color"}
-                </span>
-                <span className="font-medium">{translateTerm(car.specs.color, lang)}</span>
-              </div>
-              <div className="flex justify-between border-b border-border py-2">
-                <span className="text-muted-foreground">
-                  {lang === "tr" ? "Donanım / Paket" : "Package"}
-                </span>
-                <span className="font-medium">{translateTerm(car.specs.package, lang)}</span>
-              </div>
-              <div className="flex justify-between border-b border-border py-2">
-                <span className="text-muted-foreground">
-                  {lang === "tr" ? "Ekspertiz" : "Inspection"}
-                </span>
-                <span className="text-right font-medium">
-                  {translateTerm(car.specs.expertise, lang)}
-                </span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-muted-foreground">
-                  {lang === "tr" ? "Tramer" : "Damage Record"}
-                </span>
-                <span className="font-medium">{translateTerm(car.specs.tramer, lang)}</span>
-              </div>
-            </div>
-
-            {!isSold && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <a
-                    href={waLink(car.title)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-2 bg-gold px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
-                  >
-                    <MessageCircle className="h-4 w-4" /> {t.waQuote}
-                  </a>
-                  <a
-                    href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
-                    className="inline-flex items-center justify-center gap-2 border border-primary px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground"
-                  >
-                    <Phone className="h-4 w-4" /> {t.call}
-                  </a>
+              <div className="mb-4 border border-border bg-card p-3.5 text-xs sm:text-sm">
+                <div className="flex justify-between border-b border-border py-2">
+                  <span className="text-muted-foreground">
+                    {lang === "tr" ? "Motor Gücü" : "Engine Power"}
+                  </span>
+                  <span className="font-medium">{translateTerm(car.specs.power, lang)}</span>
                 </div>
-                <div className="border border-border bg-card p-5">
-                  <h2 className="mb-3 font-display text-2xl font-semibold">{t.form}</h2>
-                  <QuickOfferForm
-                    carTitle={car.title}
-                    t={t}
-                    lang={lang}
-                    autoWhatsApp={settings.whatsappAutoOpenOnForm}
-                  />
+                <div className="flex justify-between border-b border-border py-2">
+                  <span className="text-muted-foreground">
+                    {lang === "tr" ? "Dış / İç Renk" : "Color"}
+                  </span>
+                  <span className="font-medium">{translateTerm(car.specs.color, lang)}</span>
+                </div>
+                <div className="flex justify-between border-b border-border py-2">
+                  <span className="text-muted-foreground">
+                    {lang === "tr" ? "Donanım / Paket" : "Package"}
+                  </span>
+                  <span className="font-medium">{translateTerm(car.specs.package, lang)}</span>
+                </div>
+                <div className="flex justify-between border-b border-border py-2">
+                  <span className="text-muted-foreground">
+                    {lang === "tr" ? "Ekspertiz" : "Inspection"}
+                  </span>
+                  <span className="text-right font-medium">
+                    {translateTerm(car.specs.expertise, lang)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-muted-foreground">
+                    {lang === "tr" ? "Tramer" : "Damage Record"}
+                  </span>
+                  <span className="font-medium">{translateTerm(car.specs.tramer, lang)}</span>
                 </div>
               </div>
-            )}
+
+              {!isSold && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <a
+                      href={waLink(car.title)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-2 bg-gold px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
+                    >
+                      <MessageCircle className="h-4 w-4" /> {t.waQuote}
+                    </a>
+                    <a
+                      href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
+                      className="inline-flex items-center justify-center gap-2 border border-primary px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Phone className="h-4 w-4" /> {t.call}
+                    </a>
+                  </div>
+
+                  {/* Mobile Only: Quick Offer Form */}
+                  <div className="block lg:hidden border border-border bg-card p-4">
+                    <h2 className="mb-2.5 font-display text-base font-semibold">{t.form}</h2>
+                    <QuickOfferForm
+                      carTitle={car.title}
+                      t={t}
+                      lang={lang}
+                      autoWhatsApp={settings.whatsappAutoOpenOnForm}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Equipment & Options Grid */}
+        {/* Equipment & Options Grid (Below Split View) */}
         {localizedExtras.length > 0 && (
-          <div className="mt-12 border-t border-border pt-10">
-            <h2 className="mb-6 font-display text-3xl font-semibold">
+          <div className="mt-8 border-t border-border pt-6">
+            <h2 className="mb-4 font-display text-xl sm:text-2xl font-semibold">
               {lang === "tr"
                 ? `Donanım & Opsiyonlar (${localizedExtras.length})`
                 : `Equipment & Options (${localizedExtras.length})`}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {/* Responsive Compact Grid: 2 tight columns on mobile (no long scroll!), 3 columns on desktop */}
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2.5 md:grid-cols-3">
               {localizedExtras.map((item, idx) => (
                 <div
                   key={idx}
-                  className="flex items-start gap-2 border border-border bg-card p-3.5 text-xs"
+                  className="flex items-start gap-1.5 sm:gap-2 border border-border/80 bg-card/60 p-2 sm:p-2.5 text-[11px] sm:text-xs leading-tight"
                 >
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <span>{item}</span>
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="line-clamp-2 sm:line-clamp-none">{item}</span>
                 </div>
               ))}
             </div>
