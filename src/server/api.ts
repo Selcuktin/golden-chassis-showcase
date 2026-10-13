@@ -24,11 +24,12 @@ export type R2Bucket = {
   put: (
     key: string,
     value: unknown,
-    options?: { httpMetadata?: { contentType?: string } },
+    options?: { httpMetadata?: { contentType?: string; cacheControl?: string } },
   ) => Promise<unknown>;
-  get: (
-    key: string,
-  ) => Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
+  get: (key: string) => Promise<{
+    body: ReadableStream;
+    httpMetadata?: { contentType?: string; cacheControl?: string };
+  } | null>;
   delete: (key: string) => Promise<void>;
 };
 
@@ -163,7 +164,8 @@ export const CmsPayloadSchema = z.object({
   settings: z.record(z.unknown()).optional(),
   cmsConfig: z.record(z.unknown()).optional(),
   allowEmptyCatalog: z.boolean().optional(),
-  deletedCarIds: z.array(z.string().min(1).max(100)).optional(),
+  deletedCarIds: z.array(z.string().min(1).max(100)).max(500).optional(),
+  revision: z.number().int().nonnegative().optional(),
 });
 
 export const InquiryStatusSchema = z.object({
@@ -181,11 +183,14 @@ interface MemoryStore {
   inquiries?: unknown[] | undefined;
   settings?: unknown;
   cmsConfig?: unknown;
+  revision?: number | undefined;
 }
 
-const memoryStore: MemoryStore = {};
+const memoryStore: MemoryStore = { revision: 1 };
 
 function applyPayloadToMemoryStore(payload: z.infer<typeof CmsPayloadSchema>) {
+  memoryStore.revision = Math.max(memoryStore.revision || 1, payload.revision || 0) + 1;
+
   if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
     const toDelete = new Set(payload.deletedCarIds);
     if (Array.isArray(memoryStore.cars)) {
@@ -321,6 +326,14 @@ CREATE TABLE IF NOT EXISTS site_settings (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS inquiry_attempts (
+  id TEXT PRIMARY KEY,
+  ip TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at);
 `;
 
 let d1Initialized = false;
@@ -1027,7 +1040,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
       const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
 
-      const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB limit
+      const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
       const ALLOWED_MIME_TYPES = new Set([
         "image/jpeg",
         "image/jpg",
@@ -1060,7 +1073,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         return new Response(
           JSON.stringify({
             ok: false,
-            error: "Dosya boyutu çok büyük (Maksimum 15 MB izin verilir).",
+            error: "Dosya boyutu çok büyük (Maksimum 5 MB izin verilir).",
           }),
           { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
         );
@@ -1106,7 +1119,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       }
 
       await resolvedEnv.BUCKET.put(r2Key, arrayBuffer, {
-        httpMetadata: { contentType: contentType || "image/webp" },
+        httpMetadata: {
+          contentType: contentType || "image/webp",
+          cacheControl: "public, max-age=31536000, immutable",
+        },
       });
       const publicUrl = `/api/media/${encodeURIComponent(r2Key)}`;
       return new Response(JSON.stringify({ ok: true, url: publicUrl, r2Key, source: "r2" }), {
@@ -1227,6 +1243,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   // 8. GET /api/cms — PUBLIC / ADMIN: Filter drafts unless authenticated admin
   if (url.pathname === "/api/cms" && request.method === "GET") {
     const isAuthedAdmin = await verifyAdminToken(request, db);
+    const cacheHeaders = isAuthedAdmin
+      ? { "cache-control": "private, no-cache, no-store, must-revalidate" }
+      : { "cache-control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600" };
 
     if (db) {
       await ensureD1Tables(db);
@@ -1291,15 +1310,26 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           }
         }
 
+        const currentRevision =
+          typeof settingsMap["cms_revision"] === "number"
+            ? settingsMap["cms_revision"]
+            : parseInt(String(settingsMap["cms_revision"] || "1"), 10) || 1;
+
         return new Response(
           JSON.stringify({
             ok: true,
             source: "d1",
+            revision: currentRevision,
             cars: cars.length > 0 ? cars : null,
             settings: settingsMap["showcase_settings"] || null,
             cmsConfig: settingsMap["cms_config"] || null,
           }),
-          { headers: { "content-type": "application/json; charset=utf-8" } },
+          {
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              ...cacheHeaders,
+            },
+          },
         );
       } catch (err) {
         console.error("D1 Read error:", err);
@@ -1317,11 +1347,17 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       JSON.stringify({
         ok: true,
         source: "memory",
+        revision: memoryStore.revision || 1,
         cars: filteredCars,
         settings: memoryStore.settings || null,
         cmsConfig: memoryStore.cmsConfig || null,
       }),
-      { headers: { "content-type": "application/json; charset=utf-8" } },
+      {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          ...cacheHeaders,
+        },
+      },
     );
   }
 
@@ -1387,9 +1423,40 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       const payload = parseResult.data;
 
+      // Optimistic concurrency control check
       if (db) {
         await ensureD1Tables(db);
+        const revisionRow = await db
+          .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
+          .first<{ value: string }>();
+        const currentRevision = revisionRow ? parseInt(revisionRow.value, 10) || 1 : 1;
+
+        if (payload.revision !== undefined && payload.revision < currentRevision) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              conflict: true,
+              currentRevision,
+              clientRevision: payload.revision,
+              error:
+                "Çakışma tespit edildi: Başka bir sekme veya cihazda daha güncel bir değişiklik kaydedilmiş. Lütfen sayfayı yenileyip güncel veriyi alın.",
+            }),
+            { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+
         const stmts: unknown[] = [];
+        const orphanedR2Keys = new Set<string>();
+
+        const extractR2Key = (targetUrl: string, fallbackKey?: string): string | null => {
+          if (targetUrl.startsWith("/api/media/")) {
+            return decodeURIComponent(targetUrl.replace("/api/media/", ""));
+          }
+          if (fallbackKey && fallbackKey.startsWith("vehicles/")) {
+            return fallbackKey;
+          }
+          return null;
+        };
 
         // Save site_settings
         if (payload.settings) {
@@ -1415,6 +1482,21 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         // 1. Explicit Targeted Deletion: Only delete vehicles specifically flagged for deletion by admin
         if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
           const placeholders = payload.deletedCarIds.map(() => "?").join(",");
+          try {
+            const imagesToClean = await db
+              .prepare(
+                `SELECT r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
+              )
+              .bind(...payload.deletedCarIds)
+              .all<ImageDbRow>();
+            for (const img of imagesToClean.results || []) {
+              const k = extractR2Key(img.public_url, img.r2_key);
+              if (k) orphanedR2Keys.add(k);
+            }
+          } catch (err) {
+            console.error("Failed to query orphaned images for deleted cars:", err);
+          }
+
           stmts.push(
             db
               .prepare(`DELETE FROM vehicle_images WHERE vehicle_id IN (${placeholders})`)
@@ -1429,7 +1511,32 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
         // 2. Safe Upsert for Vehicles & Images (Does NOT wipe other vehicles in the catalog)
         if (Array.isArray(payload.cars) && payload.cars.length > 0) {
-          // 2. Upsert each vehicle
+          // Detect replaced images to clean up
+          const carIds = payload.cars.map((c) => c.id);
+          const placeholders = carIds.map(() => "?").join(",");
+          try {
+            const existingImages = await db
+              .prepare(
+                `SELECT vehicle_id, r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
+              )
+              .bind(...carIds)
+              .all<ImageDbRow>();
+            const activeUrlsByCar = new Map<string, Set<string>>();
+            for (const c of payload.cars) {
+              activeUrlsByCar.set(c.id, new Set(c.images || []));
+            }
+            for (const img of existingImages.results || []) {
+              const activeUrls = activeUrlsByCar.get(img.vehicle_id);
+              if (activeUrls && !activeUrls.has(img.public_url)) {
+                const k = extractR2Key(img.public_url, img.r2_key);
+                if (k) orphanedR2Keys.add(k);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to query replaced images:", err);
+          }
+
+          // Upsert each vehicle
           for (const c of payload.cars) {
             const specs = c.specs || {};
             const desc = c.description || {};
@@ -1497,6 +1604,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             stmts.push(db.prepare("DELETE FROM vehicle_images WHERE vehicle_id = ?").bind(c.id));
 
             c.images.forEach((imgUrl: string, idx: number) => {
+              const effectiveR2Key =
+                extractR2Key(String(imgUrl), `vehicles/${c.id}/${idx + 1}`) ||
+                `vehicles/${c.id}/${idx + 1}`;
               stmts.push(
                 db
                   .prepare(
@@ -1505,7 +1615,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                   .bind(
                     `${c.id}-img-${idx + 1}`,
                     c.id,
-                    `vehicles/${c.id}/${idx + 1}`,
+                    effectiveR2Key,
                     String(imgUrl),
                     idx === 0 ? 1 : 0,
                     idx,
@@ -1523,26 +1633,75 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           stmts.push(db.prepare("DELETE FROM vehicles"));
         }
 
+        // Increment and store revision
+        const nextRevision = Math.max(currentRevision, payload.revision || 0) + 1;
+        stmts.push(
+          db
+            .prepare(
+              "INSERT INTO site_settings (key, value, updated_at) VALUES ('cms_revision', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            )
+            .bind(String(nextRevision)),
+        );
+
+        // Batch execution with chunking (Max 50 statements per batch to prevent D1 limit errors)
         if (stmts.length > 0) {
-          await db.batch(stmts);
+          const CHUNK_SIZE = 50;
+          for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
+            const chunk = stmts.slice(i, i + CHUNK_SIZE);
+            await db.batch(chunk);
+          }
         }
         // ONLY update in-memory fallback cache once D1 transaction succeeds!
         applyPayloadToMemoryStore(payload);
+
+        // Delete orphaned R2 media files after D1 batch success
+        if (resolvedEnv.BUCKET && orphanedR2Keys.size > 0) {
+          for (const key of orphanedR2Keys) {
+            try {
+              await resolvedEnv.BUCKET.delete(key);
+            } catch (r2Err) {
+              console.error(`Failed to delete orphaned R2 object ${key}:`, r2Err);
+            }
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            source: "d1",
+            revision: nextRevision,
+            message: "Cloudflare D1 veritabanı başarıyla güncellendi.",
+          }),
+          { headers: { "content-type": "application/json; charset=utf-8" } },
+        );
       } else {
         // Fallback when D1 is not bound (e.g. local dev / memory mock)
-        applyPayloadToMemoryStore(payload);
-      }
+        const currentRevision = memoryStore.revision || 1;
+        if (payload.revision !== undefined && payload.revision < currentRevision) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              conflict: true,
+              currentRevision,
+              clientRevision: payload.revision,
+              error:
+                "Çakışma tespit edildi: Başka bir sekme veya cihazda daha güncel bir değişiklik kaydedilmiş. Lütfen sayfayı yenileyip güncel veriyi alın.",
+            }),
+            { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
 
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          source: isD1 ? "d1" : "memory",
-          message: isD1
-            ? "Cloudflare D1 veritabanı başarıyla güncellendi."
-            : "Sunucu hafızası güncellendi (D1 bağlı değil).",
-        }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+        applyPayloadToMemoryStore(payload);
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            source: "memory",
+            revision: memoryStore.revision || 1,
+            message: "Sunucu hafızası güncellendi (D1 bağlı değil).",
+          }),
+          { headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
     } catch (err) {
       console.error("POST /api/cms error:", err);
       return new Response(JSON.stringify({ ok: false, error: String(err) }), {
@@ -1554,21 +1713,54 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
   // 10. POST /api/inquiry — Customer submits VIP Offer or Special Import Request
   if (url.pathname === "/api/inquiry" && request.method === "POST") {
-    // Rate Limiting: Max 5 inquiries per IP per 10 minutes
+    // Rate Limiting: Max 5 inquiries per IP per 10 minutes (D1 persistent or memory fallback)
     const now = Date.now();
     const windowMs = 10 * 60 * 1000;
-    const history = (ipInquiryAttempts.get(ip) || []).filter((ts) => now - ts < windowMs);
-    if (history.length >= 5) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "Çok fazla talep gönderildi. Lütfen birkaç dakika sonra tekrar deneyin.",
-        }),
-        { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+    const cutoff = now - windowMs;
+
+    if (db) {
+      await ensureD1Tables(db);
+      try {
+        await db
+          .prepare("DELETE FROM inquiry_attempts WHERE created_at < ?")
+          .bind(now - 3600000)
+          .run();
+        const countRow = await db
+          .prepare(
+            "SELECT COUNT(*) as count FROM inquiry_attempts WHERE ip = ? AND created_at >= ?",
+          )
+          .bind(ip, cutoff)
+          .first<{ count: number }>();
+        if ((countRow?.count || 0) >= 5) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: "Çok fazla talep gönderildi. Lütfen birkaç dakika sonra tekrar deneyin.",
+            }),
+            { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+        await db
+          .prepare("INSERT INTO inquiry_attempts (id, ip, created_at) VALUES (?, ?, ?)")
+          .bind(`att-${now}-${Math.random().toString(36).slice(2, 7)}`, ip, now)
+          .run();
+      } catch (rateErr) {
+        console.error("D1 inquiry rate limit error:", rateErr);
+      }
+    } else {
+      const history = (ipInquiryAttempts.get(ip) || []).filter((ts) => now - ts < windowMs);
+      if (history.length >= 5) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Çok fazla talep gönderildi. Lütfen birkaç dakika sonra tekrar deneyin.",
+          }),
+          { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+      history.push(now);
+      ipInquiryAttempts.set(ip, history);
     }
-    history.push(now);
-    ipInquiryAttempts.set(ip, history);
 
     try {
       const body = (await request.json()) as {

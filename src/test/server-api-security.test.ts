@@ -476,4 +476,179 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const afterData = (await afterRead?.json()) as { cars: Array<{ id: string }> };
     expect(afterData.cars.some((c) => c.id === "car-should-never-be-saved")).toBe(false);
   });
+
+  it("Regression Test 3a: Rejects oversized deletedCarIds (>500 items) with 400 Bad Request", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const massiveDeletedIds = Array.from({ length: 501 }, (_, i) => `car-del-${i}`);
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deletedCarIds: massiveDeletedIds,
+      }),
+    });
+
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(400);
+    const body = (await res?.json()) as { ok: boolean; error: string };
+    expect(body.error).toContain("deletedCarIds");
+  });
+
+  it("Regression Test 3b: Optimistic Concurrency Control returns 409 Conflict if client revision is stale", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const staleReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        revision: 0,
+        settings: { test: true },
+      }),
+    });
+
+    const res = await handleApiRequest(staleReq, {});
+    expect(res?.status).toBe(409);
+    const body = (await res?.json()) as { ok: boolean; conflict: boolean; error: string };
+    expect(body.conflict).toBe(true);
+    expect(body.error).toContain("Çakışma tespit edildi");
+  });
+
+  it("Regression Test 3c: D1 Batch chunking splits large statements into chunks of 50 and triggers R2 orphan media deletion", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const batchCalls: unknown[][] = [];
+    const deletedR2Keys: string[] = [];
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => {
+            if (sql.includes("FROM vehicle_images WHERE vehicle_id IN")) {
+              return {
+                results: [
+                  {
+                    id: "img-orphan-1",
+                    vehicle_id: "car-del-1",
+                    r2_key: "vehicles/car-del-1/1",
+                    public_url: "/api/media/vehicles%2Fcar-del-1%2F1",
+                  },
+                ],
+                success: true,
+              };
+            }
+            return { results: [], success: true };
+          },
+          first: async () => {
+            if (sql.includes("cms_revision")) {
+              return { value: "1" };
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async (stmts: unknown[]) => {
+        batchCalls.push(stmts);
+        return stmts.map(() => ({ success: true }));
+      },
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedR2Keys.push(key);
+      },
+    };
+
+    // Construct 20 cars with 3 images each = >100 statements
+    const cars = Array.from({ length: 20 }, (_, i) => ({
+      id: `car-chunk-${i}`,
+      brand: "BMW",
+      title: `BMW M4 #${i}`,
+      year: 2024,
+      km: 1000,
+      fuel: "Benzin",
+      gear: "Otomatik",
+      body: "Coupe",
+      status: "active" as const,
+      featured: false,
+      imageFit: "cover" as const,
+      images: [
+        `/api/media/vehicles%2Fcar-chunk-${i}%2F1`,
+        `/api/media/vehicles%2Fcar-chunk-${i}%2F2`,
+        `/api/media/vehicles%2Fcar-chunk-${i}%2F3`,
+      ],
+      specs: {
+        power: "510 HP",
+        color: "Siyah",
+        package: "Competition",
+        expertise: "Orijinal",
+        tramer: "Yok",
+      },
+      extras: [],
+      extrasEn: [],
+      description: { tr: "", en: "" },
+    }));
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        cars,
+        deletedCarIds: ["car-del-1"],
+        revision: 1,
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+
+    // Assert that batch was chunked into <= 50 statements
+    expect(batchCalls.length).toBeGreaterThanOrEqual(2);
+    for (const chunk of batchCalls) {
+      expect(chunk.length).toBeLessThanOrEqual(50);
+    }
+
+    // Assert that orphaned R2 key was deleted
+    expect(deletedR2Keys).toContain("vehicles/car-del-1/1");
+  });
 });

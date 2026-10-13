@@ -1533,7 +1533,23 @@ const LANG_KEY = "bycar_lang_v1";
 const LOCKOUT_KEY = "bycar_admin_lockout_v1";
 const UNDO_KEY = "bycar_undo_snapshot_v2";
 const DELETED_CAR_IDS_KEY = "bycar_pending_deleted_car_ids_v1";
+const REVISION_KEY = "bycar_cms_revision_v1";
 const SYNC_EVENT = "bycar-store-sync";
+
+export function getStoredCmsRevision(): number {
+  if (typeof window === "undefined") return 1;
+  try {
+    const raw = window.localStorage.getItem(REVISION_KEY);
+    return raw ? parseInt(raw, 10) || 1 : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function setStoredCmsRevision(revision: number) {
+  if (typeof window === "undefined") return;
+  safeSetItem(REVISION_KEY, String(revision));
+}
 
 export function getPendingDeletedCarIds(): string[] {
   if (typeof window === "undefined") return [];
@@ -1621,6 +1637,7 @@ export function clearAllBrowserStorage() {
       UNDO_KEY,
       LOCKOUT_KEY,
       DELETED_CAR_IDS_KEY,
+      REVISION_KEY,
     ]) {
       window.localStorage.removeItem(k);
     }
@@ -1944,7 +1961,12 @@ export async function syncToServer(overrideData?: {
   settings?: SiteSettings;
   cmsConfig?: SiteCMSConfig;
   deletedCarIds?: string[];
-}): Promise<{ ok: boolean; source?: string | undefined; error?: string | undefined }> {
+}): Promise<{
+  ok: boolean;
+  source?: string | undefined;
+  error?: string | undefined;
+  conflict?: boolean;
+}> {
   if (typeof window === "undefined") return { ok: false, error: "Server-side context" };
 
   // Cancel any pending debounced sync since we are syncing now
@@ -1974,11 +1996,19 @@ export async function syncToServer(overrideData?: {
       : pendingDeleted;
     const deletedCarIds = rawDeleted.filter((id) => !activeCarIds.has(id));
 
+    // Cleanup any stale IDs from DELETED_CAR_IDS_KEY that are actually active
+    const staleIds = getPendingDeletedCarIds().filter((id) => activeCarIds.has(id));
+    if (staleIds.length > 0) {
+      removePendingDeletedCarIds(staleIds);
+    }
+
+    const currentRevision = getStoredCmsRevision();
     const payload = {
       cars: targetCars,
       settings: overrideData?.settings || getStoredSettings(),
       cmsConfig: overrideData?.cmsConfig || getStoredCmsConfig(),
       deletedCarIds: deletedCarIds.length > 0 ? deletedCarIds : undefined,
+      revision: currentRevision,
     };
 
     const res = await fetch("/api/cms", {
@@ -1992,9 +2022,28 @@ export async function syncToServer(overrideData?: {
       source?: string;
       error?: string;
       message?: string;
+      conflict?: boolean;
+      revision?: number;
     };
 
+    if (res.status === 409 || data.conflict) {
+      const conflictMsg =
+        data.error ||
+        "Sunucu çakışması: Başka bir sekme veya cihazda daha güncel bir değişiklik kaydedilmiş.";
+      window.dispatchEvent(
+        new CustomEvent(SYNC_STATUS_EVENT, {
+          detail: { status: "error", message: conflictMsg, timestamp: Date.now() },
+        }),
+      );
+      // Automatically refresh local state with latest server data
+      await syncFromServer();
+      return { ok: false, error: conflictMsg, conflict: true };
+    }
+
     if (res.ok && data.ok) {
+      if (typeof data.revision === "number") {
+        setStoredCmsRevision(data.revision);
+      }
       clearPendingDeletedCarIds();
       window.dispatchEvent(
         new CustomEvent(SYNC_STATUS_EVENT, {
@@ -2056,11 +2105,15 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string |
     const data = (await res.json()) as {
       ok?: boolean;
       source?: string;
+      revision?: number;
       cars?: Car[];
       settings?: Partial<SiteSettings>;
       cmsConfig?: Partial<SiteCMSConfig>;
     };
     if (data.ok) {
+      if (typeof data.revision === "number") {
+        setStoredCmsRevision(data.revision);
+      }
       if (Array.isArray(data.cars) && data.cars.length > 0) {
         safeSetItem(CARS_KEY, JSON.stringify(data.cars));
       }
