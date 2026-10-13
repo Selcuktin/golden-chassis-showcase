@@ -88,11 +88,6 @@ function Index() {
       show: Boolean(cmsConfig.sectionVisibility.showAbout),
     },
     {
-      label: lang === "tr" ? "Yorumlar" : "Reviews",
-      id: "yorumlar",
-      show: Boolean(cmsConfig.sectionVisibility.showTestimonials),
-    },
-    {
       label: t.nav[4],
       id: "sss",
       show: Boolean(cmsConfig.sectionVisibility.showFaq),
@@ -423,8 +418,12 @@ function Index() {
       {/* HERO */}
       <section className="relative flex min-h-[92svh] sm:min-h-screen items-end overflow-hidden pt-28 sm:pt-36">
         <img
-          src={cmsConfig.hero.bgImage || hero}
-          alt="ByCar hypercar"
+          src={
+            cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
+              ? cmsConfig.hero.bgImage
+              : hero
+          }
+          alt="ByCar Exclusive hypercar"
           width={1920}
           height={1088}
           className="absolute inset-0 h-full w-full object-cover"
@@ -854,44 +853,6 @@ function Index() {
                 {(lang === "tr" ? cmsConfig.about.sloganTr : cmsConfig.about.sloganEn) ||
                   t.founderSlogan}
               </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* TESTIMONIALS */}
-      {cmsConfig.sectionVisibility.showTestimonials && cmsConfig.testimonials?.length > 0 && (
-        <section id="yorumlar" className="scroll-mt-20 border-t border-border bg-card/30 py-24">
-          <div className="mx-auto max-w-7xl px-4">
-            <SectionTitle
-              kicker="VIP Testimonials"
-              title={lang === "tr" ? "Seçkin Müşteri Deneyimleri" : "Client Reviews"}
-              center
-            />
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {cmsConfig.testimonials.map((test) => (
-                <div
-                  key={test.id}
-                  className="relative flex flex-col justify-between border border-border bg-card p-6"
-                >
-                  <div>
-                    <div className="mb-4 flex items-center gap-1 text-gold">
-                      {Array.from({ length: test.rating || 5 }).map((_, rIdx) => (
-                        <Star key={rIdx} className="h-4 w-4 fill-primary text-primary" />
-                      ))}
-                    </div>
-                    <p className="mb-6 text-sm italic leading-relaxed text-muted-foreground">
-                      "{lang === "tr" ? test.commentTr : test.commentEn}"
-                    </p>
-                  </div>
-                  <div className="border-t border-border/60 pt-4">
-                    <div className="font-semibold text-foreground">{test.name}</div>
-                    <div className="text-xs text-primary">
-                      {lang === "tr" ? test.roleTr : test.roleEn} · {test.car}
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         </section>
