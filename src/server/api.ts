@@ -184,6 +184,42 @@ interface MemoryStore {
 }
 
 const memoryStore: MemoryStore = {};
+
+function applyPayloadToMemoryStore(payload: z.infer<typeof CmsPayloadSchema>) {
+  if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
+    const toDelete = new Set(payload.deletedCarIds);
+    if (Array.isArray(memoryStore.cars)) {
+      memoryStore.cars = (memoryStore.cars as Array<{ id: string }>).filter(
+        (c) => !toDelete.has(c.id),
+      );
+    }
+  }
+
+  if (Array.isArray(payload.cars)) {
+    if (payload.cars.length === 0 && payload.allowEmptyCatalog) {
+      memoryStore.cars = [];
+    } else {
+      if (!memoryStore.cars) {
+        memoryStore.cars = [];
+      }
+      const existingMap = new Map(
+        (memoryStore.cars as Array<{ id: string }>).map((c) => [c.id, c]),
+      );
+      for (const car of payload.cars) {
+        existingMap.set(car.id, car);
+      }
+      memoryStore.cars = Array.from(existingMap.values());
+    }
+  }
+
+  if (payload.settings) {
+    memoryStore.settings = payload.settings;
+  }
+  if (payload.cmsConfig) {
+    memoryStore.cmsConfig = payload.cmsConfig;
+  }
+}
+
 const memorySessions = new Map<string, { token: string; expiresAt: number }>();
 const ipLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
 const ipInquiryAttempts = new Map<string, number[]>();
@@ -1351,35 +1387,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       const payload = parseResult.data;
 
-      if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
-        const toDelete = new Set(payload.deletedCarIds);
-        if (Array.isArray(memoryStore.cars)) {
-          memoryStore.cars = (memoryStore.cars as Array<{ id: string }>).filter(
-            (c) => !toDelete.has(c.id),
-          );
-        }
-      }
-
-      if (Array.isArray(payload.cars)) {
-        if (!memoryStore.cars) {
-          memoryStore.cars = [];
-        }
-        const existingMap = new Map(
-          (memoryStore.cars as Array<{ id: string }>).map((c) => [c.id, c]),
-        );
-        for (const car of payload.cars) {
-          existingMap.set(car.id, car);
-        }
-        memoryStore.cars = Array.from(existingMap.values());
-      }
-
-      if (payload.settings) {
-        memoryStore.settings = payload.settings;
-      }
-      if (payload.cmsConfig) {
-        memoryStore.cmsConfig = payload.cmsConfig;
-      }
-
       if (db) {
         await ensureD1Tables(db);
         const stmts: unknown[] = [];
@@ -1519,6 +1526,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         if (stmts.length > 0) {
           await db.batch(stmts);
         }
+        // ONLY update in-memory fallback cache once D1 transaction succeeds!
+        applyPayloadToMemoryStore(payload);
+      } else {
+        // Fallback when D1 is not bound (e.g. local dev / memory mock)
+        applyPayloadToMemoryStore(payload);
       }
 
       return new Response(

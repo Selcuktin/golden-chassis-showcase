@@ -399,4 +399,81 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(readAfterDeleteData.cars.some((c) => c.id === "car-preserve-2")).toBe(false);
     expect(readAfterDeleteData.cars.some((c) => c.id === "car-preserve-1")).toBe(true);
   });
+
+  it("POST /api/cms preserves memoryStore unchanged if D1 database transaction fails", async () => {
+    const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.11" },
+      body: JSON.stringify({ password: "bybycar1453" }),
+    });
+    const loginRes = await handleApiRequest(loginReq, {});
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // Mock failing D1 database where batch throws an error
+    const failingDb = {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => null,
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async () => {
+        throw new Error("D1_MOCK_STORAGE_DISK_FULL");
+      },
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const failingReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        cars: [
+          {
+            id: "car-should-never-be-saved",
+            brand: "Bugatti",
+            title: "Bugatti Tourbillon",
+            year: 2026,
+            km: 0,
+            fuel: "Hibrit",
+            gear: "Otomatik",
+            body: "Coupe",
+            status: "active" as const,
+            featured: true,
+            imageFit: "cover" as const,
+            images: [],
+            specs: {
+              power: "1800 HP",
+              color: "Blue",
+              package: "Tourbillon",
+              expertise: "Orijinal",
+              tramer: "Yok",
+            },
+            extras: [],
+            extrasEn: [],
+            description: { tr: "Test", en: "Test" },
+          },
+        ],
+      }),
+    });
+
+    const res = await handleApiRequest(failingReq, { DB: failingDb });
+    expect(res?.status).toBe(500);
+
+    // Verify memoryStore was NOT mutated by the failed request
+    const afterRead = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/cms", {
+        headers: { authorization: `Bearer ${loginData.token}` },
+      }),
+      {},
+    );
+    const afterData = (await afterRead?.json()) as { cars: Array<{ id: string }> };
+    expect(afterData.cars.some((c) => c.id === "car-should-never-be-saved")).toBe(false);
+  });
 });

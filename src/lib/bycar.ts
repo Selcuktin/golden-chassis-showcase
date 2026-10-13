@@ -1556,6 +1556,21 @@ export function queueDeletedCarId(id: string) {
   }
 }
 
+export function removePendingDeletedCarIds(ids: string[]) {
+  if (typeof window === "undefined" || !ids || ids.length === 0) return;
+  const current = getPendingDeletedCarIds();
+  if (current.length === 0) return;
+  const toRemove = new Set(ids);
+  const next = current.filter((id) => !toRemove.has(id));
+  if (next.length !== current.length) {
+    if (next.length === 0) {
+      window.localStorage.removeItem(DELETED_CAR_IDS_KEY);
+    } else {
+      safeSetItem(DELETED_CAR_IDS_KEY, JSON.stringify(next));
+    }
+  }
+}
+
 export function clearPendingDeletedCarIds() {
   if (typeof window === "undefined") return;
   try {
@@ -1825,6 +1840,9 @@ export function restoreUndoSnapshot(): UndoSnapshot | null {
   if (typeof window === "undefined") return null;
   const snap = getUndoSnapshot();
   if (!snap) return null;
+  if (Array.isArray(snap.cars)) {
+    removePendingDeletedCarIds(snap.cars.map((c) => c.id));
+  }
   safeSetItem(CARS_KEY, JSON.stringify(snap.cars));
   safeSetItem(INQ_KEY, JSON.stringify(snap.inquiries));
   safeSetItem(SETTINGS_KEY, JSON.stringify(snap.settings));
@@ -1948,13 +1966,16 @@ export async function syncToServer(overrideData?: {
       headers["authorization"] = `Bearer ${token}`;
     }
 
-    const pendingDeleted = getPendingDeletedCarIds();
-    const deletedCarIds = overrideData?.deletedCarIds
+    const targetCars = overrideData?.cars || getStoredCars();
+    const activeCarIds = new Set(targetCars.map((c) => c.id));
+    const pendingDeleted = getPendingDeletedCarIds().filter((id) => !activeCarIds.has(id));
+    const rawDeleted = overrideData?.deletedCarIds
       ? Array.from(new Set([...overrideData.deletedCarIds, ...pendingDeleted]))
       : pendingDeleted;
+    const deletedCarIds = rawDeleted.filter((id) => !activeCarIds.has(id));
 
     const payload = {
-      cars: overrideData?.cars || getStoredCars(),
+      cars: targetCars,
       settings: overrideData?.settings || getStoredSettings(),
       cmsConfig: overrideData?.cmsConfig || getStoredCmsConfig(),
       deletedCarIds: deletedCarIds.length > 0 ? deletedCarIds : undefined,
@@ -2170,6 +2191,7 @@ export function getStoredCars(): Car[] {
 export function saveStoredCars(next: Car[], undoLabel?: string, immediate = false) {
   if (typeof window === "undefined") return;
   if (undoLabel) saveUndoSnapshot(undoLabel);
+  removePendingDeletedCarIds(next.map((c) => c.id));
   safeSetItem(CARS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
   if (immediate) {
@@ -2190,6 +2212,7 @@ export function deleteStoredCar(id: string, undoLabel?: string, immediate = true
 export function resetStoredCars() {
   if (typeof window === "undefined") return;
   saveUndoSnapshot("Varsayılan 10 Araca Sıfırlama");
+  clearPendingDeletedCarIds();
   window.localStorage.removeItem(CARS_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
   triggerServerSync();

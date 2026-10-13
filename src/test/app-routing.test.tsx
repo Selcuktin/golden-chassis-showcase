@@ -8,8 +8,10 @@ import {
   CARS,
   type Car,
   T,
+  deleteStoredCar,
   exportD1SqlDump,
   exportDatabaseJSON,
+  getPendingDeletedCarIds,
   getStoredCars,
   importDatabaseJSON,
   recordLoginAttempt,
@@ -105,8 +107,16 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(importRes.ok).toBe(true);
     expect(getStoredCars()[0]!.id).toBe("custom-shooting-brake-2026");
 
+    // Verify deleteStoredCar queues ID and restoreUndoSnapshot immediately purges it
+    deleteStoredCar("custom-shooting-brake-2026", "Geçici silme testi");
+    expect(getPendingDeletedCarIds()).toContain("custom-shooting-brake-2026");
+    const restoredAgain = restoreUndoSnapshot();
+    expect(restoredAgain).not.toBeNull();
+    expect(getPendingDeletedCarIds()).not.toContain("custom-shooting-brake-2026");
+
     // Reset back to default CARS
     saveStoredCars(CARS, "Test temizliği");
+    expect(getPendingDeletedCarIds().length).toBe(0);
   });
 
   it("Phase 8: enables 100% zero-code admin CMS config, dynamic presets, custom PBKDF2 password, and Cloudflare D1 synchronization", async () => {
