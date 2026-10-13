@@ -16,7 +16,7 @@ directory = ".output/public"
 [[d1_databases]]
 binding = "DB"
 database_name = "bycar_db"
-database_id = "bycar-global-d1-prod"
+database_id = "cb9bbc34-a9ef-446e-b993-46405a7ca765"
 
 [vars]
 NODE_ENV = "production"
