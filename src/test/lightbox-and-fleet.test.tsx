@@ -7,7 +7,7 @@ describe("ByCar Fleet & ImageLightboxModal Verification", () => {
   it("fleet has at least 10 cars and all are active", () => {
     expect(CARS.length).toBeGreaterThanOrEqual(10);
     const activeCars = CARS.filter((c) => c.status === "active");
-    expect(activeCars.length).toBe(10);
+    expect(activeCars.length).toBe(15);
 
     // Each car must have at least 4 angle images
     for (const car of CARS) {
