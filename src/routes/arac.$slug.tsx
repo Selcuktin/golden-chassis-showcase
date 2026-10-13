@@ -20,16 +20,35 @@ import {
   translateTerm,
   useByCarStore,
   waLink,
+  type Car,
   type Lang,
 } from "@/lib/bycar";
 import { QuickOfferForm } from "./index";
+import { fetchLiveVehicle } from "@/lib/catalog-service";
 
 export const Route = createFileRoute("/arac/$slug")({
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
+    try {
+      const liveCar = await fetchLiveVehicle({ data: params.slug });
+      if (liveCar) {
+        return { car: liveCar as unknown as Car };
+      }
+    } catch (e) {
+      console.error("SSR vehicle loader error:", e);
+    }
+
     const pool = typeof window !== "undefined" ? getStoredCars() : CARS;
     const found =
-      pool.find((c) => c.id === params.slug && c.status !== "draft") ||
-      CARS.find((c) => c.id === params.slug && c.status !== "draft");
+      pool.find(
+        (c) =>
+          (c.id === params.slug || (c as unknown as { slug?: string }).slug === params.slug) &&
+          c.status !== "draft",
+      ) ||
+      CARS.find(
+        (c) =>
+          (c.id === params.slug || (c as unknown as { slug?: string }).slug === params.slug) &&
+          c.status !== "draft",
+      );
     if (!found) {
       throw notFound();
     }

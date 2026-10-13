@@ -18,5 +18,11 @@ binding = "DB"
 database_name = "bycar_db"
 database_id = "cb9bbc34-a9ef-446e-b993-46405a7ca765"
 
+# Cloudflare R2 Storage (Vehicle Images & Media)
+# npx wrangler r2 bucket create bycar-media
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "bycar-media"
+
 [vars]
 NODE_ENV = "production"

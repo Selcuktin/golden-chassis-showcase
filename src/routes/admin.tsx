@@ -30,6 +30,7 @@ import {
   Undo2,
   Layers,
   Radio,
+  AlertTriangle,
 } from "lucide-react";
 import {
   ADMIN_PRESETS,
@@ -42,6 +43,7 @@ import {
   getLoginLockoutState,
   importDatabaseJSON,
   recordLoginAttempt,
+  syncFromServer,
   syncInquiriesFromServer,
   translateTerm,
   useByCarStore,
@@ -198,6 +200,8 @@ function Admin() {
     lang,
     undoSnap,
     isSyncing,
+    syncStatus,
+    syncToServerNow,
     setLang,
     updateCars,
     resetCars,
@@ -656,43 +660,52 @@ function Admin() {
 
               let serverOk = false;
               let serverToken: string | null = null;
+              let serverError = "";
+
               try {
                 const res = await fetch("/api/admin/login", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ password: pw }),
                 });
-                if (res.ok) {
-                  const data = (await res.json()) as { ok: boolean; token?: string };
-                  if (data.ok && data.token) {
-                    serverOk = true;
-                    serverToken = data.token;
+                const data = (await res.json().catch(() => ({}))) as {
+                  ok?: boolean;
+                  token?: string;
+                  error?: string;
+                  lockedUntil?: number;
+                };
+
+                if (res.ok && data.ok && data.token) {
+                  serverOk = true;
+                  serverToken = data.token;
+                } else {
+                  serverError =
+                    data.error ||
+                    (res.status === 429
+                      ? "Çok fazla hatalı deneme. Hesap geçici olarak kilitlendi."
+                      : "Geçersiz yönetici şifresi.");
+                  if (data.lockedUntil) {
+                    setLockout({ attempts: 5, lockedUntil: data.lockedUntil });
                   }
                 }
               } catch {
-                // Network or offline fallback
+                serverError =
+                  "Sunucu bağlantısı kurulamadı. Güvenli giriş için sunucu bağlantısı gereklidir.";
               }
 
-              const localOk = await verifyAdminPasswordPBKDF2(pw);
-              const ok = serverOk || localOk;
-              const nextLock = recordLoginAttempt(ok);
-              setLockout(nextLock);
-
-              if (ok) {
+              if (serverOk && serverToken) {
+                recordLoginAttempt(true);
+                setLockout({ attempts: 0, lockedUntil: null });
                 window.sessionStorage.setItem("bycar_admin_auth", "1");
-                if (serverToken) {
-                  window.sessionStorage.setItem("bycar_admin_token", serverToken);
-                  void syncInquiriesFromServer(serverToken);
-                }
+                window.sessionStorage.setItem("bycar_admin_token", serverToken);
+                void syncInquiriesFromServer(serverToken);
+                void syncFromServer();
                 setAuthed(true);
                 setPwErr("");
               } else {
-                const rem = Math.max(0, 5 - nextLock.attempts);
-                setPwErr(
-                  rem > 0
-                    ? `Hatalı yönetici şifresi. Kalan deneme hakkı: ${rem}`
-                    : "5 hatalı deneme yapıldı. Hesap 15 dakika kilitlendi.",
-                );
+                const nextLock = recordLoginAttempt(false);
+                setLockout(nextLock);
+                setPwErr(serverError || "Geçersiz yönetici şifresi.");
               }
             }}
             className="space-y-4"
@@ -711,8 +724,7 @@ function Admin() {
                 autoFocus
               />
               <p className="mt-2 text-xs text-muted-foreground">
-                Demo Giriş Şifresi: <code className="font-semibold text-primary">bycar2024</code>{" "}
-                veya <code className="font-semibold text-primary">bycar2026</code>
+                Güvenli Cloudflare D1 PBKDF2 Şifre Doğrulaması (100.000 İterasyon)
               </p>
               {isLocked && (
                 <p className="mt-2 border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
@@ -779,6 +791,40 @@ function Admin() {
                 </button>
               ))}
             </div>
+
+            {/* Live D1 Synchronization Status */}
+            {syncStatus.status === "syncing" || isSyncing ? (
+              <span className="inline-flex items-center gap-1.5 border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400">
+                <Radio className="h-3 w-3 animate-pulse" /> D1 Senkronize Ediliyor...
+              </span>
+            ) : syncStatus.status === "error" ? (
+              <button
+                onClick={async () => {
+                  const res = await syncToServerNow();
+                  if (res.ok) {
+                    setDbMsg("✓ Cloudflare D1 ile başarıyla eşitlendi.");
+                    setTimeout(() => setDbMsg(""), 3500);
+                  }
+                }}
+                title={syncStatus.message || "Senkronizasyon hatası"}
+                className="inline-flex cursor-pointer items-center gap-1.5 border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/20"
+              >
+                <AlertTriangle className="h-3 w-3" /> Senkronizasyon Hatası (Tekrar Dene)
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  const res = await syncToServerNow();
+                  if (res.ok) {
+                    setDbMsg("✓ Cloudflare D1 ile başarıyla eşitlendi.");
+                    setTimeout(() => setDbMsg(""), 3500);
+                  }
+                }}
+                className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary hover:text-foreground"
+              >
+                <CheckCircle2 className="h-3 w-3 text-emerald-400" /> D1 Eşitlendi
+              </button>
+            )}
 
             <Link
               to="/"

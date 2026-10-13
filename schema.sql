@@ -66,13 +66,13 @@ CREATE TABLE IF NOT EXISTS inquiries (
 
 CREATE INDEX IF NOT EXISTS idx_inquiries_status_created ON inquiries(status, created_at DESC);
 
--- 4. Yönetici Kullanıcılar Tablosu (PBKDF2-HMAC-SHA256 >= 600.000 İterasyon)
+-- 4. Yönetici Kullanıcılar Tablosu (PBKDF2-HMAC-SHA256 100.000 İterasyon — Cloudflare Edge CPU limitleri için optimize)
 CREATE TABLE IF NOT EXISTS admin_users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
-  iterations INTEGER NOT NULL DEFAULT 600000 CHECK (iterations >= 100000),
+  iterations INTEGER NOT NULL DEFAULT 100000 CHECK (iterations >= 100000),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

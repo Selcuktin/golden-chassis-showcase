@@ -54,6 +54,10 @@ export default {
       (request as unknown as { runtime?: { cloudflare?: { env?: unknown } } })?.runtime?.cloudflare
         ?.env;
 
+    if (effectiveEnv) {
+      (globalThis as unknown as { __env__?: unknown }).__env__ = effectiveEnv;
+    }
+
     try {
       const apiResponse = await handleApiRequest(request, effectiveEnv);
       if (apiResponse) return apiResponse;

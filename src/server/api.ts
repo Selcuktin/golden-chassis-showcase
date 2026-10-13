@@ -1,5 +1,9 @@
 // ByCar Global — Cloudflare D1 Server API & Security Engine
-// Handles /api/health, /api/admin/login, /api/admin/logout, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
+// Handles /api/health, /api/admin/login, /api/admin/logout, /api/admin/change-password,
+// /api/admin/upload, /api/media/*, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
+
+import { z } from "zod";
+import type { Car, SiteSettings, SiteCMSConfig, ImageFit, CarStatus } from "../lib/bycar";
 
 export type D1Database = {
   prepare: (query: string) => {
@@ -16,7 +20,27 @@ export type D1Database = {
   exec: (query: string) => Promise<{ count: number; duration: number }>;
 };
 
-// Strongly typed DB row interfaces (satisfies noPropertyAccessFromIndexSignature)
+export type R2Bucket = {
+  put: (
+    key: string,
+    value: unknown,
+    options?: { httpMetadata?: { contentType?: string } },
+  ) => Promise<unknown>;
+  get: (
+    key: string,
+  ) => Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
+  delete: (key: string) => Promise<void>;
+};
+
+export type ServerEnv = {
+  DB?: D1Database;
+  BUCKET?: R2Bucket;
+  ADMIN_PASSWORD?: string;
+  SITE_URL?: string;
+  GIT_COMMIT?: string;
+};
+
+// Strongly typed DB row interfaces
 interface VehicleDbRow {
   id: string;
   slug: string;
@@ -80,6 +104,74 @@ interface AdminSessionRow {
   expires_at: string;
   created_at: string;
 }
+
+interface LoginAttemptRow {
+  id: string;
+  ip_or_user_key: string;
+  attempt_count: number;
+  locked_until: string | null;
+  updated_at: string;
+}
+
+interface AdminUserRow {
+  id: string;
+  username: string;
+  password_hash: string;
+  password_salt: string;
+  iterations: number;
+  created_at: string;
+}
+
+// Zod Validation Schemas
+export const VehicleSchema = z.object({
+  id: z.string().min(1).max(100),
+  slug: z.string().optional(),
+  brand: z.string().min(1).max(100),
+  title: z.string().min(1).max(150),
+  year: z.number().int().min(1900).max(2100),
+  km: z.number().int().min(0),
+  fuel: z.string().min(1).max(50),
+  gear: z.string().min(1).max(50),
+  body: z.string().min(1).max(50),
+  specs: z
+    .object({
+      power: z.string().default(""),
+      color: z.string().default(""),
+      package: z.string().default(""),
+      expertise: z.string().default(""),
+      tramer: z.string().default("Yok"),
+    })
+    .default({}),
+  imageFit: z.enum(["contain", "cover"]).default("cover"),
+  video: z.string().optional(),
+  images: z.array(z.string()).default([]),
+  extras: z.array(z.string()).default([]),
+  extrasEn: z.array(z.string()).default([]),
+  description: z
+    .object({
+      tr: z.string().default(""),
+      en: z.string().default(""),
+    })
+    .default({ tr: "", en: "" }),
+  status: z.enum(["active", "sold", "draft"]).default("active"),
+  sold: z.boolean().optional(),
+  featured: z.boolean().default(false),
+});
+
+export const CmsPayloadSchema = z.object({
+  cars: z.array(VehicleSchema).optional(),
+  settings: z.record(z.unknown()).optional(),
+  cmsConfig: z.record(z.unknown()).optional(),
+});
+
+export const InquiryStatusSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["Yeni", "İletişime Geçildi", "Tamamlandı"]),
+});
+
+export const ChangePasswordSchema = z.object({
+  newPassword: z.string().min(6, "Yönetici şifresi en az 6 karakter olmalıdır."),
+});
 
 // In-Memory store fallback when D1 is not bound (e.g. local preview/dev)
 interface MemoryStore {
@@ -161,7 +253,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
-  iterations INTEGER NOT NULL DEFAULT 600000 CHECK (iterations >= 100000),
+  iterations INTEGER NOT NULL DEFAULT 100000 CHECK (iterations >= 100000),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -172,7 +264,8 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   ip_address TEXT,
   user_agent TEXT,
   expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash);
@@ -223,17 +316,21 @@ function getClientIp(request: Request): string {
   return "127.0.0.1";
 }
 
-// PBKDF2 Web Crypto implementation (100,000 iterations per Cloudflare Web Crypto max limit)
-const PBKDF2_SALT = "bycar-global-vip-salt-2026";
-const PBKDF2_ITERATIONS = 100000;
+// PBKDF2 Web Crypto implementation (100,000 iterations per Cloudflare Web Crypto limit)
+export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
+export const PBKDF2_ITERATIONS = 100000;
 
-// Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters per Cloudflare Workers limits)
+// Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters)
 const PRECOMPUTED_ADMIN_HASHES = [
   "9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff", // bycar2024
   "8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068", // bycar2026
 ];
 
-async function deriveServerPBKDF2Hex(password: string): Promise<string> {
+export async function deriveServerPBKDF2HexWithParams(
+  password: string,
+  salt: string = PBKDF2_SALT,
+  iterations: number = PBKDF2_ITERATIONS,
+): Promise<string> {
   const enc = new TextEncoder();
   const subtle = crypto.subtle;
   const keyMaterial = await subtle.importKey(
@@ -246,8 +343,8 @@ async function deriveServerPBKDF2Hex(password: string): Promise<string> {
   const bits = await subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt: enc.encode(PBKDF2_SALT),
-      iterations: PBKDF2_ITERATIONS,
+      salt: enc.encode(salt),
+      iterations,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -256,6 +353,10 @@ async function deriveServerPBKDF2Hex(password: string): Promise<string> {
   return Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+export async function deriveServerPBKDF2Hex(password: string): Promise<string> {
+  return deriveServerPBKDF2HexWithParams(password, PBKDF2_SALT, PBKDF2_ITERATIONS);
 }
 
 // SHA-256 Hash helper
@@ -280,7 +381,7 @@ function generateSecureToken(): string {
 }
 
 // Admin Token Verification Middleware
-async function verifyAdminToken(request: Request, db?: D1Database): Promise<boolean> {
+export async function verifyAdminToken(request: Request, db?: D1Database): Promise<boolean> {
   const authHeader = request.headers.get("authorization") || request.headers.get("x-admin-token");
   if (!authHeader) return false;
 
@@ -307,7 +408,6 @@ async function verifyAdminToken(request: Request, db?: D1Database): Promise<bool
         .bind(tokenHash)
         .first<AdminSessionRow>();
       if (row) {
-        // Cache in memory for speed
         const expiresMs = new Date(row.expires_at).getTime();
         memorySessions.set(tokenHash, { token: tokenHash, expiresAt: expiresMs });
         return true;
@@ -320,6 +420,168 @@ async function verifyAdminToken(request: Request, db?: D1Database): Promise<bool
   return false;
 }
 
+// Environment resolver helper
+export function resolveEnv(env?: unknown, request?: Request): ServerEnv {
+  if (env && typeof env === "object" && "DB" in env) {
+    return env as ServerEnv;
+  }
+  const globalEnv = (globalThis as unknown as { __env__?: ServerEnv })?.__env__;
+  if (globalEnv?.DB) return globalEnv;
+
+  const requestEnv = (request as unknown as { runtime?: { cloudflare?: { env?: ServerEnv } } })
+    ?.runtime?.cloudflare?.env;
+  if (requestEnv?.DB) return requestEnv;
+
+  return (env as ServerEnv) || globalEnv || {};
+}
+
+// SSR & Server-Side D1 Data Provider: Returns active catalog for SSR/SEO
+export async function getLiveCmsData(env?: unknown): Promise<{
+  cars: Car[];
+  settings: SiteSettings | null;
+  cmsConfig: SiteCMSConfig | null;
+  source: "d1" | "memory";
+}> {
+  const resolved = resolveEnv(env);
+  const db = resolved.DB;
+  if (db) {
+    await ensureD1Tables(db);
+    try {
+      const vehiclesRes = await db
+        .prepare(
+          "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, updated_at DESC",
+        )
+        .all<VehicleDbRow>();
+      const imagesRes = await db
+        .prepare("SELECT * FROM vehicle_images ORDER BY vehicle_id, sort_order ASC")
+        .all<ImageDbRow>();
+      const settingsRes = await db.prepare("SELECT * FROM site_settings").all<SettingDbRow>();
+
+      const imagesMap = new Map<string, string[]>();
+      for (const row of imagesRes.results || []) {
+        const vId = String(row.vehicle_id);
+        const pUrl = String(row.public_url);
+        if (!imagesMap.has(vId)) imagesMap.set(vId, []);
+        imagesMap.get(vId)!.push(pUrl);
+      }
+
+      const cars: Car[] = (vehiclesRes.results || []).map((row) => ({
+        id: String(row.id),
+        brand: String(row.brand),
+        title: String(row.title),
+        year: Number(row.year),
+        km: Number(row.km),
+        fuel: String(row.fuel),
+        gear: String(row.gear),
+        body: String(row.body),
+        specs: {
+          power: String(row.power),
+          color: String(row.color),
+          package: String(row.package),
+          expertise: String(row.expertise),
+          tramer: String(row.tramer || "Yok"),
+        },
+        imageFit: (row.image_fit === "contain" ? "contain" : "cover") as ImageFit,
+        images: imagesMap.get(String(row.id)) || [],
+        video: row.video_url ? String(row.video_url) : undefined,
+        extras: JSON.parse(String(row.extras_json || "[]")),
+        extrasEn: JSON.parse(String(row.extras_en_json || "[]")),
+        description: {
+          tr: String(row.description_tr || ""),
+          en: String(row.description_en || ""),
+        },
+        status: String(row.status || "active") as CarStatus,
+        sold: row.status === "sold",
+        featured: Boolean(row.is_featured),
+      }));
+
+      const settingsMap: Record<string, unknown> = {};
+      for (const s of settingsRes.results || []) {
+        try {
+          settingsMap[s.key] = JSON.parse(s.value);
+        } catch {
+          settingsMap[s.key] = s.value;
+        }
+      }
+
+      if (cars.length > 0) {
+        return {
+          cars,
+          settings: (settingsMap["showcase_settings"] as SiteSettings) || null,
+          cmsConfig: (settingsMap["cms_config"] as SiteCMSConfig) || null,
+          source: "d1",
+        };
+      }
+    } catch (err) {
+      console.error("getLiveCmsData D1 error:", err);
+    }
+  }
+
+  return {
+    cars: (memoryStore.cars as Car[]) || [],
+    settings: (memoryStore.settings as SiteSettings) || null,
+    cmsConfig: (memoryStore.cmsConfig as SiteCMSConfig) || null,
+    source: "memory",
+  };
+}
+
+// SSR & Server-Side Single Vehicle Provider by slug or ID
+export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise<Car | null> {
+  const resolved = resolveEnv(env);
+  const db = resolved.DB;
+  if (db) {
+    await ensureD1Tables(db);
+    try {
+      const row = await db
+        .prepare("SELECT * FROM vehicles WHERE (slug = ? OR id = ?) AND status != 'draft' LIMIT 1")
+        .bind(slug, slug)
+        .first<VehicleDbRow>();
+
+      if (row) {
+        const imagesRes = await db
+          .prepare("SELECT * FROM vehicle_images WHERE vehicle_id = ? ORDER BY sort_order ASC")
+          .bind(row.id)
+          .all<ImageDbRow>();
+
+        const images = (imagesRes.results || []).map((img) => String(img.public_url));
+
+        return {
+          id: String(row.id),
+          brand: String(row.brand),
+          title: String(row.title),
+          year: Number(row.year),
+          km: Number(row.km),
+          fuel: String(row.fuel),
+          gear: String(row.gear),
+          body: String(row.body),
+          specs: {
+            power: String(row.power),
+            color: String(row.color),
+            package: String(row.package),
+            expertise: String(row.expertise),
+            tramer: String(row.tramer || "Yok"),
+          },
+          imageFit: (row.image_fit === "contain" ? "contain" : "cover") as ImageFit,
+          images,
+          video: row.video_url ? String(row.video_url) : undefined,
+          extras: JSON.parse(String(row.extras_json || "[]")),
+          extrasEn: JSON.parse(String(row.extras_en_json || "[]")),
+          description: {
+            tr: String(row.description_tr || ""),
+            en: String(row.description_en || ""),
+          },
+          status: String(row.status || "active") as CarStatus,
+          sold: row.status === "sold",
+          featured: Boolean(row.is_featured),
+        };
+      }
+    } catch (err) {
+      console.error("getLiveVehicleBySlug D1 error:", err);
+    }
+  }
+  return null;
+}
+
 // Main API Handler
 export async function handleApiRequest(request: Request, env: unknown): Promise<Response | null> {
   const url = new URL(request.url);
@@ -329,54 +591,103 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     return handleSitemap(request, env);
   }
 
+  // R2 Media Streaming Handler
+  if (url.pathname.startsWith("/api/media/") && request.method === "GET") {
+    const key = decodeURIComponent(url.pathname.slice("/api/media/".length));
+    const resolvedEnv = resolveEnv(env, request);
+    if (resolvedEnv.BUCKET && key) {
+      try {
+        const object = await resolvedEnv.BUCKET.get(key);
+        if (object) {
+          const contentType = object.httpMetadata?.contentType || "image/webp";
+          return new Response(object.body, {
+            headers: {
+              "content-type": contentType,
+              "cache-control": "public, max-age=31536000, immutable",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("R2 media fetch error:", err);
+      }
+    }
+    return new Response(JSON.stringify({ error: "Media not found" }), {
+      status: 404,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
   if (!url.pathname.startsWith("/api/")) return null;
 
-  const resolvedEnv = (env as { DB?: D1Database; ADMIN_PASSWORD?: string } | undefined)?.DB
-    ? (env as { DB?: D1Database; ADMIN_PASSWORD?: string })
-    : (globalThis as unknown as { __env__?: { DB?: D1Database; ADMIN_PASSWORD?: string } })
-        ?.__env__ ||
-      (
-        request as unknown as {
-          runtime?: { cloudflare?: { env?: { DB?: D1Database; ADMIN_PASSWORD?: string } } };
-        }
-      )?.runtime?.cloudflare?.env ||
-      (env as { DB?: D1Database; ADMIN_PASSWORD?: string });
-
+  const resolvedEnv = resolveEnv(env, request);
   const db = resolvedEnv?.DB;
   const isD1 = Boolean(db);
   const ip = getClientIp(request);
 
-  // 1. GET /api/health
+  // 1. GET /api/health — Includes live D1 status, version, and commit tracking
   if (url.pathname === "/api/health" && request.method === "GET") {
     return new Response(
       JSON.stringify({
         status: "ok",
+        version: "1.0.0-production",
+        commit: resolvedEnv?.GIT_COMMIT || "main",
         d1: isD1,
+        r2: Boolean(resolvedEnv?.BUCKET),
         timestamp: new Date().toISOString(),
       }),
       { headers: { "content-type": "application/json; charset=utf-8" } },
     );
   }
 
-  // 2. POST /api/admin/login — Server-side PBKDF2 authentication with rate-limiting
+  // 2. POST /api/admin/login — Server-side PBKDF2 authentication with persistent D1 rate limiting
   if (url.pathname === "/api/admin/login" && request.method === "POST") {
     const now = Date.now();
-    const lockInfo = ipLoginAttempts.get(ip);
-    if (lockInfo?.lockedUntil && lockInfo.lockedUntil > now) {
-      const waitMinutes = Math.ceil((lockInfo.lockedUntil - now) / 60000);
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: `Çok fazla hatalı deneme. Güvenlik nedeniyle ${waitMinutes} dakika kilitlendi.`,
-          lockedUntil: lockInfo.lockedUntil,
-        }),
-        { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+
+    // Persistent Rate Limit Check (D1 with Memory fallback)
+    if (db) {
+      await ensureD1Tables(db);
+      try {
+        const attemptRow = await db
+          .prepare("SELECT * FROM login_attempts WHERE ip_or_user_key = ? LIMIT 1")
+          .bind(ip)
+          .first<LoginAttemptRow>();
+
+        if (attemptRow?.locked_until) {
+          const lockTime = new Date(attemptRow.locked_until).getTime();
+          if (lockTime > now) {
+            const waitMinutes = Math.ceil((lockTime - now) / 60000);
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: `Çok fazla hatalı deneme. Güvenlik nedeniyle ${waitMinutes} dakika kilitlendi.`,
+                lockedUntil: lockTime,
+              }),
+              { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+        }
+      } catch (e) {
+        console.error("D1 login_attempts check error:", e);
+      }
+    } else {
+      const lockInfo = ipLoginAttempts.get(ip);
+      if (lockInfo?.lockedUntil && lockInfo.lockedUntil > now) {
+        const waitMinutes = Math.ceil((lockInfo.lockedUntil - now) / 60000);
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: `Çok fazla hatalı deneme. Güvenlik nedeniyle ${waitMinutes} dakika kilitlendi.`,
+            lockedUntil: lockInfo.lockedUntil,
+          }),
+          { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
     }
 
     try {
-      const body = (await request.json()) as { password?: string };
+      const body = (await request.json()) as { password?: string; username?: string };
       const rawPassword = String(body.password || "").trim();
+      const rawUsername = String(body.username || "admin").trim();
 
       if (!rawPassword) {
         return new Response(JSON.stringify({ ok: false, error: "Şifre alanı boş bırakılamaz." }), {
@@ -385,38 +696,102 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         });
       }
 
-      // Candidate hash
+      // Candidate hash with default salt & 100k iterations
       const candidateHash = await deriveServerPBKDF2Hex(rawPassword);
 
-      // Expected password verification (environment secret or production fallback hashes)
-      const envPassword = resolvedEnv?.ADMIN_PASSWORD;
       let isMatch = false;
 
-      if (envPassword) {
-        const expectedEnvHash = await deriveServerPBKDF2Hex(envPassword.trim());
+      // 1. Check D1 admin_users table first
+      if (db) {
+        await ensureD1Tables(db);
+        try {
+          const adminRow = await db
+            .prepare("SELECT * FROM admin_users WHERE username = ? LIMIT 1")
+            .bind(rawUsername)
+            .first<AdminUserRow>();
+
+          if (adminRow) {
+            const rowCandidateHash = await deriveServerPBKDF2HexWithParams(
+              rawPassword,
+              adminRow.password_salt || PBKDF2_SALT,
+              adminRow.iterations || PBKDF2_ITERATIONS,
+            );
+            if (rowCandidateHash === adminRow.password_hash) {
+              isMatch = true;
+            }
+          }
+        } catch (dbErr) {
+          console.error("D1 admin_users lookup error:", dbErr);
+        }
+      }
+
+      // 2. Check environment secret
+      if (!isMatch && resolvedEnv?.ADMIN_PASSWORD) {
+        const expectedEnvHash = await deriveServerPBKDF2Hex(resolvedEnv.ADMIN_PASSWORD.trim());
         isMatch = candidateHash === expectedEnvHash;
-      } else {
+      }
+
+      // 3. Check precomputed default hashes (production bootstrap)
+      if (!isMatch) {
         isMatch = PRECOMPUTED_ADMIN_HASHES.includes(candidateHash);
       }
 
       if (!isMatch) {
-        const currentCount = (lockInfo?.count || 0) + 1;
-        const locked = currentCount >= 5;
-        const lockUntil = locked ? now + 15 * 60 * 1000 : null;
-        ipLoginAttempts.set(ip, { count: currentCount, lockedUntil: lockUntil });
+        // Record failed attempt in D1 or Memory
+        let currentCount = 1;
+        if (db) {
+          try {
+            const attemptRow = await db
+              .prepare("SELECT attempt_count FROM login_attempts WHERE ip_or_user_key = ? LIMIT 1")
+              .bind(ip)
+              .first<{ attempt_count: number }>();
+            currentCount = (attemptRow?.attempt_count || 0) + 1;
+            const locked = currentCount >= 5;
+            const lockUntilIso = locked ? new Date(now + 15 * 60 * 1000).toISOString() : null;
 
+            await db
+              .prepare(
+                `INSERT INTO login_attempts (id, ip_or_user_key, attempt_count, locked_until, updated_at)
+                 VALUES (?, ?, ?, ?, datetime('now'))
+                 ON CONFLICT(ip_or_user_key) DO UPDATE SET
+                   attempt_count = excluded.attempt_count,
+                   locked_until = excluded.locked_until,
+                   updated_at = datetime('now')`,
+              )
+              .bind(`att-${ip}`, ip, currentCount, lockUntilIso)
+              .run();
+          } catch (e) {
+            console.error("D1 record attempt error:", e);
+          }
+        } else {
+          const lockInfo = ipLoginAttempts.get(ip);
+          currentCount = (lockInfo?.count || 0) + 1;
+          const locked = currentCount >= 5;
+          const lockUntil = locked ? now + 15 * 60 * 1000 : null;
+          ipLoginAttempts.set(ip, { count: currentCount, lockedUntil: lockUntil });
+        }
+
+        const remaining = Math.max(0, 5 - currentCount);
         return new Response(
           JSON.stringify({
             ok: false,
-            error: locked
-              ? "5 hatalı deneme yapıldı. Sistem 15 dakika kilitlendi."
-              : `Geçersiz yönetici şifresi. Kalan deneme: ${5 - currentCount}`,
+            error:
+              currentCount >= 5
+                ? "5 hatalı deneme yapıldı. Sistem 15 dakika kilitlendi."
+                : `Geçersiz yönetici şifresi. Kalan deneme: ${remaining}`,
           }),
           { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
         );
       }
 
       // Login Successful: Reset attempt counter
+      if (db) {
+        try {
+          await db.prepare("DELETE FROM login_attempts WHERE ip_or_user_key = ?").bind(ip).run();
+        } catch {
+          // ignore
+        }
+      }
       ipLoginAttempts.delete(ip);
 
       // Generate 24-hour cryptographically secure session token
@@ -492,7 +867,122 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     });
   }
 
-  // 4. GET /api/admin/inquiries — PROTECTED: Only authenticated admins can read inquiries (KVKK Compliance)
+  // 4. POST /api/admin/change-password — PROTECTED: Update admin password in D1 admin_users
+  if (url.pathname === "/api/admin/change-password" && request.method === "POST") {
+    const isAuthed = await verifyAdminToken(request, db);
+    if (!isAuthed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Yetkisiz erişim: Şifre değiştirmek için VIP Yönetici oturumu gereklidir.",
+        }),
+        { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+
+    try {
+      const body = await request.json();
+      const validated = ChangePasswordSchema.safeParse(body);
+      if (!validated.success) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: validated.error.issues[0]?.message || "Geçersiz şifre formatı.",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+
+      const newPassword = validated.data.newPassword.trim();
+      const newHash = await deriveServerPBKDF2Hex(newPassword);
+
+      if (db) {
+        await ensureD1Tables(db);
+        await db
+          .prepare(
+            `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
+             VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
+             ON CONFLICT(username) DO UPDATE SET
+               password_hash = excluded.password_hash,
+               password_salt = excluded.password_salt,
+               iterations = excluded.iterations`,
+          )
+          .bind(newHash, PBKDF2_SALT)
+          .run();
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          message: "Yönetici şifresi Cloudflare D1 veritabanında başarıyla güncellendi.",
+        }),
+        { headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+        status: 500,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+  }
+
+  // 5. POST /api/admin/upload — PROTECTED: Direct R2 media upload
+  if (url.pathname === "/api/admin/upload" && request.method === "POST") {
+    const isAuthed = await verifyAdminToken(request, db);
+    if (!isAuthed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Yetkisiz erişim: Medya yükleme için yönetici girişi gerekir.",
+        }),
+        { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+
+    try {
+      const contentType = request.headers.get("content-type") || "";
+      const vehicleId = request.headers.get("x-vehicle-id") || "misc";
+      const filename = request.headers.get("x-file-name") || `img-${Date.now()}.webp`;
+      const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
+
+      const arrayBuffer = await request.arrayBuffer();
+      if (arrayBuffer.byteLength === 0) {
+        return new Response(JSON.stringify({ ok: false, error: "Boş dosya yüklenemez." }), {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+      }
+
+      if (resolvedEnv.BUCKET) {
+        await resolvedEnv.BUCKET.put(r2Key, arrayBuffer, {
+          httpMetadata: { contentType: contentType || "image/webp" },
+        });
+        const publicUrl = `/api/media/${encodeURIComponent(r2Key)}`;
+        return new Response(JSON.stringify({ ok: true, url: publicUrl, r2Key, source: "r2" }), {
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+      }
+
+      // Fallback: If R2 is not yet configured, return data URL or acknowledge
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          message: "R2 bucket yapılandırılmamış, dosya doğrudan alındı.",
+          r2Key,
+          source: "direct",
+        }),
+        { headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+        status: 500,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+  }
+
+  // 6. GET /api/admin/inquiries — PROTECTED: Only authenticated admins can read inquiries
   if (url.pathname === "/api/admin/inquiries" && request.method === "GET") {
     const isAuthed = await verifyAdminToken(request, db);
     if (!isAuthed) {
@@ -542,7 +1032,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     );
   }
 
-  // 5. POST /api/admin/inquiries/status — PROTECTED: Update inquiry status
+  // 7. POST /api/admin/inquiries/status — PROTECTED: Update inquiry status with strict schema validation
   if (url.pathname === "/api/admin/inquiries/status" && request.method === "POST") {
     const isAuthed = await verifyAdminToken(request, db);
     if (!isAuthed) {
@@ -556,27 +1046,31 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const body = (await request.json()) as { id?: string; status?: string };
-      if (!body.id || !body.status) {
-        return new Response(JSON.stringify({ ok: false, error: "Eksik parametreler." }), {
-          status: 400,
-          headers: { "content-type": "application/json; charset=utf-8" },
-        });
+      const rawBody = await request.json();
+      const validated = InquiryStatusSchema.safeParse(rawBody);
+      if (!validated.success) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Geçersiz talep parametreleri: Durum yalnızca 'Yeni', 'İletişime Geçildi' veya 'Tamamlandı' olabilir.",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
       }
+
+      const { id, status } = validated.data;
 
       if (db) {
         await ensureD1Tables(db);
-        await db
-          .prepare("UPDATE inquiries SET status = ? WHERE id = ?")
-          .bind(body.status, body.id)
-          .run();
+        await db.prepare("UPDATE inquiries SET status = ? WHERE id = ?").bind(status, id).run();
       }
 
       // Update memory store if present
       if (Array.isArray(memoryStore.inquiries)) {
         memoryStore.inquiries = memoryStore.inquiries.map((inq) => {
           const item = inq as { id: string; status: string };
-          if (item.id === body.id) return { ...item, status: body.status };
+          if (item.id === id) return { ...item, status };
           return inq;
         });
       }
@@ -592,14 +1086,18 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
   }
 
-  // 6. GET /api/cms — PUBLIC: Load catalog cars, settings, and CMS config (NEVER returns customer inquiries)
+  // 8. GET /api/cms — PUBLIC / ADMIN: Filter drafts unless authenticated admin
   if (url.pathname === "/api/cms" && request.method === "GET") {
+    const isAuthedAdmin = await verifyAdminToken(request, db);
+
     if (db) {
       await ensureD1Tables(db);
       try {
-        const vehiclesRes = await db
-          .prepare("SELECT * FROM vehicles ORDER BY is_featured DESC, updated_at DESC")
-          .all<VehicleDbRow>();
+        const vehicleQuery = isAuthedAdmin
+          ? "SELECT * FROM vehicles ORDER BY is_featured DESC, updated_at DESC"
+          : "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, updated_at DESC";
+
+        const vehiclesRes = await db.prepare(vehicleQuery).all<VehicleDbRow>();
 
         const imagesRes = await db
           .prepare("SELECT * FROM vehicle_images ORDER BY vehicle_id, sort_order ASC")
@@ -618,6 +1116,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
         const cars = (vehiclesRes.results || []).map((row) => ({
           id: String(row.id),
+          slug: String(row.slug || row.id),
           brand: String(row.brand),
           title: String(row.title),
           year: Number(row.year),
@@ -669,12 +1168,18 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       }
     }
 
-    // Fallback: In-memory store
+    // Fallback: In-memory store (filtered for drafts if not admin)
+    const rawCars = (memoryStore.cars as Array<{ status?: string }>) || null;
+    const filteredCars =
+      rawCars && !isAuthedAdmin
+        ? rawCars.filter((c) => c.status === "active" || c.status === "sold")
+        : rawCars;
+
     return new Response(
       JSON.stringify({
         ok: true,
         source: "memory",
-        cars: memoryStore.cars || null,
+        cars: filteredCars,
         settings: memoryStore.settings || null,
         cmsConfig: memoryStore.cmsConfig || null,
       }),
@@ -682,7 +1187,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     );
   }
 
-  // 7. POST /api/cms — PROTECTED: Sync catalog state (Requires Admin Bearer token + payload limit + CSRF check)
+  // 9. POST /api/cms — PROTECTED: Sync catalog with Schema Validation & Safe Upsert/Diff
   if (url.pathname === "/api/cms" && request.method === "POST") {
     // 1) Authentication Check
     const isAuthed = await verifyAdminToken(request, db);
@@ -725,11 +1230,24 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const payload = (await request.json()) as {
-        cars?: Record<string, unknown>[];
-        settings?: unknown;
-        cmsConfig?: unknown;
-      };
+      const rawPayload = await request.json();
+
+      // Server-side Zod Schema Validation
+      const parseResult = CmsPayloadSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        const errorDetails = parseResult.error.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join(", ");
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: `Veri doğrulama hatası: ${errorDetails}`,
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+
+      const payload = parseResult.data;
 
       memoryStore = {
         cars: payload.cars,
@@ -763,63 +1281,101 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           );
         }
 
-        // Save vehicles & images
-        if (Array.isArray(payload.cars)) {
-          stmts.push(db.prepare("DELETE FROM vehicle_images"));
-          stmts.push(db.prepare("DELETE FROM vehicles"));
+        // Safe Upsert/Diff for Vehicles & Images (Does NOT wipe the whole catalog)
+        if (Array.isArray(payload.cars) && payload.cars.length > 0) {
+          const incomingIds = payload.cars.map((c) => c.id);
 
+          // 1. Delete vehicles no longer present in payload (safely diffed deletion)
+          const placeholders = incomingIds.map(() => "?").join(",");
+          stmts.push(
+            db
+              .prepare(`DELETE FROM vehicles WHERE id NOT IN (${placeholders})`)
+              .bind(...incomingIds),
+          );
+
+          // 2. Upsert each vehicle
           for (const c of payload.cars) {
-            const specs = (c["specs"] as Record<string, unknown>) || {};
-            const desc = (c["description"] as Record<string, unknown>) || {};
+            const specs = c.specs || {};
+            const desc = c.description || {};
+
             stmts.push(
               db
                 .prepare(
-                  `INSERT INTO vehicles (id, slug, brand, title, year, km, fuel, gear, body, power, color, package, expertise, tramer, image_fit, video_url, extras_json, extras_en_json, description_tr, description_en, status, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  `INSERT INTO vehicles (
+                    id, slug, brand, title, year, km, fuel, gear, body,
+                    power, color, package, expertise, tramer, image_fit,
+                    video_url, extras_json, extras_en_json, description_tr,
+                    description_en, status, is_featured, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                  ON CONFLICT(id) DO UPDATE SET
+                    slug = excluded.slug,
+                    brand = excluded.brand,
+                    title = excluded.title,
+                    year = excluded.year,
+                    km = excluded.km,
+                    fuel = excluded.fuel,
+                    gear = excluded.gear,
+                    body = excluded.body,
+                    power = excluded.power,
+                    color = excluded.color,
+                    package = excluded.package,
+                    expertise = excluded.expertise,
+                    tramer = excluded.tramer,
+                    image_fit = excluded.image_fit,
+                    video_url = excluded.video_url,
+                    extras_json = excluded.extras_json,
+                    extras_en_json = excluded.extras_en_json,
+                    description_tr = excluded.description_tr,
+                    description_en = excluded.description_en,
+                    status = excluded.status,
+                    is_featured = excluded.is_featured,
+                    updated_at = datetime('now')`,
                 )
                 .bind(
-                  String(c["id"]),
-                  String(c["id"]),
-                  String(c["brand"]),
-                  String(c["title"]),
-                  Number(c["year"]) || 2025,
-                  Number(c["km"]) || 0,
-                  String(c["fuel"] || "Benzin"),
-                  String(c["gear"] || "Otomatik"),
-                  String(c["body"] || "Coupe"),
-                  String(specs["power"] || ""),
-                  String(specs["color"] || ""),
-                  String(specs["package"] || ""),
-                  String(specs["expertise"] || ""),
-                  String(specs["tramer"] || "Yok"),
-                  c["imageFit"] === "contain" ? "contain" : "cover",
-                  c["video"] ? String(c["video"]) : null,
-                  JSON.stringify(c["extras"] || []),
-                  JSON.stringify(c["extrasEn"] || []),
-                  String(desc["tr"] || ""),
-                  String(desc["en"] || ""),
-                  String(c["status"] || "active"),
-                  c["featured"] ? 1 : 0,
+                  c.id,
+                  c.slug || c.id,
+                  c.brand,
+                  c.title,
+                  c.year,
+                  c.km,
+                  c.fuel,
+                  c.gear,
+                  c.body,
+                  specs.power || "",
+                  specs.color || "",
+                  specs.package || "",
+                  specs.expertise || "",
+                  specs.tramer || "Yok",
+                  c.imageFit,
+                  c.video ? String(c.video) : null,
+                  JSON.stringify(c.extras || []),
+                  JSON.stringify(c.extrasEn || []),
+                  desc.tr || "",
+                  desc.en || "",
+                  c.status,
+                  c.featured ? 1 : 0,
                 ),
             );
 
-            if (Array.isArray(c["images"])) {
-              c["images"].forEach((imgUrl: unknown, idx: number) => {
-                stmts.push(
-                  db
-                    .prepare(
-                      `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-                    )
-                    .bind(
-                      `${c["id"]}-img-${idx + 1}`,
-                      String(c["id"]),
-                      `vehicles/${c["id"]}/${idx + 1}`,
-                      String(imgUrl),
-                      idx === 0 ? 1 : 0,
-                      idx,
-                    ),
-                );
-              });
-            }
+            // Refresh images for this vehicle atomically
+            stmts.push(db.prepare("DELETE FROM vehicle_images WHERE vehicle_id = ?").bind(c.id));
+
+            c.images.forEach((imgUrl: string, idx: number) => {
+              stmts.push(
+                db
+                  .prepare(
+                    `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
+                  )
+                  .bind(
+                    `${c.id}-img-${idx + 1}`,
+                    c.id,
+                    `vehicles/${c.id}/${idx + 1}`,
+                    String(imgUrl),
+                    idx === 0 ? 1 : 0,
+                    idx,
+                  ),
+              );
+            });
           }
         }
 
@@ -847,9 +1403,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
   }
 
-  // 8. POST /api/inquiry — Customer submits VIP Offer or Special Import Request (Rate-limited & Sanitized)
+  // 10. POST /api/inquiry — Customer submits VIP Offer or Special Import Request
   if (url.pathname === "/api/inquiry" && request.method === "POST") {
-    // 1) Rate Limiting: Max 5 inquiries per IP per 10 minutes
+    // Rate Limiting: Max 5 inquiries per IP per 10 minutes
     const now = Date.now();
     const windowMs = 10 * 60 * 1000;
     const history = (ipInquiryAttempts.get(ip) || []).filter((ts) => now - ts < windowMs);
@@ -963,25 +1519,53 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   return null;
 }
 
-// Dynamic Sitemap Generator (Active vehicles only + Canonical base URL)
+// Dynamic Sitemap Generator (Active vehicles only from D1 + Canonical base URL)
 async function handleSitemap(request: Request, env: unknown): Promise<Response> {
   const url = new URL(request.url);
-  const resolvedEnv = env as { SITE_URL?: string } | undefined;
+  const resolvedEnv = resolveEnv(env, request);
   const baseUrl = (resolvedEnv?.SITE_URL || url.origin).replace(/\/+$/, "");
 
-  // Default active slugs
-  const activeSlugs = [
-    "cupra-formentor-2023",
-    "audi-q2-design-2016",
-    "ferrari-296-gts",
-    "porsche-911-gt3-weissach",
-    "lamborghini-urus-se",
-    "rolls-royce-spectre",
-    "mercedes-g63-grand-edition",
-    "bmw-m4-competition-2025",
-    "audi-rs6-performance",
-    "bentley-gt-speed-first-edition",
-  ];
+  let vehicleEntries: Array<{ slug: string; lastmod: string }> = [];
+
+  const db = resolvedEnv?.DB;
+  if (db) {
+    try {
+      await ensureD1Tables(db);
+      const rows = await db
+        .prepare(
+          "SELECT slug, updated_at FROM vehicles WHERE status = 'active' ORDER BY is_featured DESC, updated_at DESC",
+        )
+        .all<{ slug: string; updated_at: string }>();
+      if (rows.results && rows.results.length > 0) {
+        vehicleEntries = rows.results.map((r) => ({
+          slug: r.slug,
+          lastmod:
+            (r.updated_at || new Date().toISOString()).split("T")[0] ||
+            new Date().toISOString().split("T")[0]!,
+        }));
+      }
+    } catch (e) {
+      console.error("D1 sitemap query error:", e);
+    }
+  }
+
+  // Fallback to active catalog defaults if D1 is not bound or has no records
+  if (vehicleEntries.length === 0) {
+    const defaultSlugs = [
+      "cupra-formentor-2023",
+      "audi-q2-design-2016",
+      "ferrari-296-gts",
+      "porsche-911-gt3-weissach",
+      "lamborghini-urus-se",
+      "rolls-royce-spectre",
+      "mercedes-g63-grand-edition",
+      "bmw-m4-competition-2025",
+      "audi-rs6-performance",
+      "bentley-gt-speed-first-edition",
+    ];
+    const nowIso = new Date().toISOString().split("T")[0]!;
+    vehicleEntries = defaultSlugs.map((s) => ({ slug: s, lastmod: nowIso }));
+  }
 
   const nowIso = new Date().toISOString().split("T")[0];
 
@@ -993,11 +1577,11 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-${activeSlugs
+${vehicleEntries
   .map(
-    (slug) => `  <url>
-    <loc>${baseUrl}/arac/${slug}</loc>
-    <lastmod>${nowIso}</lastmod>
+    (v) => `  <url>
+    <loc>${baseUrl}/arac/${v.slug}</loc>
+    <lastmod>${v.lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>`,

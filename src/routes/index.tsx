@@ -38,9 +38,24 @@ import {
   type Car,
   type Lang,
   type SiteSettings,
+  type SiteCMSConfig,
 } from "@/lib/bycar";
+import { fetchLiveCmsData } from "@/lib/catalog-service";
 
 export const Route = createFileRoute("/")({
+  loader: async () => {
+    try {
+      const liveData = await fetchLiveCmsData();
+      return {
+        cars: (liveData.cars || []) as unknown as Car[],
+        settings: liveData.settings as unknown as SiteSettings | undefined,
+        cmsConfig: liveData.cmsConfig as unknown as SiteCMSConfig | undefined,
+      };
+    } catch (err) {
+      console.error("SSR index loader error:", err);
+    }
+    return null;
+  },
   head: () => ({
     meta: [
       { title: "ByCar — Exclusive Automotive | Luxury Without Borders" },
@@ -72,7 +87,8 @@ const input =
   "w-full bg-background border border-input px-4 py-3 text-sm outline-none focus:border-primary placeholder:text-muted-foreground";
 
 function Index() {
-  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore();
+  const loaderData = Route.useLoaderData();
+  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore(loaderData);
   const t = T[lang];
 
   const navItems = [

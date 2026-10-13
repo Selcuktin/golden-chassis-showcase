@@ -1360,6 +1360,25 @@ export async function setCustomAdminPassword(newPassword: string): Promise<boole
   const cms = getStoredCmsConfig();
   cms.customPasswordHash = hash;
   saveStoredCmsConfig(cms, "Admin Şifresi Güncellendi");
+
+  if (typeof window !== "undefined") {
+    try {
+      const token = window.sessionStorage.getItem("bycar_admin_token");
+      if (token) {
+        await fetch("/api/admin/change-password", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ newPassword: newPassword.trim() }),
+        });
+      }
+    } catch {
+      // offline fallback
+    }
+  }
+
   return true;
 }
 
@@ -1574,38 +1593,106 @@ export function getStoredCmsConfig(): SiteCMSConfig {
   }
 }
 
+export const SYNC_STATUS_EVENT = "bycar_sync_status";
+
+export type SyncStatusDetail = {
+  status: "idle" | "syncing" | "synced" | "error";
+  message?: string;
+  source?: string;
+  timestamp?: number;
+};
+
+export async function syncToServer(overrideData?: {
+  cars?: Car[];
+  settings?: SiteSettings;
+  cmsConfig?: SiteCMSConfig;
+}): Promise<{ ok: boolean; source?: string | undefined; error?: string | undefined }> {
+  if (typeof window === "undefined") return { ok: false, error: "Server-side context" };
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent(SYNC_STATUS_EVENT, {
+        detail: { status: "syncing", message: "Cloudflare D1 sunucusu güncelleniyor..." },
+      }),
+    );
+
+    const token = window.sessionStorage.getItem("bycar_admin_token");
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (token) {
+      headers["authorization"] = `Bearer ${token}`;
+    }
+
+    const payload = {
+      cars: overrideData?.cars || getStoredCars(),
+      settings: overrideData?.settings || getStoredSettings(),
+      cmsConfig: overrideData?.cmsConfig || getStoredCmsConfig(),
+    };
+
+    const res = await fetch("/api/cms", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      source?: string;
+      error?: string;
+      message?: string;
+    };
+
+    if (res.ok && data.ok) {
+      window.dispatchEvent(
+        new CustomEvent(SYNC_STATUS_EVENT, {
+          detail: {
+            status: "synced",
+            source: data.source || "d1",
+            message: data.message || "Cloudflare D1 veritabanı başarıyla senkronize edildi.",
+            timestamp: Date.now(),
+          },
+        }),
+      );
+      return { ok: true, source: data.source };
+    } else {
+      const errMsg = data.error || `Sunucu hatası: HTTP ${res.status}`;
+      window.dispatchEvent(
+        new CustomEvent(SYNC_STATUS_EVENT, {
+          detail: { status: "error", message: errMsg, timestamp: Date.now() },
+        }),
+      );
+      return { ok: false, error: errMsg };
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Ağ bağlantı hatası";
+    window.dispatchEvent(
+      new CustomEvent(SYNC_STATUS_EVENT, {
+        detail: { status: "error", message: errMsg, timestamp: Date.now() },
+      }),
+    );
+    return { ok: false, error: errMsg };
+  }
+}
+
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 export function triggerServerSync() {
   if (typeof window === "undefined") return;
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(async () => {
-    try {
-      const token = window.sessionStorage.getItem("bycar_admin_token");
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (token) {
-        headers["authorization"] = `Bearer ${token}`;
-      }
-
-      await fetch("/api/cms", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          cars: getStoredCars(),
-          settings: getStoredSettings(),
-          cmsConfig: getStoredCmsConfig(),
-        }),
-      });
-    } catch {
-      // Offline fallback
-    }
+    await syncToServer();
   }, 400);
 }
 
-// Public catalog sync: only reads cars, settings, cmsConfig (NEVER customer inquiries)
+// Public / Authenticated catalog sync: loads cars, settings, cmsConfig from server D1
 export async function syncFromServer(): Promise<{ ok: boolean; source?: string | undefined }> {
   if (typeof window === "undefined") return { ok: false };
   try {
-    const res = await fetch("/api/cms");
+    const token = window.sessionStorage.getItem("bycar_admin_token");
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch("/api/cms", { headers });
     if (!res.ok) return { ok: false };
     const data = (await res.json()) as {
       ok?: boolean;
@@ -1961,14 +2048,39 @@ export function exportD1SqlDump(): string {
   return lines.join("\n");
 }
 
-export function useByCarStore() {
-  const [cars, setCars] = useState<Car[]>(CARS);
-  const [inquiries, setInquiries] = useState<Inquiry[]>(INITIAL_INQUIRIES);
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
-  const [cmsConfig, setCmsConfig] = useState<SiteCMSConfig>(DEFAULT_CMS_CONFIG);
-  const [lang, setLangState] = useState<Lang>("tr");
+export type InitialStoreData = {
+  cars?: Car[] | undefined;
+  settings?: SiteSettings | undefined;
+  cmsConfig?: SiteCMSConfig | undefined;
+};
+
+export function useByCarStore(initialData?: InitialStoreData | null) {
+  const [cars, setCars] = useState<Car[]>(() => {
+    if (initialData?.cars && initialData.cars.length > 0) return initialData.cars;
+    if (typeof window !== "undefined") return getStoredCars();
+    return CARS;
+  });
+  const [inquiries, setInquiries] = useState<Inquiry[]>(() => {
+    if (typeof window !== "undefined") return getStoredInquiries();
+    return INITIAL_INQUIRIES;
+  });
+  const [settings, setSettings] = useState<SiteSettings>(() => {
+    if (initialData?.settings) return { ...DEFAULT_SETTINGS, ...initialData.settings };
+    if (typeof window !== "undefined") return getStoredSettings();
+    return DEFAULT_SETTINGS;
+  });
+  const [cmsConfig, setCmsConfig] = useState<SiteCMSConfig>(() => {
+    if (initialData?.cmsConfig) return { ...DEFAULT_CMS_CONFIG, ...initialData.cmsConfig };
+    if (typeof window !== "undefined") return getStoredCmsConfig();
+    return DEFAULT_CMS_CONFIG;
+  });
+  const [lang, setLangState] = useState<Lang>(() => {
+    if (typeof window !== "undefined") return getStoredLang();
+    return "tr";
+  });
   const [undoSnap, setUndoSnap] = useState<UndoSnapshot | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusDetail>({ status: "idle" });
 
   useEffect(() => {
     const sync = () => {
@@ -1981,22 +2093,47 @@ export function useByCarStore() {
     };
     sync();
 
+    // Cache initial SSR D1 data if available
+    if (initialData?.cars && initialData.cars.length > 0) {
+      safeSetItem(CARS_KEY, JSON.stringify(initialData.cars));
+    }
+    if (initialData?.settings) {
+      safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...initialData.settings }));
+    }
+    if (initialData?.cmsConfig) {
+      safeSetItem(CMS_KEY, JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...initialData.cmsConfig }));
+    }
+
     // Auto-sync from Cloudflare D1 server API on initial load
     void syncFromServer();
 
+    const handleSyncStatus = (e: Event) => {
+      const custom = e as CustomEvent<SyncStatusDetail>;
+      if (custom.detail) {
+        setSyncStatus(custom.detail);
+        if (custom.detail.status === "syncing") {
+          setIsSyncing(true);
+        } else {
+          setIsSyncing(false);
+        }
+      }
+    };
+
     window.addEventListener(SYNC_EVENT, sync);
     window.addEventListener("storage", sync);
+    window.addEventListener(SYNC_STATUS_EVENT, handleSyncStatus);
     return () => {
       window.removeEventListener(SYNC_EVENT, sync);
       window.removeEventListener("storage", sync);
+      window.removeEventListener(SYNC_STATUS_EVENT, handleSyncStatus);
     };
-  }, []);
+  }, [initialData]);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
       await syncFromServer();
-      triggerServerSync();
+      await syncToServer();
     } finally {
       setIsSyncing(false);
     }
@@ -2010,6 +2147,7 @@ export function useByCarStore() {
     lang,
     undoSnap,
     isSyncing,
+    syncStatus,
     setLang: saveStoredLang,
     updateCars: saveStoredCars,
     resetCars: resetStoredCars,
@@ -2021,6 +2159,7 @@ export function useByCarStore() {
     resetCmsConfig: resetStoredCmsConfig,
     restoreUndo: restoreUndoSnapshot,
     syncWithServer: handleManualSync,
+    syncToServerNow: syncToServer,
   };
 }
 

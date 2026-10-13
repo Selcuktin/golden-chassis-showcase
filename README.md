@@ -11,7 +11,7 @@
 - **Hedef Özel Alan Adı (Custom Domain):**  
   `https://bycarglobal.com` (ve `https://www.bycarglobal.com`)
 - **VIP Yönetim Paneli:**  
-  `/admin` (PBKDF2-HMAC-SHA256 600.000 iterasyon ve IP brute-force korumalı)
+  `/admin` (PBKDF2-HMAC-SHA256 100.000 iterasyon ve IP brute-force korumalı)
 
 ---
 
@@ -32,7 +32,7 @@
 2. **KVKK Veri İzolasyonu:**  
    Müşteri ad-soyad, telefon ve teklif bilgileri genel katalog sorgusundan (`GET /api/cms`) tamamen izole edilmiştir; sadece yetkili yönetici oturumuyla erişilebilir.
 3. **NIST Standartlarında PBKDF2 Şifreleme:**  
-   Yönetici girişi 600.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve IP bazlı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
+   Yönetici girişi Cloudflare Workers CPU sınırlarına optimize 100.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve D1 kalıcı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
 4. **Talep & CSRF Sınırları:**  
    Teklif formu (`POST /api/inquiry`) IP başına 10 dakikada en fazla 5 istekle sınırlandırılmış olup, gövde boyutları ve girdi temizliği sunucu tarafında doğrulanır.
 5. **SEO & Gerçek HTTP 404:**  
