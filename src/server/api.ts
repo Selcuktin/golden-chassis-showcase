@@ -459,7 +459,7 @@ export function sanitizeCmsConfig(config: unknown): Record<string, unknown> | nu
 export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
 export const PBKDF2_ITERATIONS = 100000;
 
-export const BUILD_GIT_COMMIT = "b36ad01";
+export const BUILD_GIT_COMMIT = "b30902a";
 
 export async function deriveServerPBKDF2HexWithParams(
   password: string,
