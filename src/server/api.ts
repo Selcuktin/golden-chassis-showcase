@@ -324,8 +324,9 @@ export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
 export const PBKDF2_ITERATIONS = 100000;
 
 // Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters)
+export const BUILD_GIT_COMMIT = "fc4a1f7";
 const PRECOMPUTED_ADMIN_HASHES = [
-  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a", // bybycar1453
+  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a", // Default bootstrap PBKDF2 hash
 ];
 
 export async function deriveServerPBKDF2HexWithParams(
@@ -632,7 +633,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       JSON.stringify({
         status: "ok",
         version: "1.0.0-production",
-        commit: resolvedEnv?.GIT_COMMIT || "main",
+        commit: resolvedEnv?.GIT_COMMIT || BUILD_GIT_COMMIT || "main",
         d1: isD1,
         r2: Boolean(resolvedEnv?.BUCKET),
         timestamp: new Date().toISOString(),
@@ -982,11 +983,33 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const contentType = request.headers.get("content-type") || "";
+      const rawContentType = request.headers.get("content-type") || "";
+      const contentType = rawContentType.toLowerCase().split(";")[0]?.trim() || "";
       const vehicleId = request.headers.get("x-vehicle-id") || "misc";
       const filename = request.headers.get("x-file-name") || `img-${Date.now()}.webp`;
       const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
       const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
+
+      const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB limit
+      const ALLOWED_MIME_TYPES = new Set([
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+      ]);
+
+      if (!ALLOWED_MIME_TYPES.has(contentType)) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG, WebP, AVIF veya GIF formatları yüklenebilir.",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
 
       const arrayBuffer = await request.arrayBuffer();
       if (arrayBuffer.byteLength === 0) {
@@ -996,26 +1019,62 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         });
       }
 
-      if (resolvedEnv.BUCKET) {
-        await resolvedEnv.BUCKET.put(r2Key, arrayBuffer, {
-          httpMetadata: { contentType: contentType || "image/webp" },
-        });
-        const publicUrl = `/api/media/${encodeURIComponent(r2Key)}`;
-        return new Response(JSON.stringify({ ok: true, url: publicUrl, r2Key, source: "r2" }), {
-          headers: { "content-type": "application/json; charset=utf-8" },
-        });
+      if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Dosya boyutu çok büyük (Maksimum 15 MB izin verilir).",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
       }
 
-      // Fallback: If R2 is not yet configured, return data URL or acknowledge
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          message: "R2 bucket yapılandırılmamış, dosya doğrudan alındı.",
-          r2Key,
-          source: "direct",
-        }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+      // Sniff binary magic bytes for image authenticity
+      const bytes = new Uint8Array(arrayBuffer.slice(0, 16));
+      const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+      const isPng =
+        bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+      const isGif =
+        bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
+      const isWebp =
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 && // 'RIFF'
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50; // 'WEBP'
+      const isAvif =
+        bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70; // 'ftyp'
+
+      if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Geçersiz dosya içeriği: Dosya imzası geçerli bir resim formatı ile eşleşmiyor.",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+
+      if (!resolvedEnv.BUCKET) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "R2 depolama alanı (BUCKET) sunucuda yapılandırılmamış. Medya yüklenemedi.",
+          }),
+          { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+
+      await resolvedEnv.BUCKET.put(r2Key, arrayBuffer, {
+        httpMetadata: { contentType: contentType || "image/webp" },
+      });
+      const publicUrl = `/api/media/${encodeURIComponent(r2Key)}`;
+      return new Response(JSON.stringify({ ok: true, url: publicUrl, r2Key, source: "r2" }), {
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
     } catch (err) {
       return new Response(JSON.stringify({ ok: false, error: String(err) }), {
         status: 500,

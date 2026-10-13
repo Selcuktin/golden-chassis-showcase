@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Seed: Varsayılan VIP Admin Kullanıcısı (Şifre: bybycar1453, Salt: bycar-global-vip-salt-2026, 100k PBKDF2 İterasyon)
+-- Seed: Varsayılan VIP Admin Kullanıcısı (PBKDF2 Hashli, Salt: bycar-global-vip-salt-2026, 100k İterasyon)
 INSERT OR IGNORE INTO admin_users (id, username, password_hash, password_salt, iterations)
 VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000);
 

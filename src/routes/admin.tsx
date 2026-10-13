@@ -47,7 +47,6 @@ import {
   syncInquiriesFromServer,
   translateTerm,
   useByCarStore,
-  verifyAdminPasswordPBKDF2,
   type Car,
   type CarStatus,
   type ImageFit,
@@ -242,8 +241,10 @@ function Admin() {
             }
           })
           .catch(() => {
-            const isA = window.sessionStorage.getItem("bycar_admin_auth") === "1";
-            setAuthed(isA);
+            // Fail-closed security: do not trust unverified client storage on network failure
+            window.sessionStorage.removeItem("bycar_admin_token");
+            window.sessionStorage.removeItem("bycar_admin_auth");
+            setAuthed(false);
           });
       } else {
         window.sessionStorage.removeItem("bycar_admin_auth");
@@ -458,9 +459,8 @@ function Admin() {
       for (const file of fileList) {
         if (!file.type.startsWith("image/")) continue;
         const webpDataUrl = await compressImageToWebP(file, 1600, 0.82);
-        let finalUrl = webpDataUrl;
 
-        // Try direct R2 upload via /api/admin/upload if authenticated
+        // Direct R2 upload via /api/admin/upload if authenticated
         if (token) {
           try {
             const blobRes = await fetch(webpDataUrl);
@@ -478,15 +478,23 @@ function Admin() {
             if (uploadRes.ok) {
               const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
               if (resJson.ok && resJson.url) {
-                finalUrl = resJson.url;
+                processed.push(resJson.url);
+              } else {
+                console.error("R2 upload error response:", resJson);
+                alert("Görsel sunucuya yüklenemedi. Lütfen tekrar deneyin.");
               }
+            } else {
+              const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+              console.error("R2 upload HTTP error:", uploadRes.status, errData);
+              alert(errData.error || `Görsel yüklenemedi (HTTP ${uploadRes.status}).`);
             }
           } catch (uploadErr) {
-            console.warn("R2 upload fallback to dataUrl:", uploadErr);
+            console.error("R2 upload network error:", uploadErr);
+            alert("Görsel yüklenirken ağ hatası oluştu. Lütfen bağlantınızı kontrol edin.");
           }
+        } else {
+          alert("Görsel yüklemek için VIP Yönetici girişi yapmalısınız.");
         }
-
-        processed.push(finalUrl);
       }
       setImages((prev) => {
         const next = [...prev];

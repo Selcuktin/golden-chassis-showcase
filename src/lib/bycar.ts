@@ -1595,21 +1595,27 @@ export type UndoSnapshot = {
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
 const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
 const ADMIN_PBKDF2_ITERATIONS = 100000;
-let cachedExpectedHashes: string[] | null = null;
+export const DEFAULT_ADMIN_PBKDF2_HASH =
+  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a";
 
 export async function derivePBKDF2Hex(password: string): Promise<string> {
-  if (typeof window === "undefined" || !window.crypto?.subtle) {
-    return password === "bybycar1453" ? "VALID_FALLBACK" : "INVALID";
+  const subtleCrypto =
+    (typeof globalThis !== "undefined" && globalThis.crypto?.subtle) ||
+    (typeof window !== "undefined" && window.crypto?.subtle);
+
+  if (!subtleCrypto) {
+    // Fail secure: never compare against plaintext fallback
+    return "UNSUPPORTED_CRYPTO";
   }
   const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
+  const keyMaterial = await subtleCrypto.importKey(
     "raw",
     enc.encode(password),
     { name: "PBKDF2" },
     false,
     ["deriveBits"],
   );
-  const bits = await window.crypto.subtle.deriveBits(
+  const bits = await subtleCrypto.deriveBits(
     {
       name: "PBKDF2",
       salt: enc.encode(ADMIN_PBKDF2_SALT),
@@ -1627,13 +1633,13 @@ export async function derivePBKDF2Hex(password: string): Promise<string> {
 export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean> {
   const customHash = getStoredCmsConfig().customPasswordHash;
   const candidate = await derivePBKDF2Hex(input.trim());
+  if (candidate === "UNSUPPORTED_CRYPTO") {
+    return false;
+  }
   if (customHash && candidate === customHash) {
     return true;
   }
-  if (!cachedExpectedHashes) {
-    cachedExpectedHashes = await Promise.all([derivePBKDF2Hex("bybycar1453")]);
-  }
-  return cachedExpectedHashes.includes(candidate);
+  return candidate === DEFAULT_ADMIN_PBKDF2_HASH;
 }
 
 export async function setCustomAdminPassword(newPassword: string): Promise<boolean> {
