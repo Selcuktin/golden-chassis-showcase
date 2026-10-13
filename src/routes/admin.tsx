@@ -607,9 +607,9 @@ function Admin() {
         <div className="w-full max-w-md border border-border bg-card p-8 shadow-2xl">
           <div className="mb-6 flex flex-col items-center text-center">
             <img
-              src="/bycar-logo.jpg"
+              src="/bycar-logo-dark.png"
               alt="ByCar"
-              className="mb-4 h-16 w-16 rounded-full border border-primary object-cover"
+              className="mb-4 h-11 w-auto object-contain"
             />
             <p className="text-[10px] uppercase tracking-[0.4em] text-primary">
               BYCAR GLOBAL · PBKDF2 KORUMALI
@@ -696,15 +696,15 @@ function Admin() {
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
           <div className="flex items-center gap-3">
             <img
-              src="/bycar-logo.jpg"
-              alt="ByCar"
-              className="h-12 w-12 rounded-full border border-primary object-cover"
+              src="/bycar-logo-dark.png"
+              alt="ByCar Exclusive"
+              className="h-10 w-auto object-contain"
             />
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.35em] text-primary">
+            <div className="border-l border-border pl-3">
+              <p className="text-[10px] uppercase tracking-[0.35em] text-primary font-medium">
                 BYCAR GLOBAL · VIP ADMIN
               </p>
-              <h1 className="font-display text-3xl font-semibold md:text-4xl">
+              <h1 className="font-display text-2xl font-semibold md:text-3xl">
                 Koleksiyon, Filtre & Talep Yönetimi
               </h1>
             </div>

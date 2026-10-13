@@ -9,7 +9,9 @@ import {
   Phone,
   Play,
   Share2,
+  ZoomIn,
 } from "lucide-react";
+import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   CARS,
   PHONE_RAW,
@@ -64,6 +66,7 @@ function VehicleDetailPage() {
   const [img, setImg] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const car = cars.find((c) => c.id === slug && c.status !== "draft");
 
@@ -193,25 +196,45 @@ function VehicleDetailPage() {
                   autoPlay
                   className="aspect-[16/9] w-full bg-black object-contain"
                 />
-              ) : car.imageFit === "contain" ? (
-                <div className="relative aspect-[16/9] w-full overflow-hidden">
-                  <div
-                    className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
-                    style={{ backgroundImage: `url(${car.images[img]})` }}
-                  />
-                  <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
-                  <img
-                    src={car.images[img]}
-                    alt={`${car.title} - ${img + 1}`}
-                    className="relative z-10 h-full w-full object-contain p-1"
-                  />
-                </div>
               ) : (
-                <img
-                  src={car.images[img]}
-                  alt={`${car.title} - ${img + 1}`}
-                  className="aspect-[16/9] w-full object-cover"
-                />
+                <div
+                  onClick={() => setLightboxOpen(true)}
+                  className="relative aspect-[16/9] w-full overflow-hidden cursor-zoom-in group select-none"
+                >
+                  {car.imageFit === "contain" ? (
+                    <>
+                      <div
+                        className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
+                        style={{ backgroundImage: `url(${car.images[img]})` }}
+                      />
+                      <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
+                      <img
+                        src={car.images[img]}
+                        alt={`${car.title} - ${img + 1}`}
+                        className="relative z-10 h-full w-full object-contain p-1"
+                      />
+                    </>
+                  ) : (
+                    <img
+                      src={car.images[img]}
+                      alt={`${car.title} - ${img + 1}`}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    />
+                  )}
+
+                  {/* Zoom Badge Trigger */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxOpen(true);
+                    }}
+                    aria-label="Tam Ekran Büyüt"
+                    className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-full border border-white/20 bg-black/75 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-md transition hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-lg"
+                  >
+                    <ZoomIn className="h-3 w-3 text-primary" />
+                    <span>{lang === "tr" ? "Büyüt" : "Zoom"}</span>
+                  </button>
+                </div>
               )}
 
               {!showVideo && car.images.length > 1 && (
@@ -439,6 +462,17 @@ function VehicleDetailPage() {
           </div>
         )}
       </main>
+
+      {/* FULLSCREEN PHOTO LIGHTBOX MODAL */}
+      {lightboxOpen && (
+        <ImageLightboxModal
+          isOpen={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+          images={car.images}
+          initialIndex={img}
+          title={`${car.year} ${car.title}`}
+        />
+      )}
     </div>
   );
 }

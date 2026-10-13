@@ -21,8 +21,10 @@ import {
   Share2,
   ExternalLink,
   Star,
+  ZoomIn,
 } from "lucide-react";
 import hero from "@/assets/hero.jpg";
+import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   BRANDS,
   INSTAGRAM,
@@ -108,6 +110,13 @@ function Index() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [showKvkk, setShowKvkk] = useState(false);
   const [cookieAccepted, setCookieAccepted] = useState(true);
+  const [lightboxCar, setLightboxCar] = useState<Car | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const openLightbox = (c: Car, idx: number = 0) => {
+    setLightboxCar(c);
+    setLightboxIndex(idx);
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth >= 768) {
@@ -299,15 +308,14 @@ function Index() {
       {/* HEADER */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-          <a href="#" className="flex items-center gap-3 leading-none">
+          <a href="#" className="flex items-center gap-3 leading-none transition-opacity hover:opacity-90">
             <img
-              src="/bycar-logo.jpg"
-              alt="ByCar Global"
-              className="h-10 w-10 rounded-full border border-primary/50 object-cover"
+              src="/bycar-logo-dark.png"
+              alt="ByCar Exclusive Automotive"
+              className="h-8 sm:h-9 w-auto object-contain"
             />
-            <div>
-              <div className="font-display text-2xl font-bold tracking-[0.3em]">BYCAR</div>
-              <div className="text-[9px] tracking-[0.35em] text-primary">
+            <div className="hidden sm:block border-l border-white/20 pl-3">
+              <div className="text-[9px] tracking-[0.35em] text-primary uppercase font-medium">
                 EXCLUSIVE AUTOMOTIVE
               </div>
             </div>
@@ -420,22 +428,22 @@ function Index() {
       )}
 
       {/* HERO SECTION */}
-      {/* 1) MOBILE HERO (< md): Essin Optik inspired luxury showcase */}
-      <section className="relative overflow-hidden pt-28 pb-12 md:hidden">
+      {/* 1) MOBILE HERO (< md): Luxury vehicle spotlight */}
+      <section className="relative overflow-hidden pt-24 pb-8 md:hidden">
         {/* Ambient Top Glow */}
         <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-full h-80 bg-[radial-gradient(ellipse_at_top,rgba(212,175,55,0.18),transparent_70%)]" />
 
         <div className="relative mx-auto max-w-xl px-4 text-center">
           {/* Luxury Emblem Pill */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 shadow-[0_0_20px_rgba(212,175,55,0.2)] backdrop-blur-md">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-primary">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1 shadow-[0_0_20px_rgba(212,175,55,0.2)] backdrop-blur-md">
+            <Sparkles className="h-3 w-3 text-primary" />
+            <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
               {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "BYCAR EXCLUSIVE SHOWROOM"}
             </span>
           </div>
 
-          {/* Headline */}
-          <h1 className="mt-4 font-display text-3xl font-semibold tracking-tight leading-[1.18]">
+          {/* Headline (Refined slightly smaller for mobile balance) */}
+          <h1 className="mt-3 font-display text-2xl sm:text-3xl font-semibold tracking-tight leading-[1.18]">
             <span className="block text-foreground">
               {lang === "tr" ? "Kusursuzluğun" : "The Definition of"}
             </span>
@@ -445,30 +453,30 @@ function Index() {
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground/90">
+          <p className="mt-2.5 text-[11px] sm:text-xs leading-relaxed text-muted-foreground/85">
             {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
           </p>
 
           {/* CTA Buttons */}
-          <div className="mt-6 flex flex-col gap-2.5">
+          <div className="mt-4 flex flex-col gap-2">
             <a
               href="#koleksiyon"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f7e7a8] via-primary to-[#a9822a] px-7 py-3 text-xs font-semibold uppercase tracking-wider text-black shadow-[0_8px_30px_-8px_rgba(212,175,55,0.7)] active:scale-95 transition-all"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f7e7a8] via-primary to-[#a9822a] px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-black shadow-[0_8px_30px_-8px_rgba(212,175,55,0.7)] active:scale-95 transition-all"
             >
               <Sparkles className="h-3.5 w-3.5" />
               {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
             </a>
             <a
               href="#ithalat"
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/50 bg-primary/10 px-7 py-3 text-xs font-semibold uppercase tracking-wider text-primary backdrop-blur-md active:scale-95 transition-all"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/50 bg-primary/10 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-primary backdrop-blur-md active:scale-95 transition-all"
             >
               {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
             </a>
           </div>
 
-          {/* Framed Vehicle Spotlight Card */}
-          <div className="relative mt-7 overflow-hidden rounded-2xl border border-primary/30 bg-card/70 p-2 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-black">
+          {/* Framed Vehicle Spotlight Card - Enlarged & Badges Removed */}
+          <div className="relative -mx-2 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl bg-black">
               <img
                 src={
                   cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
@@ -480,15 +488,7 @@ function Index() {
                 height={1088}
                 className="h-full w-full object-cover object-center"
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
-              <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[9px] tracking-wider uppercase font-medium">
-                <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-black/80 px-2.5 py-1 text-primary backdrop-blur-md">
-                  <ShieldCheck className="h-2.5 w-2.5" /> VIP SHOWROOM
-                </span>
-                <span className="rounded-full border border-border/80 bg-black/80 px-2.5 py-1 text-foreground/90 backdrop-blur-md">
-                  BURSA NİLÜFER
-                </span>
-              </div>
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
             </div>
           </div>
         </div>
@@ -684,10 +684,9 @@ function Index() {
                 key={c.id}
                 className="group relative flex flex-col overflow-hidden border border-border bg-card transition hover:border-primary/60"
               >
-                <Link
-                  to="/arac/$slug"
-                  params={{ slug: c.id }}
-                  className="relative block aspect-[16/10] w-full cursor-pointer overflow-hidden bg-black text-left"
+                <div
+                  onClick={() => openLightbox(c, 0)}
+                  className="relative block aspect-[16/10] w-full cursor-zoom-in overflow-hidden bg-black text-left select-none"
                 >
                   {fitMode === "contain" ? (
                     <>
@@ -730,6 +729,19 @@ function Index() {
                     </div>
                   )}
 
+                  {/* Zoom Lightbox Trigger Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openLightbox(c, 0);
+                    }}
+                    aria-label={lang === "tr" ? "Fotoğrafları Büyüt" : "Enlarge Photos"}
+                    className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1 rounded-full border border-white/20 bg-black/75 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-md transition hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-lg"
+                  >
+                    <ZoomIn className="h-3 w-3 text-primary" />
+                    <span>{lang === "tr" ? "Büyüt" : "Zoom"}</span>
+                  </button>
+
                   {/* Angle / Video Badge (100% Localized TR / EN) */}
                   <div className="absolute bottom-2.5 right-2.5 z-20 flex items-center gap-1.5 bg-background/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-primary backdrop-blur-sm">
                     <span>
@@ -751,7 +763,7 @@ function Index() {
                       </span>
                     </div>
                   )}
-                </Link>
+                </div>
 
                 <div className="flex flex-1 flex-col justify-between p-5">
                   <div>
@@ -907,7 +919,7 @@ function Index() {
             <div className="flex flex-col items-center lg:col-span-4">
               <div className="relative overflow-hidden rounded-full border-2 border-primary/60 p-2 shadow-gold">
                 <img
-                  src="/bycar-logo.jpg"
+                  src="/favicon.png"
                   alt="Burak Yılmaz — ByCar Global"
                   className="h-56 w-56 rounded-full object-cover md:h-64 md:w-64"
                 />
@@ -990,13 +1002,12 @@ function Index() {
           <div>
             <div className="flex items-center gap-3">
               <img
-                src="/bycar-logo.jpg"
-                alt="ByCar"
-                className="h-10 w-10 rounded-full border border-primary/50 object-cover"
+                src="/bycar-logo-dark.png"
+                alt="ByCar Exclusive Automotive"
+                className="h-9 w-auto object-contain"
               />
-              <div>
-                <div className="font-display text-2xl font-bold tracking-[0.3em]">BYCAR</div>
-                <div className="text-[9px] tracking-[0.3em] text-primary">
+              <div className="border-l border-white/20 pl-3">
+                <div className="text-[9px] tracking-[0.3em] text-primary uppercase font-medium">
                   EXCLUSIVE AUTOMOTIVE
                 </div>
               </div>
@@ -1155,6 +1166,17 @@ function Index() {
             ))}
           </div>
         </Modal>
+      )}
+
+      {/* FULLSCREEN PHOTO LIGHTBOX MODAL */}
+      {lightboxCar && (
+        <ImageLightboxModal
+          isOpen={Boolean(lightboxCar)}
+          onClose={() => setLightboxCar(null)}
+          images={lightboxCar.images}
+          initialIndex={lightboxIndex}
+          title={`${lightboxCar.year} ${lightboxCar.title}`}
+        />
       )}
     </div>
   );
@@ -1443,6 +1465,7 @@ function DetailModal({
   const [img, setImg] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isSold = Boolean(car.sold || car.status === "sold");
 
   const defaultTab = (() => {
@@ -1521,25 +1544,45 @@ function DetailModal({
                 autoPlay
                 className="aspect-[16/9] w-full bg-black object-contain"
               />
-            ) : car.imageFit === "contain" ? (
-              <div className="relative aspect-[16/9] w-full overflow-hidden">
-                <div
-                  className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
-                  style={{ backgroundImage: `url(${car.images[img]})` }}
-                />
-                <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
-                <img
-                  src={car.images[img]}
-                  alt={`${car.title} - Açı ${img + 1}`}
-                  className="relative z-10 h-full w-full object-contain p-1"
-                />
-              </div>
             ) : (
-              <img
-                src={car.images[img]}
-                alt={`${car.title} - Açı ${img + 1}`}
-                className="aspect-[16/9] w-full object-cover"
-              />
+              <div
+                onClick={() => setLightboxOpen(true)}
+                className="relative aspect-[16/9] w-full overflow-hidden cursor-zoom-in group select-none"
+              >
+                {car.imageFit === "contain" ? (
+                  <>
+                    <div
+                      className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
+                      style={{ backgroundImage: `url(${car.images[img]})` }}
+                    />
+                    <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
+                    <img
+                      src={car.images[img]}
+                      alt={`${car.title} - Açı ${img + 1}`}
+                      className="relative z-10 h-full w-full object-contain p-1"
+                    />
+                  </>
+                ) : (
+                  <img
+                    src={car.images[img]}
+                    alt={`${car.title} - Açı ${img + 1}`}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                )}
+
+                {/* Zoom Badge Trigger */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxOpen(true);
+                  }}
+                  aria-label="Tam Ekran Büyüt"
+                  className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-full border border-white/20 bg-black/75 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-md transition hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-lg"
+                >
+                  <ZoomIn className="h-3 w-3 text-primary" />
+                  <span>{lang === "tr" ? "Büyüt" : "Zoom"}</span>
+                </button>
+              </div>
             )}
 
             {!showVideo && car.images.length > 1 && (
@@ -1754,6 +1797,17 @@ function DetailModal({
             ))}
           </div>
         </div>
+      )}
+
+      {/* FULLSCREEN PHOTO LIGHTBOX MODAL */}
+      {lightboxOpen && (
+        <ImageLightboxModal
+          isOpen={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+          images={car.images}
+          initialIndex={img}
+          title={`${car.year} ${car.title}`}
+        />
       )}
     </Modal>
   );
