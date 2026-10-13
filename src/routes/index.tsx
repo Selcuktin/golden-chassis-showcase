@@ -114,13 +114,6 @@ function Index() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [showKvkk, setShowKvkk] = useState(false);
   const [cookieAccepted, setCookieAccepted] = useState(true);
-  const [lightboxCar, setLightboxCar] = useState<Car | null>(null);
-  const [lightboxIndex, setLightboxIndex] = useState(0);
-
-  const openLightbox = (c: Car, idx: number = 0) => {
-    setLightboxCar(c);
-    setLightboxIndex(idx);
-  };
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth >= 768) {
@@ -683,9 +676,10 @@ function Index() {
                 key={c.id}
                 className="group relative flex flex-col overflow-hidden border border-border bg-card transition hover:border-primary/60"
               >
-                <div
-                  onClick={() => openLightbox(c, 0)}
-                  className="relative block aspect-[16/10] w-full cursor-zoom-in overflow-hidden bg-black text-left select-none"
+                <Link
+                  to="/arac/$slug"
+                  params={{ slug: c.id }}
+                  className="relative block aspect-[16/10] w-full cursor-pointer overflow-hidden bg-black text-left select-none"
                 >
                   {fitMode === "contain" ? (
                     <>
@@ -728,19 +722,6 @@ function Index() {
                     </div>
                   )}
 
-                  {/* Zoom Lightbox Trigger Button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openLightbox(c, 0);
-                    }}
-                    aria-label={lang === "tr" ? "Fotoğrafları Büyüt" : "Enlarge Photos"}
-                    className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1 rounded-full border border-white/20 bg-black/75 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-md transition hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-lg"
-                  >
-                    <ZoomIn className="h-3 w-3 text-primary" />
-                    <span>{lang === "tr" ? "Büyüt" : "Zoom"}</span>
-                  </button>
-
                   {/* Angle / Video Badge (100% Localized TR / EN) */}
                   <div className="absolute bottom-2.5 right-2.5 z-20 flex items-center gap-1.5 bg-background/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-primary backdrop-blur-sm">
                     <span>
@@ -762,7 +743,7 @@ function Index() {
                       </span>
                     </div>
                   )}
-                </div>
+                </Link>
 
                 <div className="flex flex-1 flex-col justify-between p-5">
                   <div>
@@ -1159,17 +1140,6 @@ function Index() {
             ))}
           </div>
         </Modal>
-      )}
-
-      {/* FULLSCREEN PHOTO LIGHTBOX MODAL */}
-      {lightboxCar && (
-        <ImageLightboxModal
-          isOpen={Boolean(lightboxCar)}
-          onClose={() => setLightboxCar(null)}
-          images={lightboxCar.images}
-          initialIndex={lightboxIndex}
-          title={`${lightboxCar.year} ${lightboxCar.title}`}
-        />
       )}
     </div>
   );
