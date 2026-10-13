@@ -130,13 +130,66 @@
     border-color: var(--color-border);
   }
 
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
   }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+  }
+
+  button, a, input, select, textarea {
+    touch-action: manipulation;
+  }
+}
+
+/* Custom VIP Dark Gold Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(10, 10, 10, 0.75);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.65);
+}
+
+/* No-scrollbar utility for smooth mobile carousel swiping */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe-area insets utilities for iOS / Android */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+.pt-safe {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+}
+.mb-safe {
+  margin-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
 @utility bg-gold { background-image: var(--gradient-gold); }
 @utility text-gold { background-image: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
 @utility shadow-gold { box-shadow: var(--shadow-gold); }
-@layer base { body { font-family: var(--font-sans); } h1,h2,h3 { font-family: var(--font-display); } html { scroll-behavior: smooth; } }
+

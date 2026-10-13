@@ -178,10 +178,10 @@ function VehicleDetailPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-10">
-        <div className="grid gap-10 lg:grid-cols-12">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10 pb-28 lg:pb-12">
+        <div className="grid gap-10 lg:grid-cols-12 min-w-0">
           {/* Left: Multi-Angle Gallery */}
-          <div className="lg:col-span-7">
+          <div className="min-w-0 lg:col-span-7">
             <div className="relative mb-3 overflow-hidden border border-border bg-black">
               {showVideo && car.video ? (
                 <video
@@ -192,16 +192,15 @@ function VehicleDetailPage() {
                 />
               ) : car.imageFit === "contain" ? (
                 <div className="relative aspect-[16/10] w-full overflow-hidden">
-                  <img
-                    src={car.images[img]}
-                    alt=""
-                    aria-hidden="true"
-                    className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl brightness-50"
+                  <div
+                    className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
+                    style={{ backgroundImage: `url(${car.images[img]})` }}
                   />
+                  <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
                   <img
                     src={car.images[img]}
                     alt={`${car.title} - ${img + 1}`}
-                    className="relative z-10 h-full w-full object-contain"
+                    className="relative z-10 h-full w-full object-contain p-1"
                   />
                 </div>
               ) : (
@@ -216,13 +215,15 @@ function VehicleDetailPage() {
                 <>
                   <button
                     onClick={prevImg}
-                    className="absolute left-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground hover:border-primary hover:text-primary"
+                    aria-label="Önceki Açı"
+                    className="absolute left-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground hover:border-primary hover:text-primary active:scale-95 transition"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
                     onClick={nextImg}
-                    className="absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground hover:border-primary hover:text-primary"
+                    aria-label="Sonraki Açı"
+                    className="absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer border border-border bg-background/80 p-2 text-foreground hover:border-primary hover:text-primary active:scale-95 transition"
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -230,7 +231,7 @@ function VehicleDetailPage() {
               )}
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-2">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
               {car.images.map((s, i) => (
                 <button
                   key={i}
@@ -262,7 +263,7 @@ function VehicleDetailPage() {
           </div>
 
           {/* Right: Specs & Offer */}
-          <div className="lg:col-span-5">
+          <div className="min-w-0 lg:col-span-5">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
               <button
@@ -393,6 +394,26 @@ function VehicleDetailPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Mobile Sticky Bottom Action Bar */}
+        {!isSold && (
+          <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2.5 border-t border-border bg-background/95 p-3 pb-safe backdrop-blur-md shadow-2xl lg:hidden">
+            <a
+              href={waLink(car.title)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 bg-gold py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"
+            >
+              <MessageCircle className="h-4 w-4" /> {t.waQuote}
+            </a>
+            <a
+              href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
+              className="flex items-center justify-center gap-1.5 border border-primary bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-transform"
+            >
+              <Phone className="h-4 w-4" /> {t.call}
+            </a>
           </div>
         )}
       </main>

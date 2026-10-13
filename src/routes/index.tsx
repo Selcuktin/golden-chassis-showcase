@@ -125,6 +125,18 @@ function Index() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
   const visibleCars = useMemo(
     () => cars.filter((c) => c.status !== "draft"),
     [cars],
@@ -341,51 +353,75 @@ function Index() {
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Menü"
-              className="inline-flex cursor-pointer items-center justify-center border border-border p-2 text-foreground transition hover:border-primary hover:text-primary lg:hidden"
+              className="inline-flex cursor-pointer items-center justify-center border border-border p-2 text-foreground transition hover:border-primary hover:text-primary lg:hidden active:scale-95"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
         </div>
-
-        {/* MOBILE VIP DRAWER MENU */}
-        {mobileMenuOpen && (
-          <div className="border-t border-border bg-background/95 px-4 py-5 backdrop-blur-md lg:hidden">
-            <nav className="flex flex-col space-y-3 text-xs uppercase tracking-widest">
-              {navItems.map((n) => (
-                <a
-                  key={n.id}
-                  href={`#${n.id}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="border-b border-border/50 pb-2 text-foreground transition hover:text-primary"
-                >
-                  {n.label}
-                </a>
-              ))}
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <a
-                  href={waLink()}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${goldBtn} flex-1 !py-2.5 !text-xs`}
-                >
-                  <MessageCircle className="h-4 w-4" /> VIP WhatsApp
-                </a>
-                <Link
-                  to="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="inline-flex items-center gap-1.5 border border-border px-4 py-2.5 text-xs text-primary"
-                >
-                  <Lock className="h-3.5 w-3.5" /> Admin
-                </Link>
-              </div>
-            </nav>
-          </div>
-        )}
       </header>
 
+      {/* MOBILE VIP FULL-HEIGHT DRAWER MENU */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-x-0 top-[64px] bottom-0 z-50 flex flex-col justify-between border-t border-border/80 bg-background/98 p-6 backdrop-blur-2xl lg:hidden overflow-y-auto pb-safe">
+          <nav className="flex flex-col space-y-3 text-sm uppercase tracking-[0.25em]">
+            {navItems.map((n) => (
+              <a
+                key={n.id}
+                href={`#${n.id}`}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-between border-b border-border/40 py-3.5 text-foreground transition hover:text-primary active:text-primary"
+              >
+                <span className="font-medium">{n.label}</span>
+                <span className="text-xs text-primary/60">→</span>
+              </a>
+            ))}
+          </nav>
+
+          {/* Quick Contact & VIP Concierge Cards */}
+          <div className="mt-8 space-y-3 pt-6 border-t border-border/60">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-primary">
+              {lang === "tr" ? "VIP İletişim & Konum" : "VIP Concierge & Location"}
+            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <a
+                href={waLink()}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 bg-gold py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"
+              >
+                <MessageCircle className="h-4 w-4" /> WhatsApp
+              </a>
+              <a
+                href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
+                className="flex items-center justify-center gap-2 border border-primary/60 bg-card py-3 text-xs font-semibold uppercase tracking-wider text-primary active:scale-[0.98] transition-transform"
+              >
+                <Phone className="h-4 w-4" /> {lang === "tr" ? "Hemen Ara" : "Call Now"}
+              </a>
+            </div>
+            <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+              <a
+                href={cmsConfig.contact.mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 hover:text-primary"
+              >
+                <ExternalLink className="h-3.5 w-3.5 text-primary" /> Bursa Nilüfer
+              </a>
+              <Link
+                to="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                <Lock className="h-3.5 w-3.5" /> VIP Admin
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HERO */}
-      <section className="relative flex min-h-screen items-end overflow-hidden">
+      <section className="relative flex min-h-[92svh] sm:min-h-screen items-end overflow-hidden pt-28 sm:pt-36">
         <img
           src={cmsConfig.hero.bgImage || hero}
           alt="ByCar hypercar"
@@ -394,21 +430,21 @@ function Index() {
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-background/15" />
-        <div className="relative mx-auto w-full max-w-7xl px-4 pb-24">
-          <p className="mb-4 text-xs tracking-[0.5em] text-primary">
+        <div className="relative mx-auto w-full max-w-7xl px-4 pb-16 sm:pb-24">
+          <p className="mb-3 text-[11px] sm:text-xs tracking-[0.5em] text-primary">
             {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "EXCLUSIVE AUTOMOTIVE"}
           </p>
-          <h1 className="max-w-3xl text-5xl font-semibold leading-none md:text-8xl">
+          <h1 className="max-w-3xl text-4xl sm:text-6xl md:text-8xl font-semibold leading-tight tracking-tight">
             {(lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle}
           </h1>
-          <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+          <p className="mt-4 sm:mt-6 max-w-xl text-base sm:text-lg text-muted-foreground">
             {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <a href="#koleksiyon" className={goldBtn}>
+          <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
+            <a href="#koleksiyon" className={`${goldBtn} w-full sm:w-auto text-center justify-center`}>
               {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
             </a>
-            <a href="#ithalat" className={outlineBtn}>
+            <a href="#ithalat" className={`${outlineBtn} w-full sm:w-auto text-center justify-center`}>
               {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
             </a>
           </div>
@@ -434,20 +470,20 @@ function Index() {
       )}
 
       {/* COLLECTION */}
-      <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
+      <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:py-24">
         <SectionTitle kicker="Collection" title={t.collection} />
 
-        {/* Hybrid Brand Pills + Filter Panel Toggle */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
+        {/* Hybrid Brand Pills (Horizontal Carousel on Mobile) + Filter Panel Toggle */}
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap py-1">
             {["", ...hybridBrands].map((b) => (
               <button
                 key={b}
                 onClick={() => setBrand(b)}
-                className={`cursor-pointer border px-4 py-2 text-xs uppercase tracking-wider transition ${
+                className={`shrink-0 cursor-pointer border px-4 py-2 text-xs uppercase tracking-wider transition active:scale-95 ${
                   brand === b
-                    ? "border-primary bg-primary font-semibold text-primary-foreground"
-                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                    ? "border-primary bg-primary font-semibold text-primary-foreground shadow-sm"
+                    : "border-border bg-card/40 text-muted-foreground hover:border-primary hover:text-primary"
                 }`}
               >
                 {b || t.all}
@@ -574,12 +610,11 @@ function Index() {
                   {fitMode === "contain" ? (
                     <>
                       {/* Luxury Blurred Studio Reflection Backdrop */}
-                      <img
-                        src={c.images[0]}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-xl brightness-50"
+                      <div
+                        className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75 transition duration-700 group-hover:scale-135"
+                        style={{ backgroundImage: `url(${c.images[0]})` }}
                       />
+                      <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
                       {/* Uncropped Full Vehicle Image (Fits Plate & Roof 100%) */}
                       <img
                         src={c.images[0]}
@@ -587,7 +622,7 @@ function Index() {
                         loading="lazy"
                         width={1280}
                         height={832}
-                        className={`relative z-10 h-full w-full object-contain transition duration-700 group-hover:scale-105 ${
+                        className={`relative z-10 h-full w-full object-contain p-1 transition duration-700 group-hover:scale-105 ${
                           isSold ? "grayscale-[60%]" : ""
                         }`}
                       />
@@ -676,13 +711,13 @@ function Index() {
                         href={waLink(c.title)}
                         target="_blank"
                         rel="noreferrer"
-                        className={`${goldBtn} !px-3 !text-xs`}
+                        className={`${goldBtn} !px-3 !text-xs min-h-[44px] flex items-center justify-center active:scale-[0.98] transition-transform`}
                       >
                         <MessageCircle className="h-3.5 w-3.5 shrink-0" /> {t.quote}
                       </a>
                       <button
                         onClick={() => setDetail(c)}
-                        className={`${outlineBtn} !px-3 !text-xs`}
+                        className={`${outlineBtn} !px-3 !text-xs min-h-[44px] flex items-center justify-center active:scale-[0.98] transition-transform`}
                       >
                         {lang === "tr" ? "Detay & Teklif" : "Details & Offer"}
                       </button>
@@ -904,7 +939,7 @@ function Index() {
       )}
 
       {/* FOOTER */}
-      <footer id="iletisim" className="scroll-mt-20 border-t border-border bg-card/50 py-16">
+      <footer id="iletisim" className="scroll-mt-20 border-t border-border bg-card/50 pt-16 pb-28 sm:pb-16 pb-safe">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 md:grid-cols-3">
           <div>
             <div className="flex items-center gap-3">
@@ -987,7 +1022,7 @@ function Index() {
 
       {/* VIP COOKIE CONSENT BANNER (F10) */}
       {!cookieAccepted && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/40 bg-background/95 px-4 py-3.5 shadow-2xl backdrop-blur-md">
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/40 bg-background/95 px-4 py-3.5 pb-safe shadow-2xl backdrop-blur-md">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs">
             <p className="text-muted-foreground">
               {lang === "tr"
@@ -1020,7 +1055,7 @@ function Index() {
           target="_blank"
           rel="noreferrer"
           aria-label="VIP WhatsApp İletişim"
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 rounded-full border border-primary bg-background/95 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary shadow-gold backdrop-blur transition hover:scale-105 hover:bg-primary hover:text-primary-foreground"
+          className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 mb-safe z-40 flex items-center gap-2.5 rounded-full border border-primary bg-background/95 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary shadow-gold backdrop-blur transition hover:scale-105 active:scale-95 hover:bg-primary hover:text-primary-foreground"
         >
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -1294,23 +1329,47 @@ function Modal({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  // Prevent background scroll while modal is open
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const orig = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = orig;
+    };
+  }, []);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 p-0 sm:p-4 backdrop-blur-md"
       onClick={onClose}
     >
       <div
-        className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto border border-border bg-popover p-6 shadow-2xl"
+        className="relative flex flex-col max-h-[94dvh] sm:max-h-[92dvh] w-full max-w-4xl border border-border bg-popover shadow-2xl rounded-t-2xl sm:rounded-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 z-10 cursor-pointer bg-background/80 p-1.5 text-muted-foreground transition hover:text-primary"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        {children}
+        {/* Sticky Mobile/Desktop Top Bar with Persistent Close Button */}
+        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-popover/95 px-4 py-3 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-10 rounded-full bg-border sm:hidden" />
+            <span className="hidden sm:inline font-display text-sm tracking-widest text-primary uppercase">
+              BYCAR EXCLUSIVE SHOWROOM
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 cursor-pointer border border-border bg-background/80 px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary active:scale-95"
+            aria-label="Kapat"
+          >
+            <X className="h-4 w-4" />
+            <span className="text-[10px] uppercase font-semibold">Kapat</span>
+          </button>
+        </div>
+
+        {/* Scrollable Modal Content */}
+        <div className="overflow-y-auto p-4 sm:p-6 no-scrollbar sm:scroll-auto">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -1411,16 +1470,15 @@ function DetailModal({
           />
         ) : car.imageFit === "contain" ? (
           <div className="relative aspect-[16/10] w-full overflow-hidden">
-            <img
-              src={car.images[img]}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl brightness-50"
+            <div
+              className="absolute inset-0 h-full w-full scale-125 bg-cover bg-center opacity-65 blur-xl brightness-75"
+              style={{ backgroundImage: `url(${car.images[img]})` }}
             />
+            <div className="absolute inset-0 bg-background/30 backdrop-blur-[2px]" />
             <img
               src={car.images[img]}
               alt={`${car.title} - Açı ${img + 1}`}
-              className="relative z-10 h-full w-full object-contain"
+              className="relative z-10 h-full w-full object-contain p-1"
             />
           </div>
         ) : (
@@ -1633,7 +1691,7 @@ function DetailModal({
           {t.soldBtn}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className={`grid gap-3 ${activeTab === "offer" ? "grid-cols-2" : "sm:grid-cols-3"}`}>
           <a
             href={waLink(car.title)}
             target="_blank"
@@ -1647,17 +1705,19 @@ function DetailModal({
             <Phone className="h-4 w-4" />
             {t.call}
           </a>
-          <button
-            onClick={() =>
-              activeTab === "offer" || !settings.modalShowOfferTab
-                ? onOffer()
-                : setActiveTab("offer")
-            }
-            className={outlineBtn}
-          >
-            <FileText className="h-4 w-4" />
-            {t.form}
-          </button>
+          {activeTab !== "offer" && (
+            <button
+              onClick={() =>
+                !settings.modalShowOfferTab
+                  ? onOffer()
+                  : setActiveTab("offer")
+              }
+              className={outlineBtn}
+            >
+              <FileText className="h-4 w-4" />
+              {t.form}
+            </button>
+          )}
         </div>
       )}
     </Modal>
