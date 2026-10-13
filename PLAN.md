@@ -1,7 +1,7 @@
 # ByCar — Exclusive Automotive (`bycarglobal.com`) Master Proje Planı & `/speckit-converge` Denetim Raporu
 
 > **Son Güncelleme:** 13 Ekim 2026
-> **Canlı Yerel Sunucu:** `http://localhost:5173/` | **VIP Admin:** `http://localhost:5173/admin` (Şifre: `bycar2024`)
+> **Canlı Yerel Sunucu:** `http://localhost:5173/` | **VIP Admin:** `http://localhost:5173/admin` (Şifre: `bybycar1453`)
 
 ---
 
@@ -122,7 +122,7 @@ Mevcut durumda **Araçlar**, **Fotoğraf Sıralaması**, **CRM Talepleri** ve **
 | **M3** | **Dinamik Hazır Etiket (Preset Chips) Yöneticisi**                | `ADMIN_PRESETS` (`Markalar`, `Paketler`, `Kasa Tipleri`, `Yakıt`, `Vites`, `Motor Gücü`, `Renkler`, `Ekspertiz`, `25+ Donanım`) `bycar.ts` içinde sabit dizi.          | Admin kendi sık kullandığı yeni bir markayı, paketi, kasa tipini veya donanımı **"+ Kalıcı Etiket Olarak Kaydet"** diyerek çip listesine kalıcı ekleyebilecek veya istemediği hazır çipi silebilecek.                                                             |
 | **M4** | **Kurumsal İçerik: Hakkımızda, VIP Hizmetler & İthalat Adımları** | Hakkımızda hikayesi, 4 VIP Hizmet kartı ve 4 Özel İthalat adımı `T.tr` / `T.en` içinde sabit.                                                                          | Admin'den Hakkımızda metinleri, 4 VIP Hizmet kartı (başlık + açıklama + ikon) ve 4 İthalat süreci adımı (TR + otomatik/manuel EN) düzenlenebilir olacak.                                                                                                          |
 | **M5** | **Sosyal Kanıt (Müşteri Yorumları) & SSS (FAQ) Yöneticisi**       | 3 müşteri yorumu (`testimonials`) ve 5 SSS (`faqs`) maddesi kodda sabit.                                                                                               | Admin'den yeni müşteri yorumu ekleme/silme/düzenleme ve SSS (Soru-Cevap) maddesi ekleme/silme/sıralama yapılabilecek.                                                                                                                                             |
-| **M6** | **Güvenlik, Şifre Yönetimi, SEO & Yasal Metinler (KVKK/Çerez)**   | Admin şifresi (`bycar2024` / `bycar2026` PBKDF2 hash), SEO site başlığı ve KVKK/Gizlilik metinleri kodda sabit.                                                        | Admin panelinden **Admin Şifresi Değiştirme** (tarayıcıda yeni PBKDF2 hash üretip kaydetme), **Bakım Modu (VIP Private Mode)** açma/kapama, **Bölüm Gizle/Göster** (örn. Yorumlar veya SSS bölümünü komple kapatma) ve KVKK/Gizlilik/Çerez metinlerini düzenleme. |
+| **M6** | **Güvenlik, Şifre Yönetimi, SEO & Yasal Metinler (KVKK/Çerez)**   | Admin şifresi (`bybycar1453` PBKDF2 hash), SEO site başlığı ve KVKK/Gizlilik metinleri kodda sabit.                                                        | Admin panelinden **Admin Şifresi Değiştirme** (tarayıcıda yeni PBKDF2 hash üretip kaydetme), **Bakım Modu (VIP Private Mode)** açma/kapama, **Bölüm Gizle/Göster** (örn. Yorumlar veya SSS bölümünü komple kapatma) ve KVKK/Gizlilik/Çerez metinlerini düzenleme. |
 
 ### 7.2 ✅ Faz 8 Uygulama Görevleri (`T015` – `T020`) — TAMAMLANDI (%100 Başarı)
 

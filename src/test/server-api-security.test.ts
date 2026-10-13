@@ -48,7 +48,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const req6 = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.10" },
-      body: JSON.stringify({ password: "bycar2026" }),
+      body: JSON.stringify({ password: "bybycar1453" }),
     });
     const res6 = await handleApiRequest(req6, {});
     expect(res6?.status).toBe(429);
@@ -58,7 +58,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const req = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.5" },
-      body: JSON.stringify({ password: "bycar2026" }),
+      body: JSON.stringify({ password: "bybycar1453" }),
     });
     const res = await handleApiRequest(req, {});
     expect(res?.status).toBe(200);
@@ -66,6 +66,23 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const body = (await res?.json()) as { ok: boolean; token: string; expiresAt: string };
     expect(body.ok).toBe(true);
     expect(body.token).toMatch(/^bycar_sec_/);
+
+    // Verify GET /api/admin/me with issued token
+    const meReq = new Request("https://bycarglobal.com/api/admin/me", {
+      method: "GET",
+      headers: { authorization: `Bearer ${body.token}` },
+    });
+    const meRes = await handleApiRequest(meReq, {});
+    expect(meRes?.status).toBe(200);
+    const meBody = (await meRes?.json()) as { ok: boolean; authenticated: boolean };
+    expect(meBody.ok).toBe(true);
+    expect(meBody.authenticated).toBe(true);
+  });
+
+  it("GET /api/admin/me rejects unauthorized request with 401", async () => {
+    const unauthedReq = new Request("https://bycarglobal.com/api/admin/me", { method: "GET" });
+    const res = await handleApiRequest(unauthedReq, {});
+    expect(res?.status).toBe(401);
   });
 
   it("GET /api/cms filters out draft vehicles for public visitors and returns active/sold only", async () => {
@@ -90,7 +107,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
-      body: JSON.stringify({ password: "bycar2026" }),
+      body: JSON.stringify({ password: "bybycar1453" }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -129,7 +146,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.2" },
-      body: JSON.stringify({ password: "bycar2026" }),
+      body: JSON.stringify({ password: "bybycar1453" }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };

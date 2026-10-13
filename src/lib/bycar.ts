@@ -1315,7 +1315,7 @@ let cachedExpectedHashes: string[] | null = null;
 
 export async function derivePBKDF2Hex(password: string): Promise<string> {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
-    return password === "bycar2024" || password === "bycar2026" ? "VALID_FALLBACK" : "INVALID";
+    return password === "bybycar1453" ? "VALID_FALLBACK" : "INVALID";
   }
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -1347,38 +1347,35 @@ export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean>
     return true;
   }
   if (!cachedExpectedHashes) {
-    cachedExpectedHashes = await Promise.all([
-      derivePBKDF2Hex("bycar2024"),
-      derivePBKDF2Hex("bycar2026"),
-    ]);
+    cachedExpectedHashes = await Promise.all([derivePBKDF2Hex("bybycar1453")]);
   }
   return cachedExpectedHashes.includes(candidate);
 }
 
 export async function setCustomAdminPassword(newPassword: string): Promise<boolean> {
   const hash = await derivePBKDF2Hex(newPassword.trim());
-  const cms = getStoredCmsConfig();
-  cms.customPasswordHash = hash;
-  saveStoredCmsConfig(cms, "Admin Şifresi Güncellendi");
 
   if (typeof window !== "undefined") {
-    try {
-      const token = window.sessionStorage.getItem("bycar_admin_token");
-      if (token) {
-        await fetch("/api/admin/change-password", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ newPassword: newPassword.trim() }),
-        });
+    const token = window.sessionStorage.getItem("bycar_admin_token");
+    if (token) {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ newPassword: newPassword.trim() }),
+      });
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || "Şifre sunucuda güncellenemedi.");
       }
-    } catch {
-      // offline fallback
     }
   }
 
+  const cms = getStoredCmsConfig();
+  cms.customPasswordHash = hash;
+  saveStoredCmsConfig(cms, "Admin Şifresi Güncellendi");
   return true;
 }
 

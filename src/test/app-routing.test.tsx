@@ -65,8 +65,8 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(ADMIN_PRESETS.fuels.length).toBeGreaterThanOrEqual(6);
     expect(ADMIN_PRESETS.gears.length).toBeGreaterThanOrEqual(5);
 
-    expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(true);
-    expect(await verifyAdminPasswordPBKDF2("bycar2026")).toBe(true);
+    expect(await verifyAdminPasswordPBKDF2("bybycar1453")).toBe(true);
+    expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(false);
     expect(await verifyAdminPasswordPBKDF2("wrong-pass")).toBe(false);
 
     recordLoginAttempt(true); // reset
@@ -153,8 +153,8 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     const customPass = "SuperVIP_2026!#";
     await setCustomAdminPassword(customPass);
     expect(await verifyAdminPasswordPBKDF2(customPass)).toBe(true);
-    // Legacy demo password should still work as fallback
-    expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(true);
+    // Default master password should still work as fallback
+    expect(await verifyAdminPasswordPBKDF2("bybycar1453")).toBe(true);
     expect(await verifyAdminPasswordPBKDF2("wrong-custom-pass")).toBe(false);
 
     // 4. Cloudflare D1 SQL Dump and JSON export contains updated CMS config

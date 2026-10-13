@@ -46,6 +46,24 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 import { handleApiRequest } from "./server/api";
 
+function applySecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  if (!headers.has("x-content-type-options")) {
+    headers.set("x-content-type-options", "nosniff");
+  }
+  if (!headers.has("x-frame-options")) {
+    headers.set("x-frame-options", "DENY");
+  }
+  if (!headers.has("referrer-policy")) {
+    headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const effectiveEnv =
@@ -60,17 +78,20 @@ export default {
 
     try {
       const apiResponse = await handleApiRequest(request, effectiveEnv);
-      if (apiResponse) return apiResponse;
+      if (apiResponse) return applySecurityHeaders(apiResponse);
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, effectiveEnv, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      return applySecurityHeaders(normalized);
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return applySecurityHeaders(
+        new Response(renderErrorPage(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      );
     }
   },
 };

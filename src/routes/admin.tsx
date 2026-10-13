@@ -225,12 +225,29 @@ function Admin() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const isA = window.sessionStorage.getItem("bycar_admin_auth") === "1";
-      setAuthed(isA);
       setLockout(getLoginLockoutState());
       const token = window.sessionStorage.getItem("bycar_admin_token");
-      if (isA && token) {
-        void syncInquiriesFromServer(token);
+      if (token) {
+        fetch("/api/admin/me", {
+          headers: { authorization: `Bearer ${token}` },
+        })
+          .then((res) => {
+            if (res.ok) {
+              setAuthed(true);
+              void syncInquiriesFromServer(token);
+            } else {
+              window.sessionStorage.removeItem("bycar_admin_token");
+              window.sessionStorage.removeItem("bycar_admin_auth");
+              setAuthed(false);
+            }
+          })
+          .catch(() => {
+            const isA = window.sessionStorage.getItem("bycar_admin_auth") === "1";
+            setAuthed(isA);
+          });
+      } else {
+        window.sessionStorage.removeItem("bycar_admin_auth");
+        setAuthed(false);
       }
     }
   }, []);
@@ -434,15 +451,46 @@ function Admin() {
     if (fileList.length === 0) return;
     setUploading(true);
     try {
-      const compressed: string[] = [];
+      const processed: string[] = [];
+      const token =
+        typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+
       for (const file of fileList) {
         if (!file.type.startsWith("image/")) continue;
         const webpDataUrl = await compressImageToWebP(file, 1600, 0.82);
-        compressed.push(webpDataUrl);
+        let finalUrl = webpDataUrl;
+
+        // Try direct R2 upload via /api/admin/upload if authenticated
+        if (token) {
+          try {
+            const blobRes = await fetch(webpDataUrl);
+            const blob = await blobRes.blob();
+            const uploadRes = await fetch("/api/admin/upload", {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${token}`,
+                "content-type": "image/webp",
+                "x-vehicle-id": editingId || "fleet",
+                "x-file-name": file.name.replace(/\.[^/.]+$/, "") + ".webp",
+              },
+              body: blob,
+            });
+            if (uploadRes.ok) {
+              const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
+              if (resJson.ok && resJson.url) {
+                finalUrl = resJson.url;
+              }
+            }
+          } catch (uploadErr) {
+            console.warn("R2 upload fallback to dataUrl:", uploadErr);
+          }
+        }
+
+        processed.push(finalUrl);
       }
       setImages((prev) => {
         const next = [...prev];
-        for (const item of compressed) {
+        for (const item of processed) {
           if (!next.includes(item)) next.push(item);
         }
         return next;

@@ -162,6 +162,7 @@ export const CmsPayloadSchema = z.object({
   cars: z.array(VehicleSchema).optional(),
   settings: z.record(z.unknown()).optional(),
   cmsConfig: z.record(z.unknown()).optional(),
+  allowEmptyCatalog: z.boolean().optional(),
 });
 
 export const InquiryStatusSchema = z.object({
@@ -292,8 +293,10 @@ async function ensureD1Tables(db: D1Database) {
   try {
     await db.exec(D1_INIT_SQL);
     await db.exec(
-      `INSERT OR IGNORE INTO admin_users (id, username, password_hash, password_salt, iterations)
-       VALUES ('admin-master', 'admin', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068', 'bycar-global-vip-salt-2026', 100000);`,
+      `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations)
+       VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000)
+       ON CONFLICT(username) DO UPDATE SET
+         password_hash = CASE WHEN password_hash IN ('9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068') THEN '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a' ELSE password_hash END;`,
     );
     d1Initialized = true;
   } catch (err) {
@@ -322,8 +325,7 @@ export const PBKDF2_ITERATIONS = 100000;
 
 // Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters)
 const PRECOMPUTED_ADMIN_HASHES = [
-  "9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff", // bycar2024
-  "8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068", // bycar2026
+  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a", // bybycar1453
 ];
 
 export async function deriveServerPBKDF2HexWithParams(
@@ -867,6 +869,29 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     });
   }
 
+  // 3b. GET /api/admin/me — PROTECTED: Token and session validation
+  if (url.pathname === "/api/admin/me" && request.method === "GET") {
+    const isAuthed = await verifyAdminToken(request, db);
+    if (!isAuthed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          authenticated: false,
+          error: "Oturum geçersiz veya süresi dolmuş.",
+        }),
+        { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        authenticated: true,
+        username: "admin",
+      }),
+      { headers: { "content-type": "application/json; charset=utf-8" } },
+    );
+  }
+
   // 4. POST /api/admin/change-password — PROTECTED: Update admin password in D1 admin_users
   if (url.pathname === "/api/admin/change-password" && request.method === "POST") {
     const isAuthed = await verifyAdminToken(request, db);
@@ -896,25 +921,42 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const newPassword = validated.data.newPassword.trim();
       const newHash = await deriveServerPBKDF2Hex(newPassword);
 
-      if (db) {
-        await ensureD1Tables(db);
-        await db
-          .prepare(
-            `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
-             VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
-             ON CONFLICT(username) DO UPDATE SET
-               password_hash = excluded.password_hash,
-               password_salt = excluded.password_salt,
-               iterations = excluded.iterations`,
-          )
-          .bind(newHash, PBKDF2_SALT)
-          .run();
+      if (!db) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "D1 veritabanı bağlı değil. Şifre kalıcı olarak güncellenemedi.",
+          }),
+          { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
       }
+
+      await ensureD1Tables(db);
+      await db
+        .prepare(
+          `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
+           VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
+           ON CONFLICT(username) DO UPDATE SET
+             password_hash = excluded.password_hash,
+             password_salt = excluded.password_salt,
+             iterations = excluded.iterations`,
+        )
+        .bind(newHash, PBKDF2_SALT)
+        .run();
+
+      // Revoke all existing sessions for this admin in D1 and clear memory sessions
+      try {
+        await db.prepare("DELETE FROM admin_sessions WHERE admin_id = 'admin-master'").run();
+      } catch (sessErr) {
+        console.error("D1 sessions revoke error:", sessErr);
+      }
+      memorySessions.clear();
 
       return new Response(
         JSON.stringify({
           ok: true,
-          message: "Yönetici şifresi Cloudflare D1 veritabanında başarıyla güncellendi.",
+          message:
+            "Yönetici şifresi Cloudflare D1 veritabanında başarıyla güncellendi. Eski oturumlar sonlandırıldı.",
         }),
         { headers: { "content-type": "application/json; charset=utf-8" } },
       );
@@ -1377,6 +1419,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
               );
             });
           }
+        } else if (
+          Array.isArray(payload.cars) &&
+          payload.cars.length === 0 &&
+          payload.allowEmptyCatalog === true
+        ) {
+          // Explicit catalog wipe requested by authorized admin
+          stmts.push(db.prepare("DELETE FROM vehicle_images"));
+          stmts.push(db.prepare("DELETE FROM vehicles"));
         }
 
         if (stmts.length > 0) {
