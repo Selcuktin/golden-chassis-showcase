@@ -59,7 +59,7 @@ export const Route = createFileRoute("/arac/$slug")({
 
 function VehicleDetailPage() {
   const { slug } = Route.useParams();
-  const { cars, settings, lang, setLang } = useByCarStore();
+  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore();
   const t = T[lang];
   const [img, setImg] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
@@ -354,7 +354,7 @@ function VehicleDetailPage() {
                     <MessageCircle className="h-4 w-4" /> {t.waQuote}
                   </a>
                   <a
-                    href={`tel:+${PHONE_RAW}`}
+                    href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
                     className="inline-flex items-center justify-center gap-2 border border-primary px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground"
                   >
                     <Phone className="h-4 w-4" /> {t.call}

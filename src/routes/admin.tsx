@@ -28,6 +28,8 @@ import {
   Download,
   Upload,
   Undo2,
+  Layers,
+  Radio,
 } from "lucide-react";
 import {
   ADMIN_PRESETS,
@@ -36,6 +38,7 @@ import {
   clearAllBrowserStorage,
   compressImageToWebP,
   exportDatabaseJSON,
+  getEffectivePresets,
   getLoginLockoutState,
   importDatabaseJSON,
   recordLoginAttempt,
@@ -47,7 +50,10 @@ import {
   type ImageFit,
   type Inquiry,
   type Lang,
+  type SiteCMSConfig,
 } from "@/lib/bycar";
+import { AdminContentTab } from "@/components/admin/AdminContentTab";
+import { AdminSystemTab } from "@/components/admin/AdminSystemTab";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -69,30 +75,112 @@ function ChipList({
   items,
   selected,
   onSelect,
+  onAdd,
+  onDelete,
 }: {
   items: string[];
   selected: string;
   onSelect: (v: string) => void;
+  onAdd?: (v: string) => void;
+  onDelete?: (v: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [newVal, setNewVal] = useState("");
+
+  const handleAdd = () => {
+    const trimmed = newVal.trim();
+    if (trimmed && onAdd) {
+      onAdd(trimmed);
+      onSelect(trimmed);
+      setNewVal("");
+      setAdding(false);
+    }
+  };
+
   return (
-    <div className="mb-2 flex flex-wrap gap-1.5">
-      {items.map((item) => {
-        const active = selected === item;
-        return (
+    <div className="mb-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {items.map((item) => {
+          const active = selected === item;
+          return (
+            <div key={item} className="inline-flex items-center">
+              <button
+                type="button"
+                onClick={() => onSelect(item)}
+                className={`cursor-pointer border px-2.5 py-1 text-[11px] transition ${
+                  active
+                    ? "border-primary bg-primary font-semibold text-primary-foreground"
+                    : "border-border bg-background/70 text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                {item}
+              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(item);
+                  }}
+                  title={`"${item}" etiketini sil`}
+                  className="ml-[-1px] cursor-pointer border border-border bg-background/70 px-1 py-1 text-[10px] text-muted-foreground transition hover:border-destructive hover:bg-destructive hover:text-white"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {onAdd && !adding && (
           <button
-            key={item}
             type="button"
-            onClick={() => onSelect(item)}
-            className={`cursor-pointer border px-2.5 py-1 text-[11px] transition ${
-              active
-                ? "border-primary bg-primary font-semibold text-primary-foreground"
-                : "border-border bg-background/70 text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
+            onClick={() => setAdding(true)}
+            className="cursor-pointer border border-dashed border-primary/60 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/15"
           >
-            {item}
+            + Ekle
           </button>
-        );
-      })}
+        )}
+
+        {onAdd && adding && (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={newVal}
+              onChange={(e) => setNewVal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAdd();
+                } else if (e.key === "Escape") {
+                  setAdding(false);
+                  setNewVal("");
+                }
+              }}
+              placeholder="Yeni çip..."
+              autoFocus
+              className="border border-primary bg-background px-2 py-0.5 text-[11px] text-foreground outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="border border-primary bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground"
+            >
+              Kaydet
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setNewVal("");
+              }}
+              className="border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -102,15 +190,20 @@ function Admin() {
     cars,
     inquiries,
     settings,
+    cmsConfig,
     lang,
     undoSnap,
+    isSyncing,
     setLang,
     updateCars,
     resetCars,
     updateInquiries,
     resetInquiries,
     updateSettings,
+    updateCmsConfig,
+    resetCmsConfig,
     restoreUndo,
+    syncWithServer,
   } = useByCarStore();
 
   // SSR-safe hydration: initialize false and sync in useEffect
@@ -129,7 +222,62 @@ function Admin() {
     }
   }, []);
 
-  const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings">("fleet");
+  const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings" | "content" | "system">("fleet");
+
+  const effectivePresets = getEffectivePresets(cmsConfig.customPresets);
+
+  const handleAddPreset = (category: keyof SiteCMSConfig["customPresets"], value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (category === "extras") {
+      const current = cmsConfig.customPresets?.extras || [];
+      if (!current.some((e) => e.tr.toLowerCase() === trimmed.toLowerCase())) {
+        const next = {
+          ...cmsConfig,
+          customPresets: {
+            ...cmsConfig.customPresets,
+            extras: [...current, { tr: trimmed, en: translateTerm(trimmed, "en") }],
+          },
+        };
+        updateCmsConfig(next, `Yeni donanım etiketi eklendi: ${trimmed}`);
+      }
+    } else {
+      const current = (cmsConfig.customPresets?.[category] as string[]) || [];
+      if (!current.includes(trimmed)) {
+        const next = {
+          ...cmsConfig,
+          customPresets: {
+            ...cmsConfig.customPresets,
+            [category]: [...current, trimmed],
+          },
+        };
+        updateCmsConfig(next, `Yeni ${category} etiketi eklendi: ${trimmed}`);
+      }
+    }
+  };
+
+  const handleDeletePreset = (category: keyof SiteCMSConfig["customPresets"], item: string) => {
+    if (category === "extras") {
+      const next = {
+        ...cmsConfig,
+        customPresets: {
+          ...cmsConfig.customPresets,
+          extras: (cmsConfig.customPresets?.extras || []).filter((e) => e.tr !== item),
+        },
+      };
+      updateCmsConfig(next, `Donanım etiketi silindi: ${item}`);
+    } else {
+      const current = (cmsConfig.customPresets?.[category] as string[]) || [];
+      const next = {
+        ...cmsConfig,
+        customPresets: {
+          ...cmsConfig.customPresets,
+          [category]: current.filter((x) => x !== item),
+        },
+      };
+      updateCmsConfig(next, `${category} etiketi silindi: ${item}`);
+    }
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState("");
   const [dbMsg, setDbMsg] = useState("");
@@ -634,52 +782,74 @@ function Admin() {
           </div>
         )}
 
-        {/* 4 Navigation Tabs */}
-        <div className="mb-8 grid grid-cols-2 border border-border bg-card lg:grid-cols-4">
+        {/* 6 Navigation Tabs */}
+        <div className="mb-8 grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3 lg:grid-cols-6">
           <button
             type="button"
             onClick={() => setTab("fleet")}
-            className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
               tab === "fleet"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            1. Araç Yönetimi ({cars.length})
+            1. Araçlar ({cars.length})
           </button>
           <button
             type="button"
             onClick={() => setTab("add")}
-            className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
               tab === "add"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            2. {editingId ? "Aracı Düzenle" : "Yeni Araç Ekle"}
+            2. {editingId ? "Düzenle" : "Araç Ekle"}
           </button>
           <button
             type="button"
             onClick={() => setTab("inbox")}
-            className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
               tab === "inbox"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            3. Gelen Talepler ({inquiries.length}
-            {newInquiriesCount > 0 ? ` · ${newInquiriesCount} Yeni` : ""})
+            3. Talepler ({inquiries.length}
+            {newInquiriesCount > 0 ? ` · ${newInquiriesCount}!` : ""})
           </button>
           <button
             type="button"
             onClick={() => setTab("settings")}
-            className={`cursor-pointer px-4 py-3.5 text-xs font-semibold uppercase tracking-wider transition ${
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
               tab === "settings"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            4. Filtre, Modal & Veritabanı
+            4. Filtre & Modal
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("content")}
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
+              tab === "content"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            5. Site İçeriği (CMS)
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("system")}
+            className={`cursor-pointer px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider transition ${
+              tab === "system"
+                ? "bg-primary text-primary-foreground font-bold shadow"
+                : "bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            6. İletişim & D1
           </button>
         </div>
 
@@ -1031,7 +1201,7 @@ function Admin() {
                 1. Marka Seçin veya İstediğiniz Markayı Yazın (Sınırlama Yok — Filtrede Otomatik Oluşur)
               </label>
               <ChipList
-                items={ADMIN_PRESETS.brands}
+                items={effectivePresets.brands}
                 selected={brand}
                 onSelect={(b) => {
                   const prevBrand = brand.trim();
@@ -1039,11 +1209,13 @@ function Admin() {
                   if (
                     !title.trim() ||
                     title.trim() === prevBrand ||
-                    ADMIN_PRESETS.brands.some((preset) => title.trim() === preset)
+                    effectivePresets.brands.some((preset) => title.trim() === preset)
                   ) {
                     setTitle(`${b} `);
                   }
                 }}
+                onAdd={(v) => handleAddPreset("brands", v)}
+                onDelete={(v) => handleDeletePreset("brands", v)}
               />
               <input
                 value={brand}
@@ -1074,9 +1246,11 @@ function Admin() {
                 Donanım Paketi (Tıklayın veya Serbestçe Yazın)
               </label>
               <ChipList
-                items={ADMIN_PRESETS.packages.slice(0, 6)}
+                items={effectivePresets.packages}
                 selected={pkg}
                 onSelect={setPkg}
+                onAdd={(v) => handleAddPreset("packages", v)}
+                onDelete={(v) => handleDeletePreset("packages", v)}
               />
               <input
                 value={pkg}
@@ -1092,7 +1266,7 @@ function Admin() {
                 Model Yılı (Tıklayın veya Serbestçe Yazın)
               </label>
               <ChipList
-                items={["2026", "2025", "2024", "2023", "2022", "2020", "2016"]}
+                items={["2026", "2025", "2024", "2023", "2022", "2021", "2020", "2016"]}
                 selected={year}
                 onSelect={setYear}
               />
@@ -1133,9 +1307,11 @@ function Admin() {
                   Yakıt Türü (Seçin veya Yazın)
                 </label>
                 <ChipList
-                  items={ADMIN_PRESETS.fuels}
+                  items={effectivePresets.fuels}
                   selected={fuel}
                   onSelect={setFuel}
+                  onAdd={(v) => handleAddPreset("fuels", v)}
+                  onDelete={(v) => handleDeletePreset("fuels", v)}
                 />
                 <input
                   value={fuel}
@@ -1151,9 +1327,11 @@ function Admin() {
                   Vites Tipi (Seçin veya Yazın)
                 </label>
                 <ChipList
-                  items={ADMIN_PRESETS.gears}
+                  items={effectivePresets.gears}
                   selected={gear}
                   onSelect={setGear}
+                  onAdd={(v) => handleAddPreset("gears", v)}
+                  onDelete={(v) => handleDeletePreset("gears", v)}
                 />
                 <input
                   value={gear}
@@ -1169,9 +1347,11 @@ function Admin() {
                   Kasa Tipi (Seçin veya İstediğinizi Yazın)
                 </label>
                 <ChipList
-                  items={ADMIN_PRESETS.bodies}
+                  items={effectivePresets.bodies}
                   selected={body}
                   onSelect={setBody}
+                  onAdd={(v) => handleAddPreset("bodies", v)}
+                  onDelete={(v) => handleDeletePreset("bodies", v)}
                 />
                 <input
                   value={body}
@@ -1188,9 +1368,11 @@ function Admin() {
                 Motor Gücü (Tıklayın veya Yazın)
               </label>
               <ChipList
-                items={ADMIN_PRESETS.powers.slice(0, 5)}
+                items={effectivePresets.powers}
                 selected={power}
                 onSelect={setPower}
+                onAdd={(v) => handleAddPreset("powers", v)}
+                onDelete={(v) => handleDeletePreset("powers", v)}
               />
               <input
                 value={power}
@@ -1205,9 +1387,11 @@ function Admin() {
                 Dış / İç Renk (Tıklayın veya Yazın)
               </label>
               <ChipList
-                items={ADMIN_PRESETS.colors.slice(0, 5)}
+                items={effectivePresets.colors}
                 selected={color}
                 onSelect={setColor}
+                onAdd={(v) => handleAddPreset("colors", v)}
+                onDelete={(v) => handleDeletePreset("colors", v)}
               />
               <input
                 value={color}
@@ -1223,9 +1407,11 @@ function Admin() {
                 Ekspertiz Durumu (Tıklayın veya Yazın)
               </label>
               <ChipList
-                items={ADMIN_PRESETS.expertises}
+                items={effectivePresets.expertises}
                 selected={expertise}
                 onSelect={setExpertise}
+                onAdd={(v) => handleAddPreset("expertises", v)}
+                onDelete={(v) => handleDeletePreset("expertises", v)}
               />
               <input
                 value={expertise}
@@ -1239,9 +1425,11 @@ function Admin() {
                 Tramer Kaydı & Yayın Durumu
               </label>
               <ChipList
-                items={ADMIN_PRESETS.tramers}
+                items={effectivePresets.tramers}
                 selected={tramer}
                 onSelect={setTramer}
+                onAdd={(v) => handleAddPreset("tramers", v)}
+                onDelete={(v) => handleDeletePreset("tramers", v)}
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -1337,7 +1525,7 @@ function Admin() {
               </div>
 
               <div className="mb-3 flex flex-wrap gap-1.5">
-                {ADMIN_PRESETS.extras.map((item) => {
+                {effectivePresets.extras.map((item) => {
                   const isSel = selectedExtras.includes(item.tr);
                   return (
                     <button
@@ -2291,6 +2479,30 @@ function Admin() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB 5: SITE CONTENT & INSTITUTIONAL CMS */}
+        {tab === "content" && (
+          <AdminContentTab
+            cmsConfig={cmsConfig}
+            onSave={updateCmsConfig}
+            onReset={resetCmsConfig}
+          />
+        )}
+
+        {/* TAB 6: CONTACT, TOGGLES, PASSWORDS & D1 SYNC */}
+        {tab === "system" && (
+          <AdminSystemTab
+            cmsConfig={cmsConfig}
+            onSave={updateCmsConfig}
+            onReset={resetCmsConfig}
+            carsCount={cars.length}
+            inquiriesCount={inquiries.length}
+            undoSnap={undoSnap}
+            onRestoreUndo={restoreUndo}
+            onSyncServer={syncWithServer}
+            isSyncing={isSyncing}
+          />
         )}
       </div>
     </div>

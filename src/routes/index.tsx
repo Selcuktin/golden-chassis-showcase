@@ -66,8 +66,39 @@ const input =
   "w-full bg-background border border-input px-4 py-3 text-sm outline-none focus:border-primary placeholder:text-muted-foreground";
 
 function Index() {
-  const { cars, settings, lang, setLang } = useByCarStore();
+  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore();
   const t = T[lang];
+
+  const navItems = [
+    { label: t.nav[0], id: "koleksiyon", show: true },
+    { label: t.nav[1], id: "ithalat", show: true },
+    {
+      label: lang === "tr" ? "Hizmetler" : "Services",
+      id: "hizmetler",
+      show: Boolean(cmsConfig.sectionVisibility.showServices),
+    },
+    {
+      label: t.nav[2],
+      id: "surec",
+      show: Boolean(cmsConfig.sectionVisibility.showConcierge),
+    },
+    {
+      label: t.nav[3],
+      id: "kurucu",
+      show: Boolean(cmsConfig.sectionVisibility.showAbout),
+    },
+    {
+      label: lang === "tr" ? "Yorumlar" : "Reviews",
+      id: "yorumlar",
+      show: Boolean(cmsConfig.sectionVisibility.showTestimonials),
+    },
+    {
+      label: t.nav[4],
+      id: "sss",
+      show: Boolean(cmsConfig.sectionVisibility.showFaq),
+    },
+    { label: t.nav[5], id: "iletisim", show: true },
+  ].filter((item) => item.show);
   const [brand, setBrand] = useState("");
   const [q, setQ] = useState("");
   const [year, setYear] = useState("");
@@ -272,13 +303,13 @@ function Index() {
           </a>
 
           <nav className="hidden gap-6 text-xs uppercase tracking-widest lg:flex">
-            {t.nav.map((n, i) => (
+            {navItems.map((n) => (
               <a
-                key={n}
-                href={`#${ids[i]}`}
+                key={n.id}
+                href={`#${n.id}`}
                 className="text-muted-foreground transition hover:text-primary"
               >
-                {n}
+                {n.label}
               </a>
             ))}
           </nav>
@@ -321,14 +352,14 @@ function Index() {
         {mobileMenuOpen && (
           <div className="border-t border-border bg-background/95 px-4 py-5 backdrop-blur-md lg:hidden">
             <nav className="flex flex-col space-y-3 text-xs uppercase tracking-widest">
-              {t.nav.map((n, i) => (
+              {navItems.map((n) => (
                 <a
-                  key={n}
-                  href={`#${ids[i]}`}
+                  key={n.id}
+                  href={`#${n.id}`}
                   onClick={() => setMobileMenuOpen(false)}
                   className="border-b border-border/50 pb-2 text-foreground transition hover:text-primary"
                 >
-                  {n}
+                  {n.label}
                 </a>
               ))}
               <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -356,7 +387,7 @@ function Index() {
       {/* HERO */}
       <section className="relative flex min-h-screen items-end overflow-hidden">
         <img
-          src={hero}
+          src={cmsConfig.hero.bgImage || hero}
           alt="ByCar hypercar"
           width={1920}
           height={1088}
@@ -364,21 +395,43 @@ function Index() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-background/15" />
         <div className="relative mx-auto w-full max-w-7xl px-4 pb-24">
-          <p className="mb-4 text-xs tracking-[0.5em] text-primary">EXCLUSIVE AUTOMOTIVE</p>
+          <p className="mb-4 text-xs tracking-[0.5em] text-primary">
+            {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "EXCLUSIVE AUTOMOTIVE"}
+          </p>
           <h1 className="max-w-3xl text-5xl font-semibold leading-none md:text-8xl">
-            {t.heroTitle}
+            {(lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle}
           </h1>
-          <p className="mt-6 max-w-xl text-lg text-muted-foreground">{t.heroSub}</p>
+          <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+            {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
+          </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <a href="#koleksiyon" className={goldBtn}>
-              {t.explore}
+              {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
             </a>
             <a href="#ithalat" className={outlineBtn}>
-              {t.importReq}
+              {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
             </a>
           </div>
         </div>
       </section>
+
+      {/* STATS (Hero Altı Sayaçlar) */}
+      {cmsConfig.sectionVisibility.showHeroStats && cmsConfig.stats?.length > 0 && (
+        <section className="border-b border-border bg-card/60 py-10 backdrop-blur-sm">
+          <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 md:grid-cols-4">
+            {cmsConfig.stats.map((st, i) => (
+              <div key={i} className="border-l-2 border-primary/60 pl-4">
+                <div className="font-display text-3xl font-bold text-gold md:text-4xl">
+                  {st.value}
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">
+                  {lang === "tr" ? st.labelTr : st.labelEn}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* COLLECTION */}
       <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
@@ -675,87 +728,180 @@ function Index() {
         </div>
       </section>
 
-      {/* PROCESS */}
-      <section id="surec" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
-        <SectionTitle kicker="Process" title={t.process} />
-        <div className="grid gap-6 md:grid-cols-4">
-          {t.steps.map(([h, d], i) => (
-            <div
-              key={h}
-              className="border border-border bg-card/40 p-6 transition hover:border-primary/60"
-            >
-              <div className="mb-4 font-display text-5xl text-gold">0{i + 1}</div>
-              <h3 className="mb-2 text-xl font-semibold">{h}</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">{d}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FOUNDER'S VISION */}
-      <section id="kurucu" className="scroll-mt-20 border-t border-border bg-card py-24">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-12">
-          <div className="flex flex-col items-center lg:col-span-4">
-            <div className="relative overflow-hidden rounded-full border-2 border-primary/60 p-2 shadow-gold">
-              <img
-                src="/bycar-logo.jpg"
-                alt="Burak Yılmaz — ByCar Global"
-                className="h-56 w-56 rounded-full object-cover md:h-64 md:w-64"
-              />
-            </div>
-            <div className="mt-6 text-center">
-              <div className="font-display text-3xl font-semibold">Burak Yılmaz</div>
-              <div className="mt-1 text-xs tracking-[0.3em] text-primary">
-                FOUNDER & CEO | BYCAR GLOBAL
-              </div>
-            </div>
-          </div>
-          <div className="lg:col-span-8">
-            <SectionTitle kicker="Founder & Vision" title={t.founder} />
-            <div className="space-y-4 text-base leading-relaxed text-muted-foreground md:text-lg">
-              {t.founderParagraphs.map((p, idx) => (
-                <p key={idx}>{p}</p>
+      {/* SERVICES (VIP Hizmetlerimiz) */}
+      {cmsConfig.sectionVisibility.showServices && cmsConfig.services?.length > 0 && (
+        <section id="hizmetler" className="scroll-mt-20 border-t border-border bg-card/30 py-24">
+          <div className="mx-auto max-w-7xl px-4">
+            <SectionTitle
+              kicker="Exclusive Services"
+              title={lang === "tr" ? "Ayrıcalıklı Hizmetlerimiz" : "Bespoke Services"}
+            />
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {cmsConfig.services.map((srv, idx) => (
+                <div
+                  key={srv.id || idx}
+                  className="border border-border bg-card p-6 transition duration-300 hover:border-primary/60 hover:-translate-y-1"
+                >
+                  <div className="mb-4 font-display text-4xl text-gold">0{idx + 1}</div>
+                  <h3 className="mb-2 text-lg font-semibold">
+                    {lang === "tr" ? srv.titleTr : srv.titleEn}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {lang === "tr" ? srv.descTr : srv.descEn}
+                  </p>
+                </div>
               ))}
             </div>
-            <div className="mt-8 border-l-2 border-primary pl-4 font-display text-2xl italic text-primary">
-              {t.founderSlogan}
-            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* FAQ ACCORDION */}
-      <section id="sss" className="mx-auto max-w-4xl scroll-mt-20 px-4 py-24">
-        <SectionTitle kicker="FAQ" title={t.faq} center />
-        <p className="-mt-6 mb-10 text-center text-sm text-muted-foreground">
-          {t.faqSub}
-        </p>
-        <div className="divide-y divide-border border border-border bg-card">
-          {t.faqs.map(([qText, aText], idx) => {
-            const isOpen = openFaq === idx;
-            return (
-              <div key={idx}>
-                <button
-                  onClick={() => setOpenFaq(isOpen ? null : idx)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-4 px-6 py-5 text-left transition hover:text-primary"
-                >
-                  <span className="font-display text-xl font-semibold">{qText}</span>
-                  <ChevronDown
-                    className={`h-5 w-5 shrink-0 text-primary transition-transform duration-300 ${
-                      isOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {isOpen && (
-                  <div className="border-t border-border/50 bg-background/40 px-6 py-5 text-sm leading-relaxed text-muted-foreground">
-                    {aText}
-                  </div>
+      {/* PROCESS / CONCIERGE */}
+      {cmsConfig.sectionVisibility.showConcierge && (
+        <section id="surec" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24">
+          <SectionTitle kicker="Process" title={t.process} />
+          <div className="grid gap-6 md:grid-cols-4">
+            {(cmsConfig.conciergeSteps?.length > 0
+              ? cmsConfig.conciergeSteps.map((cs) => [
+                  lang === "tr" ? cs.titleTr : cs.titleEn,
+                  lang === "tr" ? cs.descTr : cs.descEn,
+                ])
+              : t.steps
+            ).map(([h, d], i) => (
+              <div
+                key={h}
+                className="border border-border bg-card/40 p-6 transition hover:border-primary/60"
+              >
+                <div className="mb-4 font-display text-5xl text-gold">0{i + 1}</div>
+                <h3 className="mb-2 text-xl font-semibold">{h}</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">{d}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* FOUNDER'S VISION / ABOUT */}
+      {cmsConfig.sectionVisibility.showAbout && (
+        <section id="kurucu" className="scroll-mt-20 border-t border-border bg-card py-24">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-12">
+            <div className="flex flex-col items-center lg:col-span-4">
+              <div className="relative overflow-hidden rounded-full border-2 border-primary/60 p-2 shadow-gold">
+                <img
+                  src="/bycar-logo.jpg"
+                  alt="Burak Yılmaz — ByCar Global"
+                  className="h-56 w-56 rounded-full object-cover md:h-64 md:w-64"
+                />
+              </div>
+              <div className="mt-6 text-center">
+                <div className="font-display text-3xl font-semibold">Burak Yılmaz</div>
+                <div className="mt-1 text-xs tracking-[0.3em] text-primary">
+                  FOUNDER & CEO | BYCAR GLOBAL
+                </div>
+              </div>
+            </div>
+            <div className="lg:col-span-8">
+              <SectionTitle
+                kicker="Founder & Vision"
+                title={
+                  (lang === "tr" ? cmsConfig.about.headingTr : cmsConfig.about.headingEn) ||
+                  t.founder
+                }
+              />
+              <div className="space-y-4 text-base leading-relaxed text-muted-foreground md:text-lg whitespace-pre-line">
+                {(lang === "tr" ? cmsConfig.about.storyTr : cmsConfig.about.storyEn) ? (
+                  <p>{lang === "tr" ? cmsConfig.about.storyTr : cmsConfig.about.storyEn}</p>
+                ) : (
+                  t.founderParagraphs.map((p, idx) => <p key={idx}>{p}</p>)
                 )}
               </div>
-            );
-          })}
-        </div>
-      </section>
+              <div className="mt-8 border-l-2 border-primary pl-4 font-display text-2xl italic text-primary">
+                {(lang === "tr" ? cmsConfig.about.sloganTr : cmsConfig.about.sloganEn) ||
+                  t.founderSlogan}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* TESTIMONIALS */}
+      {cmsConfig.sectionVisibility.showTestimonials && cmsConfig.testimonials?.length > 0 && (
+        <section id="yorumlar" className="scroll-mt-20 border-t border-border bg-card/30 py-24">
+          <div className="mx-auto max-w-7xl px-4">
+            <SectionTitle
+              kicker="VIP Testimonials"
+              title={lang === "tr" ? "Seçkin Müşteri Deneyimleri" : "Client Reviews"}
+              center
+            />
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              {cmsConfig.testimonials.map((test) => (
+                <div
+                  key={test.id}
+                  className="relative flex flex-col justify-between border border-border bg-card p-6"
+                >
+                  <div>
+                    <div className="mb-4 flex items-center gap-1 text-gold">
+                      {Array.from({ length: test.rating || 5 }).map((_, rIdx) => (
+                        <Star key={rIdx} className="h-4 w-4 fill-primary text-primary" />
+                      ))}
+                    </div>
+                    <p className="mb-6 text-sm italic leading-relaxed text-muted-foreground">
+                      "{lang === "tr" ? test.commentTr : test.commentEn}"
+                    </p>
+                  </div>
+                  <div className="border-t border-border/60 pt-4">
+                    <div className="font-semibold text-foreground">{test.name}</div>
+                    <div className="text-xs text-primary">
+                      {lang === "tr" ? test.roleTr : test.roleEn} · {test.car}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* FAQ ACCORDION */}
+      {cmsConfig.sectionVisibility.showFaq && (
+        <section id="sss" className="mx-auto max-w-4xl scroll-mt-20 px-4 py-24">
+          <SectionTitle kicker="FAQ" title={t.faq} center />
+          <p className="-mt-6 mb-10 text-center text-sm text-muted-foreground">
+            {t.faqSub}
+          </p>
+          <div className="divide-y divide-border border border-border bg-card">
+            {(cmsConfig.faqs?.length > 0
+              ? cmsConfig.faqs.map((f) => [
+                  lang === "tr" ? f.qTr : f.qEn,
+                  lang === "tr" ? f.aTr : f.aEn,
+                ])
+              : t.faqs
+            ).map(([qText, aText], idx) => {
+              const isOpen = openFaq === idx;
+              return (
+                <div key={idx}>
+                  <button
+                    onClick={() => setOpenFaq(isOpen ? null : idx)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-4 px-6 py-5 text-left transition hover:text-primary"
+                  >
+                    <span className="font-display text-xl font-semibold">{qText}</span>
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-primary transition-transform duration-300 ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-border/50 bg-background/40 px-6 py-5 text-sm leading-relaxed text-muted-foreground">
+                      {aText}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* FOOTER */}
       <footer id="iletisim" className="scroll-mt-20 border-t border-border bg-card/50 py-16">
@@ -777,23 +923,29 @@ function Index() {
             <p className="mt-3 text-sm text-muted-foreground">
               Luxury Without Borders · bycarglobal.com
             </p>
+            <p className="mt-1 text-xs text-muted-foreground/80">
+              {cmsConfig.contact.address}
+            </p>
+            <p className="mt-1 text-xs text-primary/80">
+              {lang === "tr" ? cmsConfig.contact.hoursTr : cmsConfig.contact.hoursEn}
+            </p>
           </div>
           <div className="space-y-2.5 text-sm">
             <a
-              href={`tel:+${PHONE_RAW}`}
+              href={`tel:${cmsConfig.contact.phone.replace(/\s+/g, "")}`}
               className="flex items-center gap-2 transition hover:text-primary"
             >
               <Phone className="h-4 w-4 text-primary" />
-              {PHONE}
+              {cmsConfig.contact.phoneDisplay || cmsConfig.contact.phone}
             </a>
             <a
-              href={INSTAGRAM}
+              href={cmsConfig.contact.instagramUrl}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 transition hover:text-primary"
             >
               <Instagram className="h-4 w-4 text-primary" />
-              @bycar.eu
+              Instagram @bycarglobal
             </a>
             <a
               href={waLink()}
@@ -803,6 +955,13 @@ function Index() {
             >
               <MessageCircle className="h-4 w-4 text-primary" />
               WhatsApp VIP Concierge
+            </a>
+            <a
+              href={`mailto:${cmsConfig.contact.email}`}
+              className="flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+            >
+              <span className="font-semibold text-primary">@</span>
+              {cmsConfig.contact.email}
             </a>
           </div>
           <div className="space-y-2.5 text-sm text-muted-foreground">
@@ -855,20 +1014,22 @@ function Index() {
       )}
 
       {/* FLOATING VIP WHATSAPP BUTTON */}
-      <a
-        href={waLink()}
-        target="_blank"
-        rel="noreferrer"
-        aria-label="VIP WhatsApp İletişim"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 rounded-full border border-primary bg-background/95 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary shadow-gold backdrop-blur transition hover:scale-105 hover:bg-primary hover:text-primary-foreground"
-      >
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-        </span>
-        <MessageCircle className="h-4 w-4" />
-        <span className="hidden sm:inline">VIP WhatsApp</span>
-      </a>
+      {cmsConfig.sectionVisibility.showFloatingWhatsapp && (
+        <a
+          href={waLink()}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="VIP WhatsApp İletişim"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 rounded-full border border-primary bg-background/95 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary shadow-gold backdrop-blur transition hover:scale-105 hover:bg-primary hover:text-primary-foreground"
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          </span>
+          <MessageCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">VIP WhatsApp</span>
+        </a>
+      )}
 
       {/* VEHICLE DETAIL MODAL */}
       {detail && (

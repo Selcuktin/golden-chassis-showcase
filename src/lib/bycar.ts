@@ -4,14 +4,34 @@ export const PHONE = "+90 540 061 16 34";
 export const PHONE_RAW = "905400611634";
 export const INSTAGRAM = "https://instagram.com/bycar.eu";
 
-export const waLink = (car?: string, customText?: string) =>
-  `https://wa.me/${PHONE_RAW}?text=${encodeURIComponent(
-    customText
-      ? customText
-      : car
-        ? `Merhaba, web sitenizdeki ${car} için fiyat teklifi ve detaylı bilgi almak istiyorum.`
-        : "Merhaba, ByCar VIP otomotiv hizmetleri hakkında bilgi almak istiyorum.",
-  )}`;
+export const waLink = (car?: string, customText?: string, phoneOverride?: string) => {
+  let targetNumber = PHONE_RAW;
+  let template = "Merhaba, web sitenizdeki {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.";
+  if (typeof window !== "undefined") {
+    try {
+      const cfg = getStoredCmsConfig();
+      if (cfg?.contact?.whatsapp) {
+        const cleaned = cfg.contact.whatsapp.replace(/\D/g, "");
+        if (cleaned) targetNumber = cleaned;
+      }
+      if (cfg?.contact?.whatsappOfferTemplate) {
+        template = cfg.contact.whatsappOfferTemplate;
+      }
+    } catch {
+      // fallback to defaults
+    }
+  }
+  if (phoneOverride) {
+    const cleaned = phoneOverride.replace(/\D/g, "");
+    if (cleaned) targetNumber = cleaned;
+  }
+  const msg = customText
+    ? customText
+    : car
+      ? template.replace("{car}", car)
+      : "Merhaba, ByCar VIP otomotiv hizmetleri hakkında bilgi almak istiyorum.";
+  return `https://wa.me/${targetNumber}?text=${encodeURIComponent(msg)}`;
+};
 
 export type CarStatus = "active" | "sold" | "draft";
 export type ImageFit = "contain" | "cover";
@@ -102,7 +122,327 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   modalDefaultTab: "specs",
   defaultCardFit: "cover",
   whatsappAutoOpenOnForm: true,
-  pinnedBrands: BRANDS,
+};
+
+export type SiteCMSConfig = {
+  contact: {
+    phone: string;
+    phoneDisplay: string;
+    whatsapp: string;
+    email: string;
+    address: string;
+    hoursTr: string;
+    hoursEn: string;
+    mapsUrl: string;
+    instagramUrl: string;
+    whatsappOfferTemplate: string;
+    whatsappImportTemplate: string;
+  };
+  hero: {
+    badgeTr: string;
+    badgeEn: string;
+    titleTr: string;
+    titleEn: string;
+    subtitleTr: string;
+    subtitleEn: string;
+    bgImage: string;
+    primaryBtnTextTr: string;
+    primaryBtnTextEn: string;
+    secondaryBtnTextTr: string;
+    secondaryBtnTextEn: string;
+  };
+  stats: Array<{
+    value: string;
+    labelTr: string;
+    labelEn: string;
+  }>;
+  customPresets: {
+    brands: string[];
+    packages: string[];
+    bodies: string[];
+    fuels: string[];
+    gears: string[];
+    powers: string[];
+    colors: string[];
+    expertises: string[];
+    tramers: string[];
+    extras: Array<{ tr: string; en: string }>;
+  };
+  about: {
+    headingTr: string;
+    headingEn: string;
+    storyTr: string;
+    storyEn: string;
+    highlightTr: string;
+    highlightEn: string;
+    sloganTr: string;
+    sloganEn: string;
+  };
+  services: Array<{
+    id: string;
+    titleTr: string;
+    titleEn: string;
+    descTr: string;
+    descEn: string;
+  }>;
+  conciergeSteps: Array<{
+    step: string;
+    titleTr: string;
+    titleEn: string;
+    descTr: string;
+    descEn: string;
+  }>;
+  testimonials: Array<{
+    id: string;
+    name: string;
+    roleTr: string;
+    roleEn: string;
+    car: string;
+    rating: number;
+    commentTr: string;
+    commentEn: string;
+  }>;
+  faqs: Array<{
+    id: string;
+    qTr: string;
+    qEn: string;
+    aTr: string;
+    aEn: string;
+  }>;
+  sectionVisibility: {
+    showHeroStats: boolean;
+    showAbout: boolean;
+    showServices: boolean;
+    showConcierge: boolean;
+    showTestimonials: boolean;
+    showFaq: boolean;
+    showFloatingWhatsapp: boolean;
+  };
+  legal: {
+    kvkkTr: string;
+    kvkkEn: string;
+    privacyTr: string;
+    privacyEn: string;
+    cookieBannerTr: string;
+    cookieBannerEn: string;
+  };
+  seo: {
+    metaTitleTr: string;
+    metaTitleEn: string;
+    metaDescTr: string;
+    metaDescEn: string;
+  };
+  customPasswordHash?: string | null;
+};
+
+export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
+  contact: {
+    phone: "+90 540 061 16 34",
+    phoneDisplay: "+90 (540) 061 16 34",
+    whatsapp: "+90 540 061 16 34",
+    email: "info@bycarglobal.com",
+    address: "Fethiye Bulvarı, No: 42, Nilüfer / Bursa",
+    hoursTr: "Pazartesi – Cumartesi: 09:00 – 19:30 / Pazar: VIP Randevu ile",
+    hoursEn: "Monday – Saturday: 09:00 – 19:30 / Sunday: By VIP Appointment",
+    mapsUrl: "https://maps.google.com/?q=Nilufer+Bursa",
+    instagramUrl: "https://instagram.com/bycarglobal",
+    whatsappOfferTemplate: "Merhaba ByCar Global, {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.",
+    whatsappImportTemplate: "Merhaba ByCar Global, {model} ({year}) için özel ithalat ve tedarik talebinde bulunmak istiyorum. Bütçem: {budget}.",
+  },
+  hero: {
+    badgeTr: "BYCAR EXCLUSIVE SHOWROOM",
+    badgeEn: "BYCAR EXCLUSIVE SHOWROOM",
+    titleTr: "Kusursuzluğun Yeni Tanımı.",
+    titleEn: "Redefining Automotive Perfection.",
+    subtitleTr: "Dünyanın en prestijli markalarından seçilmiş, hatasız ekspertizli ve koleksiyon değeri taşıyan süper spor ve lüks otomobiller. Bursa Nilüfer'de ayrıcalıklı otomotiv deneyimi.",
+    subtitleEn: "A curated collection of pristine, certified low-mileage supercars and luxury vehicles from the world's most prestigious marques. An elite automotive experience in Bursa.",
+    bgImage: "/hero.jpg",
+    primaryBtnTextTr: "Koleksiyonu Keşfet",
+    primaryBtnTextEn: "Explore Collection",
+    secondaryBtnTextTr: "Özel İthalat / Talep",
+    secondaryBtnTextEn: "VIP Concierge",
+  },
+  stats: [
+    { value: "150+", labelTr: "Teslim Edilen Özel Araç", labelEn: "Delivered Vehicles" },
+    { value: "12+", labelTr: "Yıllık Deneyim", labelEn: "Years of Heritage" },
+    { value: "%100", labelTr: "Ekspertiz Garantisi", labelEn: "Certified Inspection" },
+    { value: "7/24", labelTr: "VIP Danışmanlık", labelEn: "VIP Concierge" },
+  ],
+  customPresets: {
+    brands: [],
+    packages: [],
+    bodies: [],
+    fuels: [],
+    gears: [],
+    powers: [],
+    colors: [],
+    expertises: [],
+    tramers: [],
+    extras: [],
+  },
+  about: {
+    headingTr: "Kurucumuzun Vizyonu",
+    headingEn: "Our Founder's Vision",
+    storyTr: "ByCar, otomobil tutkusunu uluslararası bir vizyonla buluşturmak amacıyla kurulmuştur. 2020 yılından bu yana otomotiv sektöründe edindiği deneyimle kurucumuz Burak Yılmaz, ByCar’ı premium ve ultra lüks otomobil sektöründe güçlü bir marka haline getirmeyi hedeflemektedir. Mercedes-Benz, BMW, Porsche, Ferrari, Lamborghini, Bentley, Rolls-Royce, Audi ve Cupra gibi dünyanın önde gelen markalarını seçkin müşterilerle buluşturan ByCar, kişiye özel bir otomobil sahipliği deneyimi sunmaktadır.",
+    storyEn: "ByCar was established to unite automotive passion with an international vision. With deep experience in the automotive sector since 2020, our founder Burak Yılmaz aims to position ByCar as a powerhouse in the premium and ultra-luxury automotive world, connecting distinguished clients with the world's leading marques.",
+    highlightTr: "Güven, şeffaflık ve profesyonellik üzerine inşa edilmiş uluslararası bir otomotiv markası. ByCar için lüks, yalnızca bir otomobile sahip olmak değil; ayrıcalıklı bir deneyimin parçası olmaktır.",
+    highlightEn: "An international automotive brand built upon trust, transparency, and uncompromising professionalism. For ByCar, luxury is an exclusive journey.",
+    sloganTr: "BYCAR — Luxury Without Borders.",
+    sloganEn: "BYCAR — Luxury Without Borders.",
+  },
+  services: [
+    {
+      id: "srv-1",
+      titleTr: "Koleksiyon Satışı",
+      titleEn: "Curated Showroom",
+      descTr: "Hatasız boyasız, düşük kilometreli ve yetkili bayi kayıtlı seçkin süper spor otomobiller.",
+      descEn: "Pristine, low-mileage certified supercars with documented official dealer history.",
+    },
+    {
+      id: "srv-2",
+      titleTr: "Özel İthalat & Tedarik",
+      titleEn: "Bespoke Import",
+      descTr: "Avrupa ve global distribütör ağımızdan hayalinizdeki spesifikasyonu anahtar teslim getirme.",
+      descEn: "Sourcing your exact dream specification turnkey from Europe and global networks.",
+    },
+    {
+      id: "srv-3",
+      titleTr: "Uluslararası Bağımsız Ekspertiz",
+      titleEn: "Certified Inspection",
+      descTr: "TÜV / DEKRA ve kurumsal laboratuvar testleriyle %100 mekanik ve şase güvencesi.",
+      descEn: "100% mechanical and structural assurance certified by TÜV and DEKRA testing.",
+    },
+    {
+      id: "srv-4",
+      titleTr: "VIP Kapalı Lojistik & Tescil",
+      titleEn: "Enclosed Transport & Registration",
+      descTr: "Sigortalı kapalı tır ile kapınıza teslimat, gümrük, ÖTV ve noter tescil yönetimi.",
+      descEn: "Fully insured enclosed carrier transport to your door with full customs clearance.",
+    },
+  ],
+  conciergeSteps: [
+    {
+      step: "01",
+      titleTr: "Talep & Küresel Pazar Analizi",
+      titleEn: "Request & Global Market Analysis",
+      descTr: "Aradığınız spesifikasyonu Avrupa ve küresel yetkili bayi ağımızda detaylı analiz ediyoruz.",
+      descEn: "We analyze the global authorized dealer network for your exact specification.",
+    },
+    {
+      step: "02",
+      titleTr: "Tedarik & Bağımsız Ekspertiz",
+      titleEn: "Sourcing & Independent Inspection",
+      descTr: "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik.",
+      descEn: "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification.",
+    },
+    {
+      step: "03",
+      titleTr: "Gümrük & Kapalı Lojistik",
+      titleEn: "Customs & Enclosed Logistics",
+      descTr: "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi.",
+      descEn: "Fully insured enclosed transport and turnkey customs clearance management.",
+    },
+    {
+      step: "04",
+      titleTr: "Anahtar Teslim VIP Teslimat",
+      titleEn: "Turnkey VIP Delivery",
+      descTr: "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir.",
+      descEn: "Delivered directly to your door with all registration and license plate formalities completed.",
+    },
+  ],
+  testimonials: [
+    {
+      id: "tst-1",
+      name: "Cemil Bey",
+      roleTr: "İş İnsanı · İstanbul",
+      roleEn: "Entrepreneur · Istanbul",
+      car: "Porsche 911 GT3 RS",
+      rating: 5,
+      commentTr: "Hayalimdeki Weissach paket 911 GT3'ü Avrupa'dan 18 gün içinde gümrüğü ve plakası tamamlanmış olarak kapıma teslim ettiler. Güven ve şeffaflıkta 1 numara.",
+      commentEn: "Delivered my dream 911 GT3 Weissach from Europe to my door in 18 days with all customs cleared. Unmatched transparency.",
+    },
+    {
+      id: "tst-2",
+      name: "Dr. Kaan Demir",
+      roleTr: "Cerrah · Bursa",
+      roleEn: "Surgeon · Bursa",
+      car: "Mercedes-AMG G 63",
+      rating: 5,
+      commentTr: "ByCar showroomundan aldığım G63 hatasız ekspertiz raporuyla teslim edildi. Nilüfer showroomundaki VIP ilgi ve hız muhteşemdi.",
+      commentEn: "The G63 I acquired was delivered in immaculate condition. The VIP hospitality in the Nilufer showroom was outstanding.",
+    },
+    {
+      id: "tst-3",
+      name: "Emre V.",
+      roleTr: "Yatırımcı · Bodrum",
+      roleEn: "Investor · Bodrum",
+      car: "Ferrari 296 GTS",
+      rating: 5,
+      commentTr: "Koleksiyonum için aradığım özel kombinasyon Ferrari'yi tam istediğim donanımlarla bulup teslim ettiler. ByCar ekibine teşekkür ederim.",
+      commentEn: "They sourced the exact Ferrari specification I wanted for my collection. Exceptional service by ByCar team.",
+    },
+  ],
+  faqs: [
+    {
+      id: "faq-1",
+      qTr: "Araç fiyatları neden sitede yer almıyor?",
+      qEn: "Why are prices provided upon request?",
+      aTr: "ByCar, seçkin portföyündeki araçlar için güncel döviz kurları, özel gümrük/vergi avantajları ve kişiye özel takas/finansman yapılandırması sunar. En doğru ve güncel fiyatlandırma için 'Fiyat Teklifi Al' veya 'Site Üzerinden Teklif Ver' butonlarıyla VIP danışmanımızdan anında bilgi alabilirsiniz.",
+      aEn: "ByCar provides bespoke pricing reflecting real-time currency rates, import/tax structuring, and trade-in valuations. Click 'Request a Quote' or 'Make an Offer Online' for an immediate VIP consultation.",
+    },
+    {
+      id: "faq-2",
+      qTr: "Özel ithalat (sipariş üzerine araç getirme) süreci ne kadar sürer?",
+      qEn: "How long does a private vehicle import take?",
+      aTr: "Avrupa (Almanya, İtalya, Belçika vb.) menşeli hazır stok araçlarda ekspertiz, kapalı lojistik ve gümrük işlemleri dahil ortalama 2 ila 4 hafta içinde anahtar teslim gerçekleştirilir.",
+      aEn: "For in-stock European vehicles, turnkey delivery including inspection, enclosed transport, and customs clearance takes 2 to 4 weeks.",
+    },
+    {
+      id: "faq-3",
+      qTr: "Araçların ekspertiz ve kilometre garantisi var mı?",
+      qEn: "Do vehicles come with an inspection and mileage guarantee?",
+      aTr: "Koleksiyonumuzdaki ve ithal ettiğimiz tüm araçlar yetkili servis geçmişli olup, uluslararası bağımsız ekspertiz kuruluşları (TÜV / DEKRA) ve Türkiye'deki kurumsal ekspertiz merkezleri tarafından şase, boya, mekanik ve orijinal kilometre garantisiyle teslim edilir.",
+      aEn: "Every vehicle undergoes rigorous multi-point inspection (TÜV / DEKRA and official dealer verification) with a 100% guarantee on chassis integrity, paint condition, and original mileage.",
+    },
+    {
+      id: "faq-4",
+      qTr: "Mevcut aracımı takasta değerlendirebilir miyim?",
+      qEn: "Do you accept trade-in vehicles?",
+      aTr: "Evet. Portföyümüzdeki tüm araçlar için mevcut lüks veya premium segment aracınızı gerçek piyasa değerinde takas olarak değerlendiriyoruz. Teklif formunda takas aracınızı belirtebilirsiniz.",
+      aEn: "Yes. We evaluate your current premium or luxury vehicle at competitive market value toward any automobile in our collection.",
+    },
+    {
+      id: "faq-5",
+      qTr: "Gümrük, ÖTV ve plaka tescil işlemlerini kim yürütüyor?",
+      qEn: "Who handles customs clearance and registration?",
+      aTr: "Tüm gümrükleme, ÖTV/KDV tahakkukları, TSE uygunluk belgesi ve noter/plaka tescil süreçleri ByCar Global'in uzman hukuk ve müşavirlik ekibi tarafından anahtar teslim olarak yürütülür.",
+      aEn: "Our dedicated legal and customs brokerage team manages all customs duties, homologation, and license plate registration on a complete turnkey basis.",
+    },
+  ],
+  sectionVisibility: {
+    showHeroStats: true,
+    showAbout: true,
+    showServices: true,
+    showConcierge: true,
+    showTestimonials: true,
+    showFaq: true,
+    showFloatingWhatsapp: true,
+  },
+  legal: {
+    kvkkTr: "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.\n2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki formlar aracılığıyla paylaştığınız Ad-Soyad, Telefon ve Araç Tercihi bilgileriniz yalnızca size özel fiyat teklifi sunulması ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.\n3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz.\n4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
+    kvkkEn: "1. Data Controller: ByCar Global is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.\n2. Purpose: Your contact and vehicle preferences submitted through our forms are processed exclusively to provide personalized quotes and VIP advisory services.\n3. Confidentiality: Client data is strictly confidential and never shared with third parties.\n4. Your Rights: You may request access, correction, or deletion of your personal data at any time via +90 540 061 16 34.",
+    privacyTr: "ByCar Global, ziyaretçilerinin gizliliğini en üst düzeyde korur. Sitemizde toplanan veriler yalnızca VIP hizmet kalitemizi artırmak ve taleplerinizi yanıtlamak amacıyla işlenir.",
+    privacyEn: "ByCar Global protects visitor privacy at the highest standards. Information collected is used strictly to enhance VIP service quality.",
+    cookieBannerTr: "Sitemizde lüks kullanıcı deneyimi sunmak için çerezler kullanılmaktadır.",
+    cookieBannerEn: "We use essential cookies to provide an exclusive browsing experience.",
+  },
+  seo: {
+    metaTitleTr: "ByCar — Exclusive Automotive | Lüks & Süper Spor Araç Koleksiyonu",
+    metaTitleEn: "ByCar — Exclusive Automotive | Luxury & Supercar Collection",
+    metaDescTr: "Bursa Nilüfer'de fiyatsız VIP araç koleksiyonu, özel ithalat ve süper spor otomotiv danışmanlığı.",
+    metaDescEn: "Curated luxury vehicle showcase, bespoke supercar import, and VIP concierge in Bursa.",
+  },
+  customPasswordHash: null,
 };
 
 export const ADMIN_PRESETS = {
@@ -859,6 +1199,7 @@ export const INITIAL_INQUIRIES: Inquiry[] = [
 const CARS_KEY = "bycar_fleet_v6";
 const INQ_KEY = "bycar_inquiries_v3";
 const SETTINGS_KEY = "bycar_settings_v2";
+const CMS_KEY = "bycar_cms_v2";
 const LANG_KEY = "bycar_lang_v1";
 const LOCKOUT_KEY = "bycar_admin_lockout_v1";
 const UNDO_KEY = "bycar_undo_snapshot_v2";
@@ -875,6 +1216,7 @@ const LEGACY_KEYS = [
   "bycar_inquiries_v2",
   "bycar_settings_v1",
   "bycar_undo_snapshot_v1",
+  "bycar_cms_v1",
 ];
 
 let legacyPurged = false;
@@ -898,6 +1240,7 @@ export function clearAllBrowserStorage() {
       CARS_KEY,
       INQ_KEY,
       SETTINGS_KEY,
+      CMS_KEY,
       UNDO_KEY,
       LOCKOUT_KEY,
     ]) {
@@ -915,6 +1258,7 @@ export type UndoSnapshot = {
   cars: Car[];
   inquiries: Inquiry[];
   settings: SiteSettings;
+  cmsConfig: SiteCMSConfig;
 };
 
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
@@ -922,7 +1266,7 @@ const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
 const ADMIN_PBKDF2_ITERATIONS = 100000;
 let cachedExpectedHashes: string[] | null = null;
 
-async function derivePBKDF2Hex(password: string): Promise<string> {
+export async function derivePBKDF2Hex(password: string): Promise<string> {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
     return password === "bycar2024" || password === "bycar2026"
       ? "VALID_FALLBACK"
@@ -952,14 +1296,26 @@ async function derivePBKDF2Hex(password: string): Promise<string> {
 }
 
 export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean> {
+  const customHash = getStoredCmsConfig().customPasswordHash;
+  const candidate = await derivePBKDF2Hex(input.trim());
+  if (customHash && candidate === customHash) {
+    return true;
+  }
   if (!cachedExpectedHashes) {
     cachedExpectedHashes = await Promise.all([
       derivePBKDF2Hex("bycar2024"),
       derivePBKDF2Hex("bycar2026"),
     ]);
   }
-  const candidate = await derivePBKDF2Hex(input.trim());
   return cachedExpectedHashes.includes(candidate);
+}
+
+export async function setCustomAdminPassword(newPassword: string): Promise<boolean> {
+  const hash = await derivePBKDF2Hex(newPassword.trim());
+  const cms = getStoredCmsConfig();
+  cms.customPasswordHash = hash;
+  saveStoredCmsConfig(cms, "Admin Şifresi Güncellendi");
+  return true;
 }
 
 export type LockoutState = {
@@ -1065,6 +1421,7 @@ export function saveUndoSnapshot(label: string) {
     cars: getStoredCars(),
     inquiries: getStoredInquiries(),
     settings: getStoredSettings(),
+    cmsConfig: getStoredCmsConfig(),
   };
   safeSetItem(UNDO_KEY, JSON.stringify(snap));
   window.dispatchEvent(new Event(SYNC_EVENT));
@@ -1088,9 +1445,155 @@ export function restoreUndoSnapshot(): UndoSnapshot | null {
   safeSetItem(CARS_KEY, JSON.stringify(snap.cars));
   safeSetItem(INQ_KEY, JSON.stringify(snap.inquiries));
   safeSetItem(SETTINGS_KEY, JSON.stringify(snap.settings));
+  if (snap.cmsConfig) {
+    safeSetItem(CMS_KEY, JSON.stringify(snap.cmsConfig));
+  }
   window.localStorage.removeItem(UNDO_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
   return snap;
+}
+
+export function getStoredCmsConfig(): SiteCMSConfig {
+  if (typeof window === "undefined") return DEFAULT_CMS_CONFIG;
+  try {
+    const raw = window.localStorage.getItem(CMS_KEY);
+    if (!raw) return DEFAULT_CMS_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<SiteCMSConfig>;
+    return {
+      ...DEFAULT_CMS_CONFIG,
+      ...parsed,
+      contact: { ...DEFAULT_CMS_CONFIG.contact, ...(parsed.contact || {}) },
+      hero: { ...DEFAULT_CMS_CONFIG.hero, ...(parsed.hero || {}) },
+      stats:
+        Array.isArray(parsed.stats) && parsed.stats.length > 0
+          ? parsed.stats
+          : DEFAULT_CMS_CONFIG.stats,
+      customPresets: {
+        ...DEFAULT_CMS_CONFIG.customPresets,
+        ...(parsed.customPresets || {}),
+      },
+      about: { ...DEFAULT_CMS_CONFIG.about, ...(parsed.about || {}) },
+      services:
+        Array.isArray(parsed.services) && parsed.services.length > 0
+          ? parsed.services
+          : DEFAULT_CMS_CONFIG.services,
+      conciergeSteps:
+        Array.isArray(parsed.conciergeSteps) && parsed.conciergeSteps.length > 0
+          ? parsed.conciergeSteps
+          : DEFAULT_CMS_CONFIG.conciergeSteps,
+      testimonials:
+        Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0
+          ? parsed.testimonials
+          : DEFAULT_CMS_CONFIG.testimonials,
+      faqs:
+        Array.isArray(parsed.faqs) && parsed.faqs.length > 0
+          ? parsed.faqs
+          : DEFAULT_CMS_CONFIG.faqs,
+      sectionVisibility: {
+        ...DEFAULT_CMS_CONFIG.sectionVisibility,
+        ...(parsed.sectionVisibility || {}),
+      },
+      legal: { ...DEFAULT_CMS_CONFIG.legal, ...(parsed.legal || {}) },
+      seo: { ...DEFAULT_CMS_CONFIG.seo, ...(parsed.seo || {}) },
+    };
+  } catch {
+    return DEFAULT_CMS_CONFIG;
+  }
+}
+
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+export function triggerServerSync() {
+  if (typeof window === "undefined") return;
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(async () => {
+    try {
+      await fetch("/api/cms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          cars: getStoredCars(),
+          inquiries: getStoredInquiries(),
+          settings: getStoredSettings(),
+          cmsConfig: getStoredCmsConfig(),
+        }),
+      });
+    } catch {
+      // Offline fallback
+    }
+  }, 400);
+}
+
+export async function syncFromServer(): Promise<{ ok: boolean; source?: string }> {
+  if (typeof window === "undefined") return { ok: false };
+  try {
+    const res = await fetch("/api/cms");
+    if (!res.ok) return { ok: false };
+    const data = (await res.json()) as {
+      ok?: boolean;
+      source?: string;
+      cars?: Car[];
+      inquiries?: Inquiry[];
+      settings?: Partial<SiteSettings>;
+      cmsConfig?: Partial<SiteCMSConfig>;
+    };
+    if (data.ok) {
+      if (Array.isArray(data.cars) && data.cars.length > 0) {
+        safeSetItem(CARS_KEY, JSON.stringify(data.cars));
+      }
+      if (Array.isArray(data.inquiries)) {
+        safeSetItem(INQ_KEY, JSON.stringify(data.inquiries));
+      }
+      if (data.settings) {
+        safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...data.settings }));
+      }
+      if (data.cmsConfig) {
+        safeSetItem(CMS_KEY, JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...data.cmsConfig }));
+      }
+      window.dispatchEvent(new Event(SYNC_EVENT));
+      return { ok: true, source: data.source };
+    }
+  } catch {
+    // Ignore network error
+  }
+  return { ok: false };
+}
+
+export function saveStoredCmsConfig(next: SiteCMSConfig, undoLabel?: string) {
+  if (typeof window === "undefined") return;
+  if (undoLabel) saveUndoSnapshot(undoLabel);
+  safeSetItem(CMS_KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
+}
+
+export function resetStoredCmsConfig() {
+  if (typeof window === "undefined") return;
+  saveUndoSnapshot("Site CMS Ayarlarını Sıfırlama");
+  window.localStorage.removeItem(CMS_KEY);
+  window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
+}
+
+export function getEffectivePresets(custom?: SiteCMSConfig["customPresets"]) {
+  const c = custom || getStoredCmsConfig().customPresets;
+  return {
+    brands: Array.from(new Set([...ADMIN_PRESETS.brands, ...(c?.brands || [])])),
+    packages: Array.from(new Set([...ADMIN_PRESETS.packages, ...(c?.packages || [])])),
+    bodies: Array.from(new Set([...ADMIN_PRESETS.bodies, ...(c?.bodies || [])])),
+    fuels: Array.from(new Set([...ADMIN_PRESETS.fuels, ...(c?.fuels || [])])),
+    gears: Array.from(new Set([...ADMIN_PRESETS.gears, ...(c?.gears || [])])),
+    powers: Array.from(new Set([...ADMIN_PRESETS.powers, ...(c?.powers || [])])),
+    colors: Array.from(new Set([...ADMIN_PRESETS.colors, ...(c?.colors || [])])),
+    expertises: Array.from(new Set([...ADMIN_PRESETS.expertises, ...(c?.expertises || [])])),
+    tramers: Array.from(new Set([...ADMIN_PRESETS.tramers, ...(c?.tramers || [])])),
+    extras: [
+      ...ADMIN_PRESETS.extras,
+      ...(c?.extras || []).filter(
+        (ce) => !ADMIN_PRESETS.extras.some((ae) => ae.tr === ce.tr),
+      ),
+    ],
+  };
 }
 
 export function getStoredCars(): Car[] {
@@ -1115,6 +1618,7 @@ export function saveStoredCars(next: Car[], undoLabel?: string) {
   if (undoLabel) saveUndoSnapshot(undoLabel);
   safeSetItem(CARS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
 }
 
 export function resetStoredCars() {
@@ -1122,6 +1626,7 @@ export function resetStoredCars() {
   saveUndoSnapshot("Varsayılan 10 Araca Sıfırlama");
   window.localStorage.removeItem(CARS_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
 }
 
 export function getStoredInquiries(): Inquiry[] {
@@ -1141,6 +1646,7 @@ export function saveStoredInquiries(next: Inquiry[], undoLabel?: string) {
   if (undoLabel) saveUndoSnapshot(undoLabel);
   safeSetItem(INQ_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
 }
 
 export function resetStoredInquiries() {
@@ -1148,6 +1654,7 @@ export function resetStoredInquiries() {
   saveUndoSnapshot("Talepleri Varsayılana Sıfırlama");
   window.localStorage.removeItem(INQ_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
 }
 
 export function addStoredInquiry(item: Omit<Inquiry, "id" | "time" | "status">) {
@@ -1159,6 +1666,15 @@ export function addStoredInquiry(item: Omit<Inquiry, "id" | "time" | "status">) 
     status: "Yeni",
   };
   saveStoredInquiries([created, ...current]);
+
+  // Also post to Cloudflare D1 server API
+  if (typeof window !== "undefined") {
+    void fetch("/api/inquiry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(item),
+    }).catch(() => {});
+  }
   return created;
 }
 
@@ -1177,6 +1693,7 @@ export function saveStoredSettings(next: SiteSettings) {
   if (typeof window === "undefined") return;
   safeSetItem(SETTINGS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
+  triggerServerSync();
 }
 
 export function getStoredLang(): Lang {
@@ -1193,11 +1710,12 @@ export function saveStoredLang(next: Lang) {
 
 export function exportDatabaseJSON(): string {
   const payload = {
-    version: "bycar-db-v5",
+    version: "bycar-db-v6",
     exportedAt: new Date().toISOString(),
     cars: getStoredCars(),
     inquiries: getStoredInquiries(),
     settings: getStoredSettings(),
+    cmsConfig: getStoredCmsConfig(),
   };
   return JSON.stringify(payload, null, 2);
 }
@@ -1208,6 +1726,7 @@ export function importDatabaseJSON(rawJson: string): { ok: boolean; message: str
       cars?: Car[];
       inquiries?: Inquiry[];
       settings?: Partial<SiteSettings>;
+      cmsConfig?: Partial<SiteCMSConfig>;
     };
     if (!parsed || !Array.isArray(parsed.cars) || parsed.cars.length === 0) {
       return { ok: false, message: "Geçersiz yedek dosyası: Araç listesi bulunamadı." };
@@ -1223,7 +1742,14 @@ export function importDatabaseJSON(rawJson: string): { ok: boolean; message: str
         JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed.settings }),
       );
     }
+    if (parsed.cmsConfig) {
+      safeSetItem(
+        CMS_KEY,
+        JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...parsed.cmsConfig }),
+      );
+    }
     window.dispatchEvent(new Event(SYNC_EVENT));
+    triggerServerSync();
     return {
       ok: true,
       message: `Veritabanı başarıyla geri yüklendi (${parsed.cars.length} araç, ${
@@ -1245,6 +1771,7 @@ export function exportD1SqlDump(): string {
   const cars = getStoredCars();
   const inquiries = getStoredInquiries();
   const settings = getStoredSettings();
+  const cmsConfig = getStoredCmsConfig();
   const lines: string[] = [
     "-- ByCar Global (bycarglobal.com) — Otomatik Üretilen Cloudflare D1 (SQLite) Veritabanı Dökümü",
     `-- Tarih: ${new Date().toISOString()}`,
@@ -1300,8 +1827,13 @@ export function exportD1SqlDump(): string {
 
   lines.push("", "-- 3. Vitrin & Modal Ayarları (site_settings)");
   lines.push(
-    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('global_config', ${sqlEsc(
+    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('showcase_settings', ${sqlEsc(
       JSON.stringify(settings),
+    )});`,
+  );
+  lines.push(
+    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('cms_config', ${sqlEsc(
+      JSON.stringify(cmsConfig),
     )});`,
   );
 
@@ -1312,18 +1844,25 @@ export function useByCarStore() {
   const [cars, setCars] = useState<Car[]>(CARS);
   const [inquiries, setInquiries] = useState<Inquiry[]>(INITIAL_INQUIRIES);
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
+  const [cmsConfig, setCmsConfig] = useState<SiteCMSConfig>(DEFAULT_CMS_CONFIG);
   const [lang, setLangState] = useState<Lang>("tr");
   const [undoSnap, setUndoSnap] = useState<UndoSnapshot | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const sync = () => {
       setCars(getStoredCars());
       setInquiries(getStoredInquiries());
       setSettings(getStoredSettings());
+      setCmsConfig(getStoredCmsConfig());
       setLangState(getStoredLang());
       setUndoSnap(getUndoSnapshot());
     };
     sync();
+
+    // Auto-sync from Cloudflare D1 server API on initial load
+    void syncFromServer();
+
     window.addEventListener(SYNC_EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
@@ -1332,12 +1871,24 @@ export function useByCarStore() {
     };
   }, []);
 
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncFromServer();
+      triggerServerSync();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return {
     cars,
     inquiries,
     settings,
+    cmsConfig,
     lang,
     undoSnap,
+    isSyncing,
     setLang: saveStoredLang,
     updateCars: saveStoredCars,
     resetCars: resetStoredCars,
@@ -1345,7 +1896,10 @@ export function useByCarStore() {
     resetInquiries: resetStoredInquiries,
     addInquiry: addStoredInquiry,
     updateSettings: saveStoredSettings,
+    updateCmsConfig: saveStoredCmsConfig,
+    resetCmsConfig: resetStoredCmsConfig,
     restoreUndo: restoreUndoSnapshot,
+    syncWithServer: handleManualSync,
   };
 }
 

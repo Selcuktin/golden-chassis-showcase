@@ -1,0 +1,22 @@
+# ByCar Global — Cloudflare Workers & D1 Database Configuration
+name = "selcuktin-golden-chassis-showcase"
+main = ".output/server/index.mjs"
+compatibility_date = "2026-10-13"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+binding = "ASSETS"
+directory = ".output/public"
+
+# Cloudflare D1 Server Database
+# D1 Veritabanı oluşturmak için terminalden:
+# npx wrangler d1 create bycar_db
+# D1 Şemasını uygulamak için:
+# npx wrangler d1 execute bycar_db --file=./schema.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "bycar_db"
+database_id = "bycar-global-d1-prod"
+
+[vars]
+NODE_ENV = "production"

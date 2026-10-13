@@ -104,5 +104,69 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     // Reset back to default CARS
     saveStoredCars(CARS, "Test temizliği");
   });
+
+  it("Phase 8: enables 100% zero-code admin CMS config, dynamic presets, custom PBKDF2 password, and Cloudflare D1 synchronization", async () => {
+    const {
+      getStoredCmsConfig,
+      saveStoredCmsConfig,
+      resetStoredCmsConfig,
+      getEffectivePresets,
+      setCustomAdminPassword,
+      exportD1SqlDump,
+      exportDatabaseJSON,
+      importDatabaseJSON,
+    } = await import("@/lib/bycar");
+
+    // 1. Initial CMS config integrity
+    const initialConfig = getStoredCmsConfig();
+    expect(initialConfig.contact.phone).toBe("+90 540 061 16 34");
+    expect(initialConfig.hero.badgeTr).toBe("BYCAR EXCLUSIVE SHOWROOM");
+    expect(initialConfig.stats.length).toBe(4);
+    expect(initialConfig.services.length).toBe(4);
+    expect(initialConfig.conciergeSteps.length).toBe(4);
+    expect(initialConfig.testimonials.length).toBeGreaterThanOrEqual(3);
+    expect(initialConfig.faqs.length).toBeGreaterThanOrEqual(5);
+    expect(initialConfig.sectionVisibility.showHeroStats).toBe(true);
+
+    // 2. Custom Presets chip addition & deletion
+    const presetsBefore = getEffectivePresets();
+    const updatedConfig = {
+      ...initialConfig,
+      customPresets: {
+        ...initialConfig.customPresets,
+        brands: [...initialConfig.customPresets.brands, "Koenigsegg"],
+        fuels: [...initialConfig.customPresets.fuels, "E-Fuel Sentetik"],
+      },
+    };
+    saveStoredCmsConfig(updatedConfig, "Koenigsegg ve E-Fuel eklendi");
+
+    const presetsAfter = getEffectivePresets();
+    expect(presetsAfter.brands).toContain("Koenigsegg");
+    expect(presetsAfter.fuels).toContain("E-Fuel Sentetik");
+    expect(presetsAfter.brands.length).toBe(presetsBefore.brands.length + 1);
+
+    // 3. Custom Admin Password Change via PBKDF2
+    const customPass = "SuperVIP_2026!#";
+    await setCustomAdminPassword(customPass);
+    expect(await verifyAdminPasswordPBKDF2(customPass)).toBe(true);
+    // Legacy demo password should still work as fallback
+    expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(true);
+    expect(await verifyAdminPasswordPBKDF2("wrong-custom-pass")).toBe(false);
+
+    // 4. Cloudflare D1 SQL Dump and JSON export contains updated CMS config
+    const d1Sql = exportD1SqlDump();
+    expect(d1Sql).toContain("cms_config");
+    expect(d1Sql).toContain("Koenigsegg");
+
+    const jsonBackup = exportDatabaseJSON();
+    expect(jsonBackup).toContain("Koenigsegg");
+    expect(jsonBackup).toContain("cmsConfig");
+
+    // 5. Reset CMS config to factory defaults
+    resetStoredCmsConfig();
+    const resetCfg = getStoredCmsConfig();
+    expect(resetCfg.customPresets.brands).not.toContain("Koenigsegg");
+    expect(resetCfg.customPasswordHash).toBeNull();
+  });
 });
 

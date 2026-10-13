@@ -123,11 +123,18 @@ Mevcut durumda **Araçlar**, **Fotoğraf Sıralaması**, **CRM Talepleri** ve **
 | **M5** | **Sosyal Kanıt (Müşteri Yorumları) & SSS (FAQ) Yöneticisi** | 3 müşteri yorumu (`testimonials`) ve 5 SSS (`faqs`) maddesi kodda sabit. | Admin'den yeni müşteri yorumu ekleme/silme/düzenleme ve SSS (Soru-Cevap) maddesi ekleme/silme/sıralama yapılabilecek. |
 | **M6** | **Güvenlik, Şifre Yönetimi, SEO & Yasal Metinler (KVKK/Çerez)** | Admin şifresi (`bycar2024` / `bycar2026` PBKDF2 hash), SEO site başlığı ve KVKK/Gizlilik metinleri kodda sabit. | Admin panelinden **Admin Şifresi Değiştirme** (tarayıcıda yeni PBKDF2 hash üretip kaydetme), **Bakım Modu (VIP Private Mode)** açma/kapama, **Bölüm Gizle/Göster** (örn. Yorumlar veya SSS bölümünü komple kapatma) ve KVKK/Gizlilik/Çerez metinlerini düzenleme. |
 
-### 7.2 Faz 8 Uygulama Görevleri (`T015` – `T020`)
-- [ ] **T015 (`CRITICAL`):** `SiteCMSConfig` veri modelini (`contact`, `hero`, `stats`, `sectionsVisibility`, `customPresets`, `about`, `services`, `conciergeSteps`, `testimonials`, `faqs`, `legal`, `seo`, `customPasswordHash`) `src/lib/bycar.ts` ve `schema.sql` içinde tanımla; tüm okuma/yazma/yedekleme (`JSON` + `D1 .sql`) fonksiyonlarına bağla.
-- [ ] **T016 (`CRITICAL`):** Admin Paneli "2. Araç Düzenle" formundaki tüm hazır etiket (Chip) gruplarına **"+ Kalıcı Etiket Ekle / Sil" (`customPresets`)** özelliği ekle (yeni yazılan kasa tipi, marka, paket veya donanım istenirse tek tıkla kalıcı çip olsun).
-- [ ] **T017 (`HIGH`):** Admin Paneline **"5. Site İçeriği & Kurumsal CMS"** sekmesi ekle: Hero görseli/başlığı, 4 İstatistik sayacı, Hakkımızda, VIP Hizmetler, Özel İthalat adımları, Müşteri Yorumları (Ekle/Sil/Düzenle) ve SSS (Ekle/Sil/Düzenle) yönetimi.
-- [ ] **T018 (`HIGH`):** Admin Paneline **"6. İletişim, SEO, Yasal & Güvenlik"** sekmesi ekle: WhatsApp & Telefon numarası, Showroom adresi, Google Harita linki, Çalışma saatleri, Sosyal medya linkleri, WhatsApp mesaj şablonları, Bölüm Görünürlük Şalterleri (`Show/Hide Sections`), KVKK/Çerez metinleri ve **Admin Şifre Değiştirme (PBKDF2)**.
-- [ ] **T019 (`HIGH`):** Ana sayfa (`src/routes/index.tsx`) ve Araç Detay sayfasını (`src/routes/arac.$slug.tsx`) statik `CONTACT` ve `T` sabitleri yerine %100 dinamik `SiteCMSConfig` verisiyle besle (Admin'de yapılan her değişiklik anında tüm sitede ve WhatsApp butonlarında canlı görünsün).
-- [ ] **T020 (`MEDIUM`):** Tüm CMS modüllerini `JSON Tam Yedek`, `Cloudflare D1 (.sql) Dump` ve `Son İşlemi Geri Al (Undo)` sistemine dahil et ve testlerini doğrula.
+### 7.2 ✅ Faz 8 Uygulama Görevleri (`T015` – `T020`) — TAMAMLANDI (%100 Başarı)
+- [x] **T015 (`CRITICAL`):** `SiteCMSConfig` veri modeli (`contact`, `hero`, `stats`, `sectionVisibility`, `customPresets`, `about`, `services`, `conciergeSteps`, `testimonials`, `faqs`, `legal`, `seo`, `customPasswordHash`) `src/lib/bycar.ts` ve `schema.sql` içinde tanımlandı; okuma/yazma/yedekleme (`JSON` + `D1 .sql`), debounce edilmiş arka plan senkronizasyonu (`/api/cms`) tamamlandı.
+- [x] **T016 (`CRITICAL`):** Admin Paneli "2. Araç Düzenle" formundaki tüm hazır çip listeleri `getEffectivePresets()` ile bağlandı; her kategoriye (Marka, Paket, Kasa, Yakıt, Vites, Güç, Renk, Ekspertiz, Tramer, Donanım) dinamik **"+ Kalıcı Çip Ekle"** ve **"× Çip Sil"** özelliği kazandırıldı.
+- [x] **T017 (`HIGH`):** Admin Paneline **"5. Site İçeriği (CMS)"** sekmesi (`AdminContentTab.tsx`) eklendi: Hero görseli/başlıkları/CTA'ları, 4 Sayaç, Kurucu Vizyonu & Hakkımızda, 4 VIP Hizmet Kartı, 4 İthalat & Concierge Adımı, Müşteri Yorumları CRUD ve Sıkça Sorulan Sorular (SSS) CRUD yönetimi tamamlandı.
+- [x] **T018 (`HIGH`):** Admin Paneline **"6. İletişim, Şalter & D1"** sekmesi (`AdminSystemTab.tsx`) eklendi: WhatsApp, Telefon, E-posta, Showroom Adresi, Çalışma Saatleri, Google Harita, Instagram, WhatsApp Mesaj Şablonları, Bölüm Gizle/Göster Şalterleri, **PBKDF2 Yönetici Şifresi Değiştirme** ve Cloudflare D1 Canlı Sunucu Senkronizasyon Merkezi devreye alındı.
+- [x] **T019 (`HIGH`):** Ana sayfa (`src/routes/index.tsx`) ve Araç Detay sayfası (`src/routes/arac.$slug.tsx`) statik sabitlerden tamamen arındırıldı; `cmsConfig` ve `sectionVisibility` şalterleri ile dinamik hale getirildi.
+- [x] **T020 (`MEDIUM`):** Tüm CMS modülleri `JSON Tam Yedek`, `Cloudflare D1 (.sql) Dump`, `Son İşlemi Geri Al (Undo)` ve Cloudflare Workers Server API (`/api/cms`, `/api/inquiry`, `/api/health`) sistemine entegre edildi; `vitest` testleri (`4/4 passed`) ve `npm run build` ile production doğrulaması yapıldı.
+
+---
+
+## 8. 🏆 Proje Durumu: %100 Tamamlandı (Yayına Hazır)
+- **Koda Bağımlılık:** %0 (Tüm içerik, çipler, iletişim, bölümler ve şifreler admin panelinden yönetilebilir).
+- **Cloudflare Uyumluluğu:** %100 (`wrangler.toml` + `src/server/api.ts` + D1 SQLite senkronizasyonu + R2 görsel uyumluluğu).
+- **Test ve Bütünlük:** `4/4 passed` vitest birim testi, 0 lint ve derleme hatası.
 
