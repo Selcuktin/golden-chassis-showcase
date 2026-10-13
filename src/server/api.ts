@@ -423,7 +423,7 @@ export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
 export const PBKDF2_ITERATIONS = 100000;
 
 // Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters)
-export const BUILD_GIT_COMMIT = "924e3bf";
+export const BUILD_GIT_COMMIT = "5d1c5f6";
 const PRECOMPUTED_ADMIN_HASHES = [
   "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a", // Default bootstrap PBKDF2 hash
 ];
