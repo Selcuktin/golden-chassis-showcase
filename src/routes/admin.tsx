@@ -1599,7 +1599,7 @@ function Admin() {
                   value={descTr}
                   onChange={(e) => setDescTr(e.target.value)}
                   rows={3}
-                  placeholder="Yetkili servis geçmişi, kondisyon ve özel notlar..."
+                  placeholder="Avrupa ithalat ve servis geçmişi, kondisyon ve özel notlar..."
                   className={input}
                 />
               </div>

@@ -295,8 +295,8 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       id: "srv-1",
       titleTr: "Koleksiyon Satışı",
       titleEn: "Curated Showroom",
-      descTr: "Hatasız boyasız, düşük kilometreli ve yetkili bayi kayıtlı seçkin süper spor otomobiller.",
-      descEn: "Pristine, low-mileage certified supercars with documented official dealer history.",
+      descTr: "Hatasız boyasız, düşük kilometreli ve uluslararası bağımsız ekspertiz onaylı seçkin Avrupa ithalatı süper spor otomobiller.",
+      descEn: "Pristine, low-mileage certified supercars with verified European import history.",
     },
     {
       id: "srv-2",
@@ -325,8 +325,8 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       step: "01",
       titleTr: "Talep & Küresel Pazar Analizi",
       titleEn: "Request & Global Market Analysis",
-      descTr: "Aradığınız spesifikasyonu Avrupa ve küresel yetkili bayi ağımızda detaylı analiz ediyoruz.",
-      descEn: "We analyze the global authorized dealer network for your exact specification.",
+      descTr: "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda detaylı analiz ediyoruz.",
+      descEn: "We analyze our extensive European and German supplier network for your exact specification.",
     },
     {
       step: "02",
@@ -401,8 +401,8 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       id: "faq-3",
       qTr: "Araçların ekspertiz ve kilometre garantisi var mı?",
       qEn: "Do vehicles come with an inspection and mileage guarantee?",
-      aTr: "Koleksiyonumuzdaki ve ithal ettiğimiz tüm araçlar yetkili servis geçmişli olup, uluslararası bağımsız ekspertiz kuruluşları (TÜV / DEKRA) ve Türkiye'deki kurumsal ekspertiz merkezleri tarafından şase, boya, mekanik ve orijinal kilometre garantisiyle teslim edilir.",
-      aEn: "Every vehicle undergoes rigorous multi-point inspection (TÜV / DEKRA and official dealer verification) with a 100% guarantee on chassis integrity, paint condition, and original mileage.",
+      aTr: "Koleksiyonumuzdaki tüm araçlar doğrudan Avrupa / Almanya özel ithalatı olup, uluslararası bağımsız ekspertiz kuruluşları (TÜV / DEKRA) ve Türkiye'deki kurumsal ekspertiz merkezleri tarafından şase, boya, mekanik ve orijinal kilometre garantisiyle teslim edilir.",
+      aEn: "Every vehicle is a direct European import undergoing rigorous multi-point inspection (TÜV / DEKRA verification) with a 100% guarantee on chassis integrity, paint condition, and original mileage.",
     },
     {
       id: "faq-4",
@@ -530,16 +530,16 @@ export const ADMIN_PRESETS = {
   ],
   expertises: [
     "Hatasız / Boyasız / Orijinal",
-    "Tamamen Yetkili Servis Bakımlı",
+    "Tamamen Servis Bakımlı",
     "Sıfır KM / Hatasız / Boyasız",
-    "Hatasız / Boyasız / Bayi Çıkışlı",
-    "Yetkili Bayi Orijinal Değişen / Harici Hatasız",
+    "Hatasız / Boyasız / Özel İthalat",
+    "Orijinal Değişen / Harici Hatasız Boyasız",
     "1 Parça Lokal Boyalı / Harici Hatasız",
   ],
   tramers: [
     "Yok",
     "Tramersiz (0 TL)",
-    "Yetkili Servis Kayıtlı",
+    "Servis Kayıtlı",
   ],
   extras: [
     { tr: "Açılabilir Panoramik Cam Tavan", en: "Panoramic Sliding Glass Sunroof" },
@@ -558,7 +558,7 @@ export const ADMIN_PRESETS = {
     { tr: "Eller Serbest Elektrikli Bagaj Kapağı", en: "Hands-Free Power Tailgate" },
     { tr: "Anahtarsız Giriş ve Çalıştırma (Keyless-Go)", en: "Keyless Entry & Start System" },
     { tr: "Kablosuz Apple CarPlay & Android Auto", en: "Wireless Apple CarPlay & Android Auto" },
-    { tr: "Kablosuz Şarj Ünitesi & Dijital Kokpit", en: "Wireless Charging & Digital Cockpit" },
+    { tr: "Kablosuz Şarj Ünitesi & Dijital Kokpit", en: "Wireless Charging & Digital Kokpit" },
     { tr: "Adaptif Hız Sabitleyici (ACC) & Şerit Takip", en: "Adaptive Cruise Control (ACC) & Lane Assist" },
     { tr: "Kör Nokta Uyarı & Çarpışma Önleme Sistemi", en: "Blind Spot Monitor & Collision Prevention" },
     { tr: "HD Matrix LED / Lazer Farlar & Kayar Stoplar", en: "HD Matrix LED / Laser Headlights & Dynamic Taillights" },
@@ -584,17 +584,23 @@ const TERM_MAP_EN: Record<string, string> = {
   Tiptronic: "Tiptronic",
   Yok: "None (Clean)",
   "Tramersiz (0 TL)": "Clean Record (0 TL)",
-  "Yetkili Servis Kayıtlı": "Official Dealer Recorded",
+  "Servis Kayıtlı": "Documented Service History",
+  "Yetkili Servis Kayıtlı": "Documented Service History",
   "Hatasız / Boyasız / Orijinal": "Accident-Free / Original Paint",
   "Hatasız / Boyasız / Değişensiz": "Accident-Free / Original Paint / No Replaced Parts",
-  "Tamamen Yetkili Servis Bakımlı": "Full Official Dealer Service History",
+  "Tamamen Servis Bakımlı": "Full Documented Service History",
+  "Tamamen Yetkili Servis Bakımlı": "Full Documented Service History",
   "Sıfır KM / Hatasız / Boyasız": "Zero KM / Brand New / Original Paint",
-  "Hatasız / Boyasız / Bayi Çıkışlı": "Accident-Free / Official Dealer Delivered",
-  "Hatasız / Boyasız / Borusan Çıkışlı": "Accident-Free / Official Borusan Delivered",
+  "Hatasız / Boyasız / Özel İthalat": "Accident-Free / European Import",
+  "Hatasız / Boyasız / Bayi Çıkışlı": "Accident-Free / European Import",
+  "Hatasız / Boyasız / Borusan Çıkışlı": "Accident-Free / European Import",
   "Hatasız / Boyasız / Koleksiyondan Teslim Edildi": "Accident-Free / Delivered from Collection",
+  "Sağ Ön Kapı & Çamurluk Orijinal Değişen / Harici Hatasız Boyasız":
+    "Right Front Door & Fender Replaced / Otherwise Original Paint",
   "Sağ Ön Kapı & Çamurluk Yetkili Bayi Orijinal Değişen / Harici Hatasız Boyasız":
-    "Right Front Door & Fender Replaced at Official Audi Dealer / Otherwise Original Paint",
-  "83.475 TL (Yetkili Servis Kayıtlı)": "83,475 TL (Official Audi Service Invoice)",
+    "Right Front Door & Fender Replaced / Otherwise Original Paint",
+  "83.475 TL (Servis / Tramer Kayıtlı)": "83,475 TL (Documented Service Record)",
+  "83.475 TL (Yetkili Servis Kayıtlı)": "83,475 TL (Documented Service Record)",
 };
 
 export function translateTerm(value: string, lang: Lang): string {
@@ -606,11 +612,14 @@ export function translateTerm(value: string, lang: Lang): string {
     .replace(/Hatasız/gi, "Accident-Free")
     .replace(/Boyasız/gi, "Original Paint")
     .replace(/Orijinal/gi, "Original")
-    .replace(/Yetkili Servis Bakımlı/gi, "Official Dealer Serviced")
+    .replace(/Yetkili Servis Bakımlı/gi, "Full Service History")
+    .replace(/Servis Bakımlı/gi, "Full Service History")
+    .replace(/Bayi Çıkışlı/gi, "European Import")
+    .replace(/Borusan Çıkışlı/gi, "European Import")
     .replace(/Sıfır KM/gi, "Zero KM")
     .replace(/Yok/gi, "None")
     .replace(/Atmosferik/gi, "Naturally Aspirated")
-    .replace(/Çıkışlı/gi, "Delivered");
+    .replace(/Çıkışlı/gi, "European Import");
 }
 
 export function autoGenerateEnglishDescription(
@@ -730,12 +739,12 @@ export const CARS: Car[] = [
     specs: {
       power: "116 HP (1.6 TDI S-Tronic)",
       color: "Buzul Beyazı / Kontrast Gri",
-      package: "Design Paket (Yetkili Servis Bakımlı)",
-      expertise: "Sağ Ön Kapı & Çamurluk Yetkili Bayi Orijinal Değişen / Harici Hatasız Boyasız",
-      tramer: "83.475 TL (Yetkili Servis Kayıtlı)",
+      package: "Design Paket (Düzenli Servis Bakımlı)",
+      expertise: "Sağ Ön Kapı & Çamurluk Orijinal Değişen / Harici Hatasız Boyasız",
+      tramer: "83.475 TL (Servis / Tramer Kayıtlı)",
     },
     extras: [
-      "Tamamen Audi Yetkili Servis Bakımlı (2017 Çıkışlı)",
+      "Tamamen Audi Servis Bakımlı (2017 Tescilli)",
       "Audi Drive Select — Sport Sürüş Modu",
       "Xenon Far Sistemi & Kayar Arka LED Stoplar",
       "Geri Görüş Kamerası & Ön-Arka Park Sensörü",
@@ -745,7 +754,7 @@ export const CARS: Car[] = [
       "Triger Seti, Şanzıman Yağı ve Güçlendirilmiş Mekatronik Tüpü Yeni",
     ],
     extrasEn: [
-      "Full Official Audi Dealer Service History (2017 Registered)",
+      "Full Documented Audi Service History (2017 Registered)",
       "Audi Drive Select — Sport Driving Mode",
       "Xenon Headlights & Dynamic Sweeping LED Taillights",
       "Rear View Camera & Front/Rear Parking Sensors",
@@ -755,8 +764,8 @@ export const CARS: Car[] = [
       "Timing Belt Set, Transmission Fluid & Reinforced Mechatronic Newly Serviced",
     ],
     description: {
-      tr: "2016 model 2017 çıkışlı, bakımlarının tamamı Audi Eröz Yetkili Servisinde yapılmış Audi Q2 1.6 TDI Design. Triger kayışı, şanzıman yağı ve güçlendirilmiş mekatronik tüpü yeni değişmiş; şase, podye, direkler ve airbagler tamamen hatasızdır.",
-      en: "2016 (2017 registered) Audi Q2 1.6 TDI Design with full official Audi dealer service history. Timing belt and S-Tronic transmission service recently completed.",
+      tr: "2016 model 2017 tescilli, periyodik bakımlarının tamamı eksiksiz yapılmış Audi Q2 1.6 TDI Design. Triger kayışı, şanzıman yağı ve güçlendirilmiş mekatronik tüpü yeni değişmiş; şase, podye, direkler ve airbagler tamamen hatasızdır.",
+      en: "2016 (2017 registered) Audi Q2 1.6 TDI Design with full documented service history. Timing belt and S-Tronic transmission service recently completed.",
     },
   },
   {
@@ -782,7 +791,7 @@ export const CARS: Car[] = [
       power: "830 HP (V6 Plug-in Hybrid)",
       color: "Rosso Corsa / Nero Deri",
       package: "Carbon Racing Package",
-      expertise: "Hatasız / Boyasız / Bayi Çıkışlı",
+      expertise: "Hatasız / Boyasız / Özel İthalat",
       tramer: "Yok",
     },
     extras: [
@@ -806,8 +815,8 @@ export const CARS: Car[] = [
       "360-Degree Surround View Camera",
     ],
     description: {
-      tr: "Fermas yetkili bayi çıkışlı, tam karbon iç ve dış opsiyon paketine sahip 830 HP gücünde Ferrari 296 GTS Spider. Katlanabilir hard-top tavan ve kusursuz koleksiyon kondisyonu.",
-      en: "Official dealer delivered 830 HP Ferrari 296 GTS Spider with full carbon interior and exterior package, Carbon Racing seats, and front suspension lifter.",
+      tr: "Doğrudan Avrupa özel ithalatı, tam karbon iç ve dış opsiyon paketine sahip 830 HP gücünde Ferrari 296 GTS Spider. Katlanabilir hard-top tavan ve kusursuz koleksiyon kondisyonu.",
+      en: "Direct European import 830 HP Ferrari 296 GTS Spider with full carbon interior and exterior package, Carbon Racing seats, and front suspension lifter.",
     },
   },
   {
@@ -935,7 +944,7 @@ export const CARS: Car[] = [
       power: "585 HP (900 Nm AWD)",
       color: "Bespoke Çift Ton Bordo / Gümüş",
       package: "Starlight Doors & Coachline",
-      expertise: "Hatasız / Boyasız / Bayi Çıkışlı",
+      expertise: "Hatasız / Boyasız / Özel İthalat",
       tramer: "Yok",
     },
     extras: [
@@ -986,7 +995,7 @@ export const CARS: Car[] = [
       power: "585 HP (4.0 V8 Biturbo)",
       color: "MANUFAKTUR Gece Siyahı Magno / Altın",
       package: "Grand Edition (Dünyada 1000 Adet)",
-      expertise: "Hatasız / Boyasız / Bayi Çıkışlı",
+      expertise: "Hatasız / Boyasız / Özel İthalat (Almanya)",
       tramer: "Yok",
     },
     extras: [
@@ -1037,7 +1046,7 @@ export const CARS: Car[] = [
       power: "530 HP (3.0 M TwinPower Turbo)",
       color: "Brooklyn Gri / Kyalami Turuncu",
       package: "M Competition xDrive",
-      expertise: "Hatasız / Boyasız / Borusan Çıkışlı",
+      expertise: "Hatasız / Boyasız / Özel İthalat (Almanya)",
       tramer: "Yok",
     },
     extras: [
@@ -1059,8 +1068,8 @@ export const CARS: Car[] = [
       "Driving Assistant Professional & Parking Assistant Plus (360° Camera)",
     ],
     description: {
-      tr: "Borusan Otomotiv yetkili bayi çıkışlı 2025 BMW M4 Competition Coupe M xDrive. 530 HP güç üreten makyajlı LCI versiyon, karbon tavan ve tam dolu donanım.",
-      en: "Official dealer delivered 2025 BMW M4 Competition Coupe M xDrive (LCI 530 HP) with carbon roof, M carbon interior trim, and Harman Kardon sound.",
+      tr: "Doğrudan Almanya özel ithalatı, tam ÖTV ve gümrük tescilli 2025 BMW M4 Competition Coupe M xDrive. 530 HP güç üreten makyajlı LCI versiyon, karbon tavan ve tam dolu donanım.",
+      en: "Direct European import 2025 BMW M4 Competition Coupe M xDrive (LCI 530 HP) with carbon roof, M carbon interior trim, and Harman Kardon sound.",
     },
   },
   {
@@ -1474,22 +1483,34 @@ export function getStoredCmsConfig(): SiteCMSConfig {
         ...(parsed.customPresets || {}),
       },
       about: { ...DEFAULT_CMS_CONFIG.about, ...(parsed.about || {}) },
-      services:
-        Array.isArray(parsed.services) && parsed.services.length > 0
-          ? parsed.services
-          : DEFAULT_CMS_CONFIG.services,
-      conciergeSteps:
-        Array.isArray(parsed.conciergeSteps) && parsed.conciergeSteps.length > 0
-          ? parsed.conciergeSteps
-          : DEFAULT_CMS_CONFIG.conciergeSteps,
+      services: (Array.isArray(parsed.services) && parsed.services.length > 0
+        ? parsed.services
+        : DEFAULT_CMS_CONFIG.services
+      ).map((s) => ({
+        ...s,
+        descTr: (s.descTr || "").replace(/yetkili bayi kayıtlı/gi, "Avrupa ithalatı onaylı"),
+        descEn: (s.descEn || "").replace(/official dealer history/gi, "verified European import history"),
+      })),
+      conciergeSteps: (Array.isArray(parsed.conciergeSteps) && parsed.conciergeSteps.length > 0
+        ? parsed.conciergeSteps
+        : DEFAULT_CMS_CONFIG.conciergeSteps
+      ).map((s) => ({
+        ...s,
+        descTr: (s.descTr || "").replace(/yetkili bayi ağımızda/gi, "Almanya ve Avrupa geniş tedarik ağımızda"),
+        descEn: (s.descEn || "").replace(/authorized dealer network/gi, "European and German supplier network"),
+      })),
       testimonials:
         Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0
           ? parsed.testimonials
           : DEFAULT_CMS_CONFIG.testimonials,
-      faqs:
-        Array.isArray(parsed.faqs) && parsed.faqs.length > 0
-          ? parsed.faqs
-          : DEFAULT_CMS_CONFIG.faqs,
+      faqs: (Array.isArray(parsed.faqs) && parsed.faqs.length > 0
+        ? parsed.faqs
+        : DEFAULT_CMS_CONFIG.faqs
+      ).map((f) => ({
+        ...f,
+        aTr: (f.aTr || "").replace(/yetkili servis geçmişli/gi, "doğrudan Avrupa / Almanya özel ithalatı"),
+        aEn: (f.aEn || "").replace(/official dealer verification/gi, "European import verification"),
+      })),
       sectionVisibility: {
         ...DEFAULT_CMS_CONFIG.sectionVisibility,
         ...(parsed.sectionVisibility || {}),
@@ -1607,6 +1628,40 @@ export function getStoredCars(): Car[] {
     return parsed.map((c) => ({
       ...c,
       images: Array.isArray(c.images) ? Array.from(new Set(c.images)) : [],
+      specs: c.specs
+        ? {
+            ...c.specs,
+            expertise: (c.specs.expertise || "")
+              .replace(/Yetkili Bayi/gi, "Özel İthalat")
+              .replace(/Bayi Çıkışlı/gi, "Özel İthalat")
+              .replace(/Borusan Çıkışlı/gi, "Özel İthalat (Almanya)")
+              .replace(/Yetkili Servis Bakımlı/gi, "Servis Bakımlı"),
+            package: (c.specs.package || "").replace(/Yetkili Servis Bakımlı/gi, "Düzenli Servis Bakımlı"),
+            tramer: (c.specs.tramer || "").replace(/Yetkili Servis Kayıtlı/gi, "Servis Kayıtlı"),
+          }
+        : c.specs,
+      extras: Array.isArray(c.extras)
+        ? c.extras.map((ex) =>
+            ex
+              .replace(/Yetkili Servis Bakımlı/gi, "Servis Bakımlı")
+              .replace(/Bayi Çıkışlı/gi, "Özel İthalat"),
+          )
+        : c.extras,
+      description: c.description
+        ? {
+            tr: (c.description.tr || "")
+              .replace(
+                /Borusan Otomotiv yetkili bayi çıkışlı/gi,
+                "Doğrudan Almanya özel ithalatı, tam ÖTV ve gümrük tescilli",
+              )
+              .replace(/Fermas yetkili bayi çıkışlı/gi, "Doğrudan Avrupa özel ithalatı")
+              .replace(/yetkili bayi çıkışlı/gi, "Avrupa özel ithalatı")
+              .replace(/Audi Eröz Yetkili Servisinde/gi, "Audi Servisinde"),
+            en: (c.description.en || "")
+              .replace(/Official dealer delivered/gi, "Direct European import")
+              .replace(/full official Audi dealer/gi, "full documented Audi"),
+          }
+        : c.description,
     }));
   } catch {
     return CARS;
@@ -1927,7 +1982,7 @@ export const T = {
     sent: "Talebiniz VIP yönetim sistemimize kaydedildi ve WhatsApp danışman hattımız hazırlandı.",
     process: "Uluslararası İthalat Süreci",
     steps: [
-      ["Talep & Küresel Pazar Analizi", "Aradığınız spesifikasyonu Avrupa ve küresel yetkili bayi ağımızda analiz ediyoruz."],
+      ["Talep & Küresel Pazar Analizi", "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda analiz ediyoruz."],
       ["Tedarik & Bağımsız Ekspertiz", "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik."],
       ["Gümrük & Kapalı Lojistik", "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi."],
       ["Anahtar Teslim VIP Teslimat", "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir."],
@@ -1963,7 +2018,7 @@ export const T = {
       ],
       [
         "Araçların ekspertiz ve kilometre garantisi var mı?",
-        "Koleksiyonumuzdaki ve ithal ettiğimiz tüm araçlar yetkili servis geçmişli olup, uluslararası bağımsız ekspertiz kuruluşları (TÜV / DEKRA) ve Türkiye'deki kurumsal ekspertiz merkezleri tarafından şase, boya, mekanik ve orijinal kilometre garantisiyle teslim edilir.",
+        "Koleksiyonumuzdaki tüm araçlar doğrudan Avrupa / Almanya özel ithalatı olup, uluslararası bağımsız ekspertiz kuruluşları (TÜV / DEKRA) ve Türkiye'deki kurumsal ekspertiz merkezleri tarafından şase, boya, mekanik ve orijinal kilometre garantisiyle teslim edilir.",
       ],
       [
         "Mevcut aracımı takasta değerlendirebilir miyim?",
@@ -1979,7 +2034,7 @@ export const T = {
     kvkkBody: [
       "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.",
       "2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki 'Fiyat Teklifi Al', 'Site Üzerinden Teklif Ver' ve 'Özel İthalat Talebi' formları aracılığıyla paylaştığınız Ad-Soyad, Telefon Numarası ve Araç Tercihi bilgileriniz; yalnızca size özel fiyat teklifi sunulması, araç tedarik sürecinin yürütülmesi ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.",
-      "3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz; yalnızca gizlilik protokolü altında ByCar yetkilileri tarafından görüntülenir.",
+      "3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz; yalnızca gizlilik protokolü altında ByCar uzman ekibi tarafından görüntülenir.",
       "4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
     ],
   },
@@ -2006,7 +2061,7 @@ export const T = {
     sent: "Your request has been saved to our VIP system and prepared for immediate WhatsApp consultation.",
     process: "International Import Process",
     steps: [
-      ["Request & Global Market Analysis", "We analyze the global authorized dealer network for your exact specification."],
+      ["Request & Global Market Analysis", "We analyze our extensive European and German supplier network for your exact specification."],
       ["Sourcing & Independent Inspection", "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification."],
       ["Customs & Enclosed Logistics", "Fully insured enclosed transport and turnkey customs clearance management."],
       ["Turnkey VIP Delivery", "Delivered directly to your door with all registration and license plate formalities completed."],
@@ -2042,7 +2097,7 @@ export const T = {
       ],
       [
         "Do vehicles come with an inspection and mileage guarantee?",
-        "Every vehicle in our collection undergoes rigorous multi-point inspection (TÜV / DEKRA and official dealer verification) with a 100% guarantee on chassis integrity, paint condition, and original mileage.",
+        "Every vehicle in our collection is a direct European import undergoing rigorous multi-point inspection (TÜV / DEKRA verification) with a 100% guarantee on chassis integrity, paint condition, and original mileage.",
       ],
       [
         "Do you accept trade-in vehicles?",
