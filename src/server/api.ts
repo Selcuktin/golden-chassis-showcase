@@ -252,17 +252,22 @@ function applyPayloadToMemoryStore(payload: z.infer<typeof CmsPayloadSchema>) {
     memoryStore.settings = payload.settings;
   }
   if (payload.cmsConfig) {
-    memoryStore.cmsConfig = payload.cmsConfig;
+    memoryStore.cmsConfig = (sanitizeCmsConfig(payload.cmsConfig) as SiteCMSConfig) || null;
   }
 }
 
-const memorySessions = new Map<string, { token: string; expiresAt: number }>();
+const memorySessions = new Map<string, { token: string; expiresAt: number; ttl?: number }>();
 const ipLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
 const ipInquiryAttempts = new Map<string, number[]>();
 
-// Full D1 Production Schema with constraints and indices (aligned with schema.sql)
-const D1_INIT_SQL = `
-CREATE TABLE IF NOT EXISTS vehicles (
+export function resetRateLimitsForTesting() {
+  ipLoginAttempts.clear();
+  ipInquiryAttempts.clear();
+}
+
+// Full D1 Production Schema statements (aligned with schema.sql)
+const D1_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS vehicles (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
   brand TEXT NOT NULL,
@@ -287,26 +292,22 @@ CREATE TABLE IF NOT EXISTS vehicles (
   is_featured INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_vehicles_vitrin ON vehicles(status, is_featured DESC, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_vehicles_status_brand ON vehicles(status, brand);
-CREATE INDEX IF NOT EXISTS idx_vehicles_year ON vehicles(year DESC);
-
-CREATE TABLE IF NOT EXISTS vehicle_images (
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_vehicles_vitrin ON vehicles(status, is_featured DESC, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_vehicles_status_brand ON vehicles(status, brand)`,
+  `CREATE INDEX IF NOT EXISTS idx_vehicles_year ON vehicles(year DESC)`,
+  `CREATE TABLE IF NOT EXISTS vehicle_images (
   id TEXT PRIMARY KEY,
   vehicle_id TEXT NOT NULL,
-  r2_key TEXT NOT NULL,
+  r2_key TEXT NOT NULL UNIQUE,
   public_url TEXT NOT NULL,
   is_cover INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle ON vehicle_images(vehicle_id, is_cover DESC, sort_order ASC);
-
-CREATE TABLE IF NOT EXISTS inquiries (
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle ON vehicle_images(vehicle_id, is_cover DESC, sort_order ASC)`,
+  `CREATE TABLE IF NOT EXISTS inquiries (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK (type IN ('Teklif', 'İthalat')),
   vehicle_id TEXT,
@@ -318,20 +319,17 @@ CREATE TABLE IF NOT EXISTS inquiries (
   status TEXT NOT NULL DEFAULT 'Yeni' CHECK (status IN ('Yeni', 'İletişime Geçildi', 'Tamamlandı')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_inquiries_status_created ON inquiries(status, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS admin_users (
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_inquiries_status_created ON inquiries(status, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS admin_users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
   iterations INTEGER NOT NULL DEFAULT 100000 CHECK (iterations >= 100000),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS admin_sessions (
+)`,
+  `CREATE TABLE IF NOT EXISTS admin_sessions (
   id TEXT PRIMARY KEY,
   admin_id TEXT NOT NULL,
   token_hash TEXT UNIQUE NOT NULL,
@@ -340,59 +338,60 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash);
-
-CREATE TABLE IF NOT EXISTS login_attempts (
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash)`,
+  `CREATE TABLE IF NOT EXISTS login_attempts (
   id TEXT PRIMARY KEY,
   ip_or_user_key TEXT UNIQUE NOT NULL,
   attempt_count INTEGER NOT NULL DEFAULT 1,
   locked_until TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS site_settings (
+)`,
+  `CREATE TABLE IF NOT EXISTS site_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS inquiry_attempts (
+)`,
+  `CREATE TABLE IF NOT EXISTS inquiry_attempts (
   id TEXT PRIMARY KEY,
   ip TEXT NOT NULL,
   created_at INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at);
-
-CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at)`,
+  `CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
   id TEXT PRIMARY KEY,
   r2_key TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   created_at INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key);
-`;
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key)`,
+  `INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'))`,
+];
 
 let d1Initialized = false;
 
 async function ensureD1Tables(db: D1Database) {
   if (d1Initialized) return;
   try {
-    await db.exec(D1_INIT_SQL);
-    await db.exec(
-      `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations)
-       VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000)
-       ON CONFLICT(username) DO UPDATE SET
-         password_hash = CASE WHEN password_hash IN ('9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068') THEN '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a' ELSE password_hash END;
-       INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'));`,
-    );
+    const check = await db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vehicles' LIMIT 1")
+      .first()
+      .catch(() => null);
+    if (check) {
+      d1Initialized = true;
+      return;
+    }
+    for (const stmt of D1_SCHEMA_STATEMENTS) {
+      await db
+        .prepare(stmt)
+        .run()
+        .catch(() => {});
+    }
     d1Initialized = true;
   } catch (err) {
     console.error("D1 schema init error:", err);
+    d1Initialized = true;
   }
 }
 
@@ -421,26 +420,46 @@ async function parseJsonBody<T = unknown>(
   } catch {
     return {
       success: false,
-      response: new Response(
-        JSON.stringify({
+      response: jsonResponse(
+        {
           ok: false,
           error: "Geçersiz JSON formatı: İstek gövdesi çözümlenemedi.",
-        }),
-        { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        },
+        { status: 400 },
       ),
     };
   }
+}
+
+// Universal JSON Response Helper
+export function jsonResponse(
+  data: unknown,
+  init?: ResponseInit & { headers?: Record<string, string> },
+): Response {
+  const status = init?.status ?? 200;
+  const headers = new Headers(init?.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json; charset=utf-8");
+  }
+  return new Response(JSON.stringify(data), { ...init, status, headers });
+}
+
+// Sanitize CMS Config to guarantee zero credential/hash leakage
+export function sanitizeCmsConfig(config: unknown): Record<string, unknown> | null {
+  if (!config || typeof config !== "object") return null;
+  const copy = { ...(config as Record<string, unknown>) };
+  delete copy["customPasswordHash"];
+  delete copy["password_hash"];
+  delete copy["password"];
+  delete copy["secret"];
+  return copy;
 }
 
 // PBKDF2 Web Crypto implementation (100,000 iterations per Cloudflare Web Crypto limit)
 export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
 export const PBKDF2_ITERATIONS = 100000;
 
-// Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters)
 export const BUILD_GIT_COMMIT = "b36ad01";
-const PRECOMPUTED_ADMIN_HASHES = [
-  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a", // Default bootstrap PBKDF2 hash
-];
 
 export async function deriveServerPBKDF2HexWithParams(
   password: string,
@@ -507,25 +526,34 @@ export async function verifyAdminToken(request: Request, db?: D1Database): Promi
   const nowMs = Date.now();
   const tokenHash = await sha256Hex(token);
 
-  // Check In-Memory sessions first
   const memSession = memorySessions.get(tokenHash);
-  if (memSession && memSession.expiresAt > nowMs) {
+
+  // 1. Fast path: check short-lived verified TTL in memory (max 30 seconds to bound cross-isolate latency)
+  if (memSession && memSession.expiresAt > nowMs && memSession.ttl && memSession.ttl > nowMs) {
     return true;
   }
 
-  // Check D1 database sessions
+  // 2. Authoritative check: verify against D1 admin_sessions whenever D1 is available
   if (db) {
     try {
       await ensureD1Tables(db);
       const row = await db
         .prepare(
-          "SELECT * FROM admin_sessions WHERE token_hash = ? AND datetime(expires_at) > datetime('now') LIMIT 1",
+          "SELECT id FROM admin_sessions WHERE token_hash = ? AND datetime(expires_at) > datetime('now') LIMIT 1",
         )
         .bind(tokenHash)
-        .first<AdminSessionRow>();
-      if (row) {
-        const expiresMs = new Date(row.expires_at).getTime();
-        memorySessions.set(tokenHash, { token: tokenHash, expiresAt: expiresMs });
+        .first<{ id: string }>();
+      if (row?.id) {
+        // Cache for max 30s TTL
+        if (memSession) {
+          memSession.ttl = nowMs + 30000;
+        } else {
+          memorySessions.set(tokenHash, {
+            token: tokenHash,
+            expiresAt: nowMs + 86400000,
+            ttl: nowMs + 30000,
+          });
+        }
         return true;
       }
     } catch (err) {
@@ -533,20 +561,33 @@ export async function verifyAdminToken(request: Request, db?: D1Database): Promi
     }
   }
 
+  // 3. Fallback: if memory session exists (e.g. testing or mock DB without admin_sessions table)
+  if (memSession && memSession.expiresAt > nowMs) {
+    return true;
+  }
+
   return false;
 }
 
 // Environment resolver helper
 export function resolveEnv(env?: unknown, request?: Request): ServerEnv {
-  if (env && typeof env === "object" && "DB" in env) {
+  if (
+    env &&
+    typeof env === "object" &&
+    ("DB" in env || "ADMIN_PASSWORD" in env || "BUCKET" in env)
+  ) {
     return env as ServerEnv;
   }
   const globalEnv = (globalThis as unknown as { __env__?: ServerEnv })?.__env__;
-  if (globalEnv?.DB) return globalEnv;
+  if (globalEnv && ("DB" in globalEnv || "ADMIN_PASSWORD" in globalEnv || "BUCKET" in globalEnv)) {
+    return globalEnv;
+  }
 
   const requestEnv = (request as unknown as { runtime?: { cloudflare?: { env?: ServerEnv } } })
     ?.runtime?.cloudflare?.env;
-  if (requestEnv?.DB) return requestEnv;
+  if (requestEnv && ("DB" in requestEnv || "ADMIN_PASSWORD" in requestEnv)) {
+    return requestEnv;
+  }
 
   return (env as ServerEnv) || globalEnv || {};
 }
@@ -624,7 +665,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
         return {
           cars,
           settings: (settingsMap["showcase_settings"] as SiteSettings) || null,
-          cmsConfig: (settingsMap["cms_config"] as SiteCMSConfig) || null,
+          cmsConfig: (sanitizeCmsConfig(settingsMap["cms_config"]) as SiteCMSConfig) || null,
           source: "d1",
         };
       }
@@ -636,7 +677,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
   return {
     cars: (memoryStore.cars as Car[]) || [],
     settings: (memoryStore.settings as SiteSettings) || null,
-    cmsConfig: (memoryStore.cmsConfig as SiteCMSConfig) || null,
+    cmsConfig: (sanitizeCmsConfig(memoryStore.cmsConfig) as SiteCMSConfig) || null,
     source: "memory",
   };
 }
@@ -709,7 +750,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
   // R2 Media Streaming Handler
   if (url.pathname.startsWith("/api/media/") && request.method === "GET") {
-    const key = decodeURIComponent(url.pathname.slice("/api/media/".length));
+    let key: string;
+    try {
+      key = decodeURIComponent(url.pathname.slice("/api/media/".length));
+    } catch {
+      return jsonResponse({ error: "Invalid media path" }, { status: 400 });
+    }
     const resolvedEnv = resolveEnv(env, request);
     if (resolvedEnv.BUCKET && key) {
       try {
@@ -727,10 +773,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         console.error("R2 media fetch error:", err);
       }
     }
-    return new Response(JSON.stringify({ error: "Media not found" }), {
-      status: 404,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return jsonResponse({ error: "Media not found" }, { status: 404 });
   }
 
   if (!url.pathname.startsWith("/api/")) return null;
@@ -849,21 +892,24 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         isMatch = candidateHash === expectedEnvHash;
       }
 
-      // 3. Check precomputed default hashes (production bootstrap)
       if (!isMatch) {
-        isMatch = PRECOMPUTED_ADMIN_HASHES.includes(candidateHash);
-      }
-
-      if (!isMatch) {
-        // Record failed attempt in D1 or Memory
+        // Record failed attempt in D1 or Memory with decay logic
         let currentCount = 1;
         if (db) {
           try {
             const attemptRow = await db
-              .prepare("SELECT attempt_count FROM login_attempts WHERE ip_or_user_key = ? LIMIT 1")
+              .prepare(
+                "SELECT attempt_count, locked_until FROM login_attempts WHERE ip_or_user_key = ? LIMIT 1",
+              )
               .bind(ip)
-              .first<{ attempt_count: number }>();
-            currentCount = (attemptRow?.attempt_count || 0) + 1;
+              .first<{ attempt_count: number; locked_until: string | null }>();
+
+            // Decaying window: if previously locked and lock has expired, reset base count to 0
+            let previousCount = attemptRow?.attempt_count || 0;
+            if (attemptRow?.locked_until && new Date(attemptRow.locked_until).getTime() <= now) {
+              previousCount = 0;
+            }
+            currentCount = previousCount + 1;
             const locked = currentCount >= 5;
             const lockUntilIso = locked ? new Date(now + 15 * 60 * 1000).toISOString() : null;
 
@@ -883,22 +929,27 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           }
         } else {
           const lockInfo = ipLoginAttempts.get(ip);
-          currentCount = (lockInfo?.count || 0) + 1;
+          let previousCount = lockInfo?.count || 0;
+          if (lockInfo?.lockedUntil && lockInfo.lockedUntil <= now) {
+            previousCount = 0;
+            lockInfo.lockedUntil = null;
+          }
+          currentCount = previousCount + 1;
           const locked = currentCount >= 5;
           const lockUntil = locked ? now + 15 * 60 * 1000 : null;
           ipLoginAttempts.set(ip, { count: currentCount, lockedUntil: lockUntil });
         }
 
         const remaining = Math.max(0, 5 - currentCount);
-        return new Response(
-          JSON.stringify({
+        return jsonResponse(
+          {
             ok: false,
             error:
               currentCount >= 5
                 ? "5 hatalı deneme yapıldı. Sistem 15 dakika kilitlendi."
                 : `Geçersiz yönetici şifresi. Kalan deneme: ${remaining}`,
-          }),
-          { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+          },
+          { status: 401 },
         );
       }
 
@@ -918,7 +969,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const expiresAtDate = new Date(now + 24 * 60 * 60 * 1000);
       const expiresAtIso = expiresAtDate.toISOString();
 
-      // Store in memory
+      // Store in memory for non-D1 environments
       memorySessions.set(tokenHash, {
         token: tokenHash,
         expiresAt: expiresAtDate.getTime(),
@@ -933,7 +984,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
               "INSERT INTO admin_sessions (id, admin_id, token_hash, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind(
-              `sess-${Date.now()}`,
+              `sess-${crypto.randomUUID()}`,
               "admin-master",
               tokenHash,
               ip,
@@ -943,17 +994,19 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             .run();
         } catch (dbErr) {
           console.error("D1 session save error:", dbErr);
+          // Fail-closed: Never return usable token if persistent D1 storage fails
+          return jsonResponse(
+            { ok: false, error: "Oturum veritabanına kaydedilemedi. Lütfen tekrar deneyiniz." },
+            { status: 500 },
+          );
         }
       }
 
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          token: sessionToken,
-          expiresAt: expiresAtIso,
-        }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+      return jsonResponse({
+        ok: true,
+        token: sessionToken,
+        expiresAt: expiresAtIso,
+      });
     } catch (err) {
       console.error("POST /api/admin/login error:", err);
       return new Response(JSON.stringify({ ok: false, error: String(err) }), {
@@ -1037,15 +1090,24 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       }
 
       const newPassword = validated.data.newPassword.trim();
-      const newHash = await deriveServerPBKDF2Hex(newPassword);
+      const randomSaltBytes = new Uint8Array(16);
+      crypto.getRandomValues(randomSaltBytes);
+      const randomSaltHex = Array.from(randomSaltBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const newHash = await deriveServerPBKDF2HexWithParams(
+        newPassword,
+        randomSaltHex,
+        PBKDF2_ITERATIONS,
+      );
 
       if (!db) {
-        return new Response(
-          JSON.stringify({
+        return jsonResponse(
+          {
             ok: false,
             error: "D1 veritabanı bağlı değil. Şifre kalıcı olarak güncellenemedi.",
-          }),
-          { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
+          },
+          { status: 503 },
         );
       }
 
@@ -1059,7 +1121,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
              password_salt = excluded.password_salt,
              iterations = excluded.iterations`,
         )
-        .bind(newHash, PBKDF2_SALT)
+        .bind(newHash, randomSaltHex)
         .run();
 
       // Revoke all existing sessions for this admin in D1 and clear memory sessions
@@ -1102,9 +1164,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     try {
       const rawContentType = request.headers.get("content-type") || "";
       const contentType = rawContentType.toLowerCase().split(";")[0]?.trim() || "";
-      const vehicleId = request.headers.get("x-vehicle-id") || "misc";
+      const rawVehicleId = request.headers.get("x-vehicle-id") || "misc";
+      const vehicleId = rawVehicleId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "misc";
       const filename = request.headers.get("x-file-name") || `img-${Date.now()}.webp`;
-      const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 100);
       const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
 
       const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
@@ -1118,31 +1181,43 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       ]);
 
       if (!ALLOWED_MIME_TYPES.has(contentType)) {
-        return new Response(
-          JSON.stringify({
+        return jsonResponse(
+          {
             ok: false,
             error:
               "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG, WebP, AVIF veya GIF formatları yüklenebilir.",
-          }),
-          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+          },
+          { status: 400 },
         );
+      }
+
+      // Early reject large payloads via Content-Length before allocating ArrayBuffer
+      const contentLengthHeader = request.headers.get("content-length");
+      if (contentLengthHeader) {
+        const declaredLength = parseInt(contentLengthHeader, 10);
+        if (!Number.isNaN(declaredLength) && declaredLength > MAX_UPLOAD_BYTES) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: "Dosya boyutu çok büyük (Maksimum 5 MB izin verilir).",
+            },
+            { status: 413 },
+          );
+        }
       }
 
       const arrayBuffer = await request.arrayBuffer();
       if (arrayBuffer.byteLength === 0) {
-        return new Response(JSON.stringify({ ok: false, error: "Boş dosya yüklenemez." }), {
-          status: 400,
-          headers: { "content-type": "application/json; charset=utf-8" },
-        });
+        return jsonResponse({ ok: false, error: "Boş dosya yüklenemez." }, { status: 400 });
       }
 
       if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) {
-        return new Response(
-          JSON.stringify({
+        return jsonResponse(
+          {
             ok: false,
             error: "Dosya boyutu çok büyük (Maksimum 5 MB izin verilir).",
-          }),
-          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+          },
+          { status: 400 },
         );
       }
 
@@ -1165,13 +1240,32 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const isAvif =
         bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70; // 'ftyp'
 
-      if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif) {
-        return new Response(
-          JSON.stringify({
+      let detectedMime = "";
+      if (isJpeg) detectedMime = "image/jpeg";
+      else if (isPng) detectedMime = "image/png";
+      else if (isGif) detectedMime = "image/gif";
+      else if (isWebp) detectedMime = "image/webp";
+      else if (isAvif) detectedMime = "image/avif";
+
+      if (!detectedMime) {
+        return jsonResponse(
+          {
             ok: false,
             error: "Geçersiz dosya içeriği: Dosya imzası geçerli bir resim formatı ile eşleşmiyor.",
-          }),
-          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+          },
+          { status: 400 },
+        );
+      }
+
+      // Match declared MIME type with detected binary format
+      const normalizedContentType = contentType === "image/jpg" ? "image/jpeg" : contentType;
+      if (normalizedContentType !== detectedMime) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: "Dosya MIME türü tespit edilen ikili resim formatı ile eşleşmiyor.",
+          },
+          { status: 400 },
         );
       }
 
@@ -1667,7 +1761,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             revision: currentRevision,
             cars: cars.length > 0 ? cars : null,
             settings: settingsMap["showcase_settings"] || null,
-            cmsConfig: settingsMap["cms_config"] || null,
+            cmsConfig: sanitizeCmsConfig(settingsMap["cms_config"]),
           }),
           {
             headers: {
@@ -1695,7 +1789,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         revision: memoryStore.revision || 1,
         cars: filteredCars,
         settings: memoryStore.settings || null,
-        cmsConfig: memoryStore.cmsConfig || null,
+        cmsConfig: sanitizeCmsConfig(memoryStore.cmsConfig),
       }),
       {
         headers: {
@@ -1711,40 +1805,46 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     // 1) Authentication Check
     const isAuthed = await verifyAdminToken(request, db);
     if (!isAuthed) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           ok: false,
           error: "Yetkisiz işlem: Kataloğu güncellemek için VIP Yönetici girişi yapmalısınız.",
-        }),
-        { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+        },
+        { status: 401 },
       );
     }
 
     // 2) Content-Length Body Size Limit (Max 5 MB)
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > 5 * 1024 * 1024) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           ok: false,
           error: "İstek boyutu çok büyük (Maksimum 5 MB).",
-        }),
-        { status: 413, headers: { "content-type": "application/json; charset=utf-8" } },
+        },
+        { status: 413 },
       );
     }
 
     // 3) CSRF / Origin Check
     const origin = request.headers.get("origin");
     if (origin) {
-      const originHost = new URL(origin).host;
-      if (
-        originHost !== url.host &&
-        !originHost.includes("localhost") &&
-        !originHost.includes("127.0.0.1")
-      ) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "CSRF doğrulaması başarısız oldu." }),
-          { status: 403, headers: { "content-type": "application/json; charset=utf-8" } },
-        );
+      try {
+        const originUrl = new URL(origin);
+        const originHostname = originUrl.hostname.toLowerCase();
+        const currentHostname = url.hostname.toLowerCase();
+        const isAllowed =
+          originHostname === currentHostname ||
+          originHostname === "localhost" ||
+          originHostname === "127.0.0.1";
+        if (!isAllowed) {
+          return jsonResponse(
+            { ok: false, error: "CSRF doğrulaması başarısız oldu." },
+            { status: 403 },
+          );
+        }
+      } catch {
+        return jsonResponse({ ok: false, error: "Geçersiz Origin başlığı." }, { status: 403 });
       }
     }
 
@@ -2398,7 +2498,25 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         });
       }
 
-      const inqId = `inq-${Date.now()}`;
+      let verifiedVehicleId: string | null = null;
+      if (body.vehicleId && typeof body.vehicleId === "string") {
+        const cleanVId = body.vehicleId.trim();
+        if (cleanVId && db) {
+          try {
+            const vRow = await db
+              .prepare("SELECT id FROM vehicles WHERE id = ? LIMIT 1")
+              .bind(cleanVId)
+              .first<{ id: string }>();
+            if (vRow?.id) {
+              verifiedVehicleId = vRow.id;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const inqId = `inq-${crypto.randomUUID()}`;
       if (db) {
         await ensureD1Tables(db);
         await db
@@ -2408,7 +2526,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .bind(
             inqId,
             type,
-            body.vehicleId || null,
+            verifiedVehicleId,
             carTitle,
             name,
             phone,
@@ -2435,20 +2553,17 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         ...currentInqs,
       ];
 
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          inquiryId: inqId,
-          source: isD1 ? "d1" : "memory",
-        }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
-      );
+      return jsonResponse({
+        ok: true,
+        inquiryId: inqId,
+        source: isD1 ? "d1" : "memory",
+      });
     } catch (err) {
       console.error("POST /api/inquiry error:", err);
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      return jsonResponse(
+        { ok: false, error: "Talep kaydedilirken bir hata oluştu. Lütfen tekrar deneyiniz." },
+        { status: 500 },
+      );
     }
   }
 

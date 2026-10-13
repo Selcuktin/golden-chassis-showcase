@@ -18,7 +18,6 @@ import {
   restoreUndoSnapshot,
   saveStoredCars,
   translateTerm,
-  verifyAdminPasswordPBKDF2,
 } from "@/lib/bycar";
 
 describe("App routing & ByCar Phase 6 Convergence integrity", () => {
@@ -66,10 +65,6 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(ADMIN_PRESETS.bodies.length).toBeGreaterThanOrEqual(10);
     expect(ADMIN_PRESETS.fuels.length).toBeGreaterThanOrEqual(6);
     expect(ADMIN_PRESETS.gears.length).toBeGreaterThanOrEqual(5);
-
-    expect(await verifyAdminPasswordPBKDF2("bybycar1453")).toBe(true);
-    expect(await verifyAdminPasswordPBKDF2("invalid-legacy-password")).toBe(false);
-    expect(await verifyAdminPasswordPBKDF2("wrong-pass")).toBe(false);
 
     recordLoginAttempt(true); // reset
     for (let i = 0; i < 4; i++) {
@@ -159,13 +154,12 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(presetsAfter.fuels).toContain("E-Fuel Sentetik");
     expect(presetsAfter.brands.length).toBe(presetsBefore.brands.length + 1);
 
-    // 3. Custom Admin Password Change via PBKDF2
+    // 3. Custom Admin Password Change via Server API
     const customPass = "SuperVIP_2026!#";
     await setCustomAdminPassword(customPass);
-    expect(await verifyAdminPasswordPBKDF2(customPass)).toBe(true);
-    // Default master password should still work as fallback
-    expect(await verifyAdminPasswordPBKDF2("bybycar1453")).toBe(true);
-    expect(await verifyAdminPasswordPBKDF2("wrong-custom-pass")).toBe(false);
+    // Verify CMS config NEVER stores password or hash
+    const cmsCfg = getStoredCmsConfig();
+    expect((cmsCfg as Record<string, unknown>)["customPasswordHash"]).toBeUndefined();
 
     // 4. Cloudflare D1 SQL Dump and JSON export contains updated CMS config
     const d1Sql = exportD1SqlDump();
@@ -180,6 +174,6 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     resetStoredCmsConfig();
     const resetCfg = getStoredCmsConfig();
     expect(resetCfg.customPresets.brands).not.toContain("Koenigsegg");
-    expect(resetCfg.customPasswordHash).toBeNull();
+    expect((resetCfg as Record<string, unknown>)["customPasswordHash"]).toBeUndefined();
   });
 });

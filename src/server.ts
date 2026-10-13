@@ -72,13 +72,16 @@ function applySecurityHeaders(response: Response): Response {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const isPopulated = (o: unknown) =>
+      Boolean(o && typeof o === "object" && Object.keys(o).length > 0);
     const effectiveEnv =
-      env ||
+      (isPopulated(env) ? env : undefined) ||
       (globalThis as unknown as { __env__?: unknown }).__env__ ||
       (request as unknown as { runtime?: { cloudflare?: { env?: unknown } } })?.runtime?.cloudflare
-        ?.env;
+        ?.env ||
+      env;
 
-    if (effectiveEnv) {
+    if (isPopulated(effectiveEnv)) {
       (globalThis as unknown as { __env__?: unknown }).__env__ = effectiveEnv;
     }
 

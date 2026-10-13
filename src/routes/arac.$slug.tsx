@@ -185,7 +185,10 @@ function VehicleDetailPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: carJsonLd }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: carJsonLd.replace(/</g, "\\u003c") }}
+      />
 
       {/* Top Bar */}
       <header className="border-b border-border bg-background/90 backdrop-blur-md">

@@ -236,7 +236,6 @@ export type SiteCMSConfig = {
     metaDescTr: string;
     metaDescEn: string;
   };
-  customPasswordHash?: string | null;
 };
 
 export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
@@ -475,7 +474,6 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
     metaDescEn:
       "Curated luxury vehicle showcase, bespoke supercar import, and VIP concierge in Bursa.",
   },
-  customPasswordHash: null,
 };
 
 export const ADMIN_PRESETS = {
@@ -1659,10 +1657,11 @@ export type UndoSnapshot = {
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
 const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
 const ADMIN_PBKDF2_ITERATIONS = 100000;
-export const DEFAULT_ADMIN_PBKDF2_HASH =
-  "681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a";
-
-export async function derivePBKDF2Hex(password: string): Promise<string> {
+export async function derivePBKDF2Hex(
+  password: string,
+  salt = ADMIN_PBKDF2_SALT,
+  iterations = ADMIN_PBKDF2_ITERATIONS,
+): Promise<string> {
   const subtleCrypto =
     (typeof globalThis !== "undefined" && globalThis.crypto?.subtle) ||
     (typeof window !== "undefined" && window.crypto?.subtle);
@@ -1682,8 +1681,8 @@ export async function derivePBKDF2Hex(password: string): Promise<string> {
   const bits = await subtleCrypto.deriveBits(
     {
       name: "PBKDF2",
-      salt: enc.encode(ADMIN_PBKDF2_SALT),
-      iterations: ADMIN_PBKDF2_ITERATIONS,
+      salt: enc.encode(salt),
+      iterations,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -1694,21 +1693,7 @@ export async function derivePBKDF2Hex(password: string): Promise<string> {
     .join("");
 }
 
-export async function verifyAdminPasswordPBKDF2(input: string): Promise<boolean> {
-  const customHash = getStoredCmsConfig().customPasswordHash;
-  const candidate = await derivePBKDF2Hex(input.trim());
-  if (candidate === "UNSUPPORTED_CRYPTO") {
-    return false;
-  }
-  if (customHash && candidate === customHash) {
-    return true;
-  }
-  return candidate === DEFAULT_ADMIN_PBKDF2_HASH;
-}
-
 export async function setCustomAdminPassword(newPassword: string): Promise<boolean> {
-  const hash = await derivePBKDF2Hex(newPassword.trim());
-
   if (typeof window !== "undefined") {
     const token = window.sessionStorage.getItem("bycar_admin_token");
     if (token) {
@@ -1726,10 +1711,6 @@ export async function setCustomAdminPassword(newPassword: string): Promise<boole
       }
     }
   }
-
-  const cms = getStoredCmsConfig();
-  cms.customPasswordHash = hash;
-  saveStoredCmsConfig(cms, "Admin Şifresi Güncellendi");
   return true;
 }
 

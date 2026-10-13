@@ -1,8 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { BUILD_GIT_COMMIT, handleApiRequest } from "@/server/api";
+import { beforeEach, describe, expect, it } from "vitest";
+import { BUILD_GIT_COMMIT, handleApiRequest, resetRateLimitsForTesting } from "@/server/api";
 import serverWorker from "@/server";
 
+const TEST_ADMIN_PASSWORD = "test-secret-env-password-2026-safe!";
+(globalThis as unknown as { __env__?: Record<string, unknown> }).__env__ = {
+  ADMIN_PASSWORD: TEST_ADMIN_PASSWORD,
+};
+
 describe("Server API, D1 Security & Stability Engine", () => {
+  beforeEach(() => {
+    resetRateLimitsForTesting();
+  });
   it("GET /api/health returns operational status, version, and commit metadata", async () => {
     const req = new Request("https://bycarglobal.com/api/health", { method: "GET" });
     const res = await handleApiRequest(req, {});
@@ -49,7 +57,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const req6 = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.10" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const res6 = await handleApiRequest(req6, {});
     expect(res6?.status).toBe(429);
@@ -59,7 +67,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const req = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.5" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const res = await handleApiRequest(req, {});
     expect(res?.status).toBe(200);
@@ -108,7 +116,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -147,7 +155,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.2" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -192,7 +200,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.99" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -291,7 +299,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.99" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -405,7 +413,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.11" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
     });
     const loginRes = await handleApiRequest(loginReq, {});
     const loginData = (await loginRes?.json()) as { token: string };
@@ -484,7 +492,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -513,7 +521,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -543,7 +551,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -659,7 +667,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -738,7 +746,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -787,7 +795,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -864,7 +872,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -909,7 +917,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1009,7 +1017,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1053,7 +1061,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1105,7 +1113,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1183,7 +1191,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1234,7 +1242,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1277,7 +1285,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1366,7 +1374,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1430,7 +1438,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1461,7 +1469,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1564,7 +1572,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1640,7 +1648,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1690,7 +1698,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: "bybycar1453" }),
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
       }),
       {},
     );
@@ -1731,5 +1739,80 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const body = (await res?.json()) as { ok: boolean; error: string };
     expect(body.ok).toBe(false);
     expect(body.error).toContain("cars");
+  });
+
+  it("Regression Test 7: Rejects legacy hardcoded password when not in env or D1 (bootstrap backdoor closed)", async () => {
+    const origEnv = (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__;
+    (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__ = {};
+
+    const req = new Request("https://bycarglobal.com/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.99" },
+      body: JSON.stringify({ password: "bybycar1453" }),
+    });
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(401);
+
+    (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__ = origEnv ?? {};
+  });
+
+  it("Regression Test 8: Public GET /api/cms never leaks customPasswordHash or admin credentials", async () => {
+    const req = new Request("https://bycarglobal.com/api/cms", { method: "GET" });
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(200);
+    const bodyText = await res?.text();
+    expect(bodyText).not.toContain("customPasswordHash");
+    expect(bodyText).not.toContain("password_hash");
+    expect(bodyText).not.toContain("681f0b5b");
+  });
+
+  it("Regression Test 9: Decode URI Error on /api/media/* safely returns 400 instead of crashing", async () => {
+    const req = new Request("https://bycarglobal.com/api/media/%E0%A4%A", { method: "GET" });
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(400);
+  });
+
+  it("Regression Test 10: Inquiry with non-existent vehicleId safely handles FK without 500 error", async () => {
+    const req = new Request("https://bycarglobal.com/api/inquiry", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.77" },
+      body: JSON.stringify({
+        car: "Porsche 911 GT3 RS",
+        name: "Test Customer",
+        phone: "+905551234567",
+        offerOrBudget: "250000 EUR",
+        vehicleId: "non-existent-uuid-12345",
+      }),
+    });
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(200);
+    const body = (await res?.json()) as { ok: boolean; inquiryId: string };
+    expect(body.ok).toBe(true);
+    expect(body.inquiryId).toMatch(/^inq-/);
+  });
+
+  it("Regression Test 11: CSRF check rejects cross-origin localhost spoofing with 403", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.88" },
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+        origin: "https://localhost.evil.com",
+      },
+      body: JSON.stringify({ cars: [], revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(403);
   });
 });

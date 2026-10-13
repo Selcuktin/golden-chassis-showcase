@@ -106,7 +106,16 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- 8. R2 Medya Çöp Toplama (Garbage Collection) ve Silme Yeniden Deneme Kuyruğu
+-- 8. Teklif Formu Rate Limiting (IP Başına 10 Dakika / 5 İstek)
+CREATE TABLE IF NOT EXISTS inquiry_attempts (
+  id TEXT PRIMARY KEY,
+  ip TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at);
+
+-- 9. R2 Medya Çöp Toplama (Garbage Collection) ve Silme Yeniden Deneme Kuyruğu
 CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
   id TEXT PRIMARY KEY,
   r2_key TEXT NOT NULL,
@@ -117,10 +126,7 @@ CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
 
 CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key);
 
--- Seed: Varsayılan VIP Admin Kullanıcısı (PBKDF2 Hashli, Salt: bycar-global-vip-salt-2026, 100k İterasyon)
-INSERT OR IGNORE INTO admin_users (id, username, password_hash, password_salt, iterations)
-VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000);
-
+-- Seed: CMS Revizyon Başlangıç Değeri (Admin kullanıcısı Cloudflare Secret veya ilk kurulum ile yönetilir)
 INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'));
 
 
