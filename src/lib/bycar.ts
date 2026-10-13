@@ -1310,7 +1310,7 @@ export type UndoSnapshot = {
 
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
 const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
-const ADMIN_PBKDF2_ITERATIONS = 600000;
+const ADMIN_PBKDF2_ITERATIONS = 100000;
 let cachedExpectedHashes: string[] | null = null;
 
 export async function derivePBKDF2Hex(password: string): Promise<string> {

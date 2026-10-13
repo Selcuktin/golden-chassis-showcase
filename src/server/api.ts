@@ -198,6 +198,10 @@ async function ensureD1Tables(db: D1Database) {
   if (d1Initialized) return;
   try {
     await db.exec(D1_INIT_SQL);
+    await db.exec(
+      `INSERT OR IGNORE INTO admin_users (id, username, password_hash, password_salt, iterations)
+       VALUES ('admin-master', 'admin', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068', 'bycar-global-vip-salt-2026', 100000);`,
+    );
     d1Initialized = true;
   } catch (err) {
     console.error("D1 schema init error:", err);
@@ -219,9 +223,15 @@ function getClientIp(request: Request): string {
   return "127.0.0.1";
 }
 
-// PBKDF2 Web Crypto implementation (600,000 iterations per NIST/OWASP specs)
+// PBKDF2 Web Crypto implementation (100,000 iterations per Cloudflare Web Crypto max limit)
 const PBKDF2_SALT = "bycar-global-vip-salt-2026";
-const PBKDF2_ITERATIONS = 600000;
+const PBKDF2_ITERATIONS = 100000;
+
+// Precomputed PBKDF2 hashes (salt: bycar-global-vip-salt-2026, 100k iters per Cloudflare Workers limits)
+const PRECOMPUTED_ADMIN_HASHES = [
+  "9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff", // bycar2024
+  "8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068", // bycar2026
+];
 
 async function deriveServerPBKDF2Hex(password: string): Promise<string> {
   const enc = new TextEncoder();
@@ -386,12 +396,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         const expectedEnvHash = await deriveServerPBKDF2Hex(envPassword.trim());
         isMatch = candidateHash === expectedEnvHash;
       } else {
-        // Fallback hashes for authorized administrators
-        const validHashes = await Promise.all([
-          deriveServerPBKDF2Hex("bycar2024"),
-          deriveServerPBKDF2Hex("bycar2026"),
-        ]);
-        isMatch = validHashes.includes(candidateHash);
+        isMatch = PRECOMPUTED_ADMIN_HASHES.includes(candidateHash);
       }
 
       if (!isMatch) {
@@ -458,7 +463,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       );
     } catch (err) {
       console.error("POST /api/admin/login error:", err);
-      return new Response(JSON.stringify({ ok: false, error: "Sunucu hatası oluştu." }), {
+      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
         status: 500,
         headers: { "content-type": "application/json; charset=utf-8" },
       });
