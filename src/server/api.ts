@@ -175,7 +175,7 @@ export const CmsPayloadSchema = z
     settings: z.record(z.unknown()).optional(),
     cmsConfig: z.record(z.unknown()).optional(),
     allowEmptyCatalog: z.boolean().optional(),
-    deletedCarIds: z.array(z.string().min(1).max(100)).max(500).optional(),
+    deletedCarIds: z.array(z.string().min(1).max(100)).max(100).optional(),
     revision: z.number().int().nonnegative().optional(),
     force: z.boolean().optional(),
   })
@@ -1219,25 +1219,37 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       let mode = "full"; // "queue" | "scan" | "full"
       let scanLimit = 50;
       let scanCursor: string | undefined = undefined;
+      let autoDrain = true;
+      let maxPagesCap: number | undefined = undefined;
 
       const bodyText = await request
         .clone()
         .text()
         .catch(() => "");
-      if (bodyText && bodyText.trim().startsWith("{")) {
-        try {
-          const bodyJson = JSON.parse(bodyText) as {
-            mode?: string;
-            limit?: number;
-            cursor?: string;
-          };
+      if (bodyText && bodyText.trim().length > 0) {
+        const parsedBody = await parseJsonBody<{
+          mode?: string;
+          limit?: number;
+          cursor?: string;
+          autoDrain?: boolean;
+          maxPages?: number;
+        }>(request);
+
+        if (!parsedBody.success) {
+          return parsedBody.response;
+        }
+
+        const bodyJson = parsedBody.data;
+        if (bodyJson && typeof bodyJson === "object") {
           if (bodyJson.mode) mode = bodyJson.mode;
           if (typeof bodyJson.limit === "number") {
             scanLimit = Math.min(100, Math.max(1, bodyJson.limit));
           }
           if (bodyJson.cursor) scanCursor = bodyJson.cursor;
-        } catch {
-          // Default to full
+          if (typeof bodyJson.autoDrain === "boolean") autoDrain = bodyJson.autoDrain;
+          if (typeof bodyJson.maxPages === "number") {
+            maxPagesCap = Math.min(20, Math.max(1, bodyJson.maxPages));
+          }
         }
       }
 
@@ -1299,37 +1311,67 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       let historicalRetainedCount = 0;
       let nextCursor: string | undefined = undefined;
       let isTruncated = false;
+      let pagesProcessed = 0;
 
       if (mode !== "queue" && resolvedEnv.BUCKET && typeof resolvedEnv.BUCKET.list === "function") {
         try {
-          const listOptions: { prefix: string; limit: number; cursor?: string } = {
-            prefix: "vehicles/",
-            limit: scanLimit,
-          };
-          if (scanCursor) {
-            listOptions.cursor = scanCursor;
-          }
-          const listResult = await resolvedEnv.BUCKET.list(listOptions);
-          const objects = listResult.objects || [];
-          scannedBucketCount = objects.length;
-          isTruncated = Boolean(listResult.truncated);
-          nextCursor = listResult.cursor;
+          const maxPages = autoDrain === false ? 1 : maxPagesCap || 10;
+          let currentCursor = scanCursor;
 
-          for (const obj of objects) {
-            // Check if key is used by ANY vehicle in D1
-            const inUseRow = await db
-              .prepare(
-                "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
-              )
-              .bind(obj.key, `%${encodeURIComponent(obj.key)}%`)
-              .first<{ count: number }>();
+          while (pagesProcessed < maxPages) {
+            const listOptions: { prefix: string; limit: number; cursor?: string } = {
+              prefix: "vehicles/",
+              limit: scanLimit,
+            };
+            if (currentCursor) {
+              listOptions.cursor = currentCursor;
+            }
+            const listResult = await resolvedEnv.BUCKET.list(listOptions);
+            const objects = listResult.objects || [];
+            scannedBucketCount += objects.length;
+            pagesProcessed++;
+            isTruncated = Boolean(listResult.truncated);
+            currentCursor = listResult.cursor;
+            nextCursor = listResult.cursor;
 
-            if ((inUseRow?.count || 0) === 0) {
-              // Historical orphan! Never referenced by any car in D1
-              await resolvedEnv.BUCKET.delete(obj.key);
-              historicalDeletedCount++;
-            } else {
-              historicalRetainedCount++;
+            for (const obj of objects) {
+              // Check if key is used by ANY vehicle in D1
+              const inUseRow = await db
+                .prepare(
+                  "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+                )
+                .bind(obj.key, `%${encodeURIComponent(obj.key)}%`)
+                .first<{ count: number }>();
+
+              if ((inUseRow?.count || 0) === 0) {
+                // Historical orphan! Never referenced by any car in D1
+                try {
+                  await resolvedEnv.BUCKET.delete(obj.key);
+                  historicalDeletedCount++;
+                } catch (delErr) {
+                  // Item 5: If deletion fails during historical sweep, enqueue into r2_cleanup_queue for retry
+                  try {
+                    await db
+                      .prepare(
+                        "INSERT INTO r2_cleanup_queue (id, r2_key, attempts, last_error, created_at) VALUES (?, ?, 1, ?, datetime('now'))",
+                      )
+                      .bind(
+                        `hist-orphan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                        obj.key,
+                        String(delErr),
+                      )
+                      .run();
+                  } catch (enqueueErr) {
+                    console.error("Failed to enqueue failed historical orphan key:", enqueueErr);
+                  }
+                }
+              } else {
+                historicalRetainedCount++;
+              }
+            }
+
+            if (!isTruncated || !currentCursor) {
+              break;
             }
           }
         } catch (scanErr) {
@@ -1362,7 +1404,8 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             historicalDeleted: historicalDeletedCount,
             activeRetained: historicalRetainedCount,
             truncated: isTruncated,
-            nextCursor,
+            nextCursor: isTruncated ? nextCursor : undefined,
+            pagesProcessed,
           },
         }),
         { headers: { "content-type": "application/json; charset=utf-8" } },
@@ -1674,7 +1717,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .first<{ value: string }>();
         const currentRevision = revisionRow ? parseInt(revisionRow.value, 10) || 1 : 1;
 
-        if (payload.revision !== undefined && payload.revision !== currentRevision) {
+        if (
+          !payload.force &&
+          payload.revision !== undefined &&
+          payload.revision !== currentRevision
+        ) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -1690,6 +1737,23 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
         const stmts: unknown[] = [];
         const orphanedR2Keys = new Set<string>();
+
+        // Log audit trail for CAS bypass with force: true
+        if (payload.force === true) {
+          const forceAuditRecord = {
+            forcedAt: new Date().toISOString(),
+            ip,
+            clientRevision: payload.revision ?? null,
+            previousRevision: currentRevision,
+          };
+          stmts.push(
+            db
+              .prepare(
+                "INSERT INTO site_settings (key, value, updated_at) VALUES ('last_force_sync', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+              )
+              .bind(JSON.stringify(forceAuditRecord)),
+          );
+        }
 
         const extractR2Key = (targetUrl: string, fallbackKey?: string): string | null => {
           if (targetUrl.startsWith("/api/media/")) {
@@ -1892,7 +1956,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         // Pre-batch CAS statement preparation:
         const nextRevision = Math.max(currentRevision, payload.revision || 0) + 1;
 
-        if (payload.revision !== undefined) {
+        if (!payload.force && payload.revision !== undefined) {
           // SQL-Level In-Batch CAS:
           // Atomically checks if current revision matches payload.revision inside the D1 transaction.
           // If revision matches (or no setting row exists yet), key is 'cms_revision'.
@@ -1931,7 +1995,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
           .first<{ value: string }>();
         const preBatchRevision = preBatchRevRow ? parseInt(preBatchRevRow.value, 10) || 1 : 1;
-        if (payload.revision !== undefined && preBatchRevision !== payload.revision) {
+        if (
+          !payload.force &&
+          payload.revision !== undefined &&
+          preBatchRevision !== payload.revision
+        ) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -2071,7 +2139,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       } else {
         // Fallback when D1 is not bound (e.g. local dev / memory mock)
         const currentRevision = memoryStore.revision || 1;
-        if (payload.revision !== undefined && payload.revision !== currentRevision) {
+        if (
+          !payload.force &&
+          payload.revision !== undefined &&
+          payload.revision !== currentRevision
+        ) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -2083,6 +2155,19 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             }),
             { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
           );
+        }
+
+        if (payload.force === true) {
+          const forceAuditRecord = {
+            forcedAt: new Date().toISOString(),
+            ip,
+            clientRevision: payload.revision ?? null,
+            previousRevision: currentRevision,
+          };
+          if (!memoryStore.settings || typeof memoryStore.settings !== "object") {
+            memoryStore.settings = {};
+          }
+          (memoryStore.settings as Record<string, unknown>)["last_force_sync"] = forceAuditRecord;
         }
 
         applyPayloadToMemoryStore(payload);

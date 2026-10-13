@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILD_GIT_COMMIT, handleApiRequest } from "@/server/api";
+import serverWorker from "@/server";
 
 describe("Server API, D1 Security & Stability Engine", () => {
   it("GET /api/health returns operational status, version, and commit metadata", async () => {
@@ -1212,5 +1213,327 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const res = await handleApiRequest(req, { DB: mockDb });
     expect(res?.status).toBe(200);
     expect(batchStatements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("Regression Test 5a: POST /api/admin/media/gc with malformed JSON body returns 400 Bad Request", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => null,
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const req = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: '{"mode": "scan", malformed_json',
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(400);
+
+    const body = (await res?.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain("Geçersiz JSON formatı");
+  });
+
+  it("Regression Test 5b: POST /api/admin/media/gc autoDrain loops across multiple pages and drains orphans", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const deletedKeys: string[] = [];
+    let listCallCount = 0;
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => {
+            if (sql.includes("COUNT(*) as count FROM vehicle_images")) {
+              return { count: 0 }; // All objects are historical orphans
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => ({ count: 0 }),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedKeys.push(key);
+      },
+      list: async (opts: { cursor?: string }) => {
+        listCallCount++;
+        if (!opts.cursor) {
+          // Page 1
+          return {
+            objects: [{ key: "vehicles/orphan-p1.webp" }],
+            truncated: true,
+            cursor: "cursor-page-2",
+          };
+        }
+        // Page 2 (last page)
+        return {
+          objects: [{ key: "vehicles/orphan-p2.webp" }],
+          truncated: false,
+          cursor: undefined,
+        };
+      },
+    };
+
+    const req = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ mode: "scan", autoDrain: true }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+
+    const body = (await res?.json()) as {
+      ok: boolean;
+      bucketScan: {
+        scanned: number;
+        historicalDeleted: number;
+        pagesProcessed: number;
+        truncated: boolean;
+      };
+    };
+    expect(body.ok).toBe(true);
+    expect(listCallCount).toBe(2);
+    expect(body.bucketScan.pagesProcessed).toBe(2);
+    expect(body.bucketScan.scanned).toBe(2);
+    expect(body.bucketScan.historicalDeleted).toBe(2);
+    expect(body.bucketScan.truncated).toBe(false);
+    expect(deletedKeys).toEqual(["vehicles/orphan-p1.webp", "vehicles/orphan-p2.webp"]);
+  });
+
+  it("Regression Test 5c: POST /api/admin/media/gc enqueues failed orphan deletes into r2_cleanup_queue", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const enqueuedKeys: string[] = [];
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => {
+          if (sql.includes("INSERT INTO r2_cleanup_queue")) {
+            enqueuedKeys.push(String(args[1]));
+          }
+          return {
+            run: async () => ({ success: true }),
+            all: async () => ({ results: [], success: true }),
+            first: async () => {
+              if (sql.includes("COUNT(*) as count FROM vehicle_images")) {
+                return { count: 0 }; // Orphan
+              }
+              return null;
+            },
+          };
+        },
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => ({ count: 0 }),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async () => {
+        throw new Error("R2_TRANSIENT_TIMEOUT_503");
+      },
+      list: async () => ({
+        objects: [{ key: "vehicles/transient-fail.webp" }],
+        truncated: false,
+      }),
+    };
+
+    const req = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ mode: "scan", autoDrain: false }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+    expect(enqueuedKeys).toContain("vehicles/transient-fail.webp");
+  });
+
+  it("Regression Test 5d: POST /api/cms rejects deletedCarIds exceeding 100 items with 400 Bad Request", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // 101 deleted car IDs (exceeds 100 cap)
+    const deletedCarIds = Array.from({ length: 101 }, (_, i) => `excess-del-${i}`);
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ deletedCarIds, revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, {});
+    expect(res?.status).toBe(400);
+
+    const body = (await res?.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain("deletedCarIds");
+  });
+
+  it("Regression Test 5e: POST /api/cms with force: true bypasses revision conflict and writes last_force_sync audit", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const insertedSettings: Record<string, string> = {};
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => {
+          if (sql.includes("INSERT INTO site_settings")) {
+            if (sql.includes("'last_force_sync'")) {
+              insertedSettings["last_force_sync"] = String(args[0]);
+            }
+          }
+          return {
+            run: async () => ({ success: true }),
+            all: async () => ({ results: [], success: true }),
+            first: async () => {
+              if (sql.includes("cms_revision")) {
+                return { value: "42" }; // Current revision is 42
+              }
+              return null;
+            },
+          };
+        },
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? { value: "42" } : null),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    // Client sends outdated revision 10, BUT provides force: true
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.195",
+      },
+      body: JSON.stringify({
+        revision: 10,
+        force: true,
+        settings: { phone: "+90 532 000 00 00" },
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(200);
+
+    const body = (await res?.json()) as { ok: boolean; revision: number };
+    expect(body.ok).toBe(true);
+    expect(body.revision).toBe(43);
+
+    // Verify audit record was inserted
+    expect(insertedSettings["last_force_sync"]).toBeDefined();
+    const audit = JSON.parse(insertedSettings["last_force_sync"]!) as {
+      ip: string;
+      clientRevision: number;
+      previousRevision: number;
+      forcedAt: string;
+    };
+    expect(audit.ip).toBe("203.0.113.195");
+    expect(audit.clientRevision).toBe(10);
+    expect(audit.previousRevision).toBe(42);
+    expect(audit.forcedAt).toBeDefined();
+  });
+
+  it("Regression Test 5f: Server response enforces strict CSP with exact Google Fonts origins and no unsafe-eval", async () => {
+    const res = await serverWorker.fetch(
+      new Request("https://bycarglobal.com/api/health", { method: "GET" }),
+      {},
+      {},
+    );
+    expect(res.status).toBe(200);
+
+    const csp = res.headers.get("content-security-policy");
+    expect(csp).toBeTruthy();
+    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
+    expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com;");
+    expect(csp).not.toContain("style-src 'self' 'unsafe-inline' https:;");
+    expect(csp).not.toContain("font-src 'self' data: https:;");
+    expect(csp).not.toContain("unsafe-eval");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("form-action 'self'");
   });
 });
