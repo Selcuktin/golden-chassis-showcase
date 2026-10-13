@@ -33,8 +33,8 @@ import {
   ADMIN_PRESETS,
   DEFAULT_SETTINGS,
   autoGenerateEnglishDescription,
+  clearAllBrowserStorage,
   compressImageToWebP,
-  exportD1SqlDump,
   exportDatabaseJSON,
   getLoginLockoutState,
   importDatabaseJSON,
@@ -711,24 +711,14 @@ function Admin() {
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    downloadFile(
-                      exportD1SqlDump(),
-                      "bycar-d1-veritabani.sql",
-                      "application/sql",
-                    )
-                  }
-                  className="inline-flex cursor-pointer items-center gap-1.5 border border-primary/50 bg-card px-3 py-2 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground"
-                  title="Tüm araçları ve talepleri Cloudflare D1 SQLite formatında indir"
-                >
-                  <Database className="h-3.5 w-3.5" /> D1 SQL İndir
-                </button>
-                <button
-                  type="button"
-                  onClick={resetCars}
+                  onClick={() => {
+                    clearAllBrowserStorage();
+                    setDbMsg("Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.");
+                    setTimeout(() => setDbMsg(""), 4000);
+                  }}
                   className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" /> Varsayılan 10 Aracı Yükle
+                  <RotateCcw className="h-3.5 w-3.5" /> Varsayılan 10 Aracı Yükle (Önbelleği Temizle)
                 </button>
               </div>
             </div>
@@ -1896,7 +1886,7 @@ function Admin() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setTab("manage")}
+                    onClick={() => setTab("fleet")}
                     className="cursor-pointer border border-primary/40 bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:border-primary hover:text-primary"
                   >
                     ← Araç Yönetimine Dön
@@ -2197,7 +2187,7 @@ function Admin() {
                 <div className="flex items-center gap-2">
                   <Database className="h-5 w-5 text-primary" />
                   <h2 className="font-display text-2xl font-semibold">
-                    Veritabanı & Veri Kaybı Koruma Merkezi (Cloudflare D1 & JSON)
+                    Veritabanı Yedekleme & Önbellek Koruma Merkezi
                   </h2>
                 </div>
                 <span className="border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
@@ -2235,30 +2225,28 @@ function Admin() {
                     Son Geri Alma Yedeği
                   </div>
                   <div className="truncate pt-1 text-xs font-semibold text-amber-300">
-                    {undoSnap ? `${undoSnap.label} (${undoSnap.timestamp})` : "Henüz işlem yok"}
+                    {undoSnap ? `${undoSnap.label} (${undoSnap.timestamp})` : "Temiz (Henüz işlem yok)"}
                   </div>
                 </div>
               </div>
 
               <p className="mb-4 text-xs text-muted-foreground">
-                Yaptığınız her araç ekleme, düzenleme, sıralama, fotoğraf sürükleme, talep durumu ve filtre ayarı değişikliği tarayıcı veritabanına anında kaydedilir ve bir önceki durum otomatik yedeklenir. Ayrıca tüm veritabanını tek tıkla <strong>JSON Yedek</strong> veya <strong>Cloudflare D1 SQLite (`.sql`)</strong> formatında indirebilir ya da geri yükleyebilirsiniz.
+                Yaptığınız her araç ekleme, düzenleme, sıralama, fotoğraf sürükleme, talep durumu ve filtre ayarı değişikliği anında kaydedilir ve bir önceki durum otomatik yedeklenir. Dilediğiniz zaman JSON yedek alabilir, yedekten geri yükleyebilir veya tarayıcı önbelleğini sıfırlayabilirsiniz.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={handleExportJSON}
+                  onClick={() =>
+                    downloadFile(
+                      exportDatabaseJSON(),
+                      "bycar-veritabani-yedek.json",
+                      "application/json",
+                    )
+                  }
                   className={goldBtn}
                 >
                   <Download className="h-4 w-4" /> JSON Tam Yedek İndir
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportSQL}
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-primary/10 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary/20"
-                >
-                  <Database className="h-4 w-4" /> Cloudflare D1 (.sql) Veritabanı İndir
                 </button>
 
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-3 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary">
@@ -2266,15 +2254,35 @@ function Admin() {
                   <input
                     type="file"
                     accept=".json,application/json"
-                    onChange={handleImportJSON}
+                    onChange={handleImportJsonFile}
                     className="hidden"
                   />
                 </label>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAllBrowserStorage();
+                    setDbMsg(
+                      "Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.",
+                    );
+                    setTimeout(() => setDbMsg(""), 4000);
+                  }}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                >
+                  <RotateCcw className="h-4 w-4" /> Önbelleği (LocalStorage) Temizle & Sıfırla
+                </button>
+
                 {undoSnap && (
                   <button
                     type="button"
-                    onClick={handleUndo}
+                    onClick={() => {
+                      const snap = restoreUndo();
+                      if (snap) {
+                        setDbMsg(`"${snap.label}" işlemi geri alındı.`);
+                        setTimeout(() => setDbMsg(""), 4000);
+                      }
+                    }}
                     className="inline-flex cursor-pointer items-center justify-center gap-2 border border-amber-500/50 bg-amber-500/10 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-amber-300 transition hover:bg-amber-500/20"
                   >
                     <Undo2 className="h-4 w-4" /> Son İşlemi Geri Al ({undoSnap.label})

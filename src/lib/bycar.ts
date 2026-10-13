@@ -856,13 +856,58 @@ export const INITIAL_INQUIRIES: Inquiry[] = [
   },
 ];
 
-const CARS_KEY = "bycar_fleet_v5";
-const INQ_KEY = "bycar_inquiries_v2";
-const SETTINGS_KEY = "bycar_settings_v1";
+const CARS_KEY = "bycar_fleet_v6";
+const INQ_KEY = "bycar_inquiries_v3";
+const SETTINGS_KEY = "bycar_settings_v2";
 const LANG_KEY = "bycar_lang_v1";
 const LOCKOUT_KEY = "bycar_admin_lockout_v1";
-const UNDO_KEY = "bycar_undo_snapshot_v1";
+const UNDO_KEY = "bycar_undo_snapshot_v2";
 const SYNC_EVENT = "bycar-store-sync";
+
+const LEGACY_KEYS = [
+  "bycar_fleet_v1",
+  "bycar_fleet_v2",
+  "bycar_fleet_v3",
+  "bycar_fleet_v4",
+  "bycar_fleet_v5",
+  "bycar_cars_v8",
+  "bycar_inquiries_v1",
+  "bycar_inquiries_v2",
+  "bycar_settings_v1",
+  "bycar_undo_snapshot_v1",
+];
+
+let legacyPurged = false;
+function purgeLegacyStorage() {
+  if (legacyPurged || typeof window === "undefined") return;
+  legacyPurged = true;
+  try {
+    for (const k of LEGACY_KEYS) {
+      window.localStorage.removeItem(k);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearAllBrowserStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    for (const k of [
+      ...LEGACY_KEYS,
+      CARS_KEY,
+      INQ_KEY,
+      SETTINGS_KEY,
+      UNDO_KEY,
+      LOCKOUT_KEY,
+    ]) {
+      window.localStorage.removeItem(k);
+    }
+    window.dispatchEvent(new Event(SYNC_EVENT));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export type UndoSnapshot = {
   label: string;
@@ -1050,6 +1095,7 @@ export function restoreUndoSnapshot(): UndoSnapshot | null {
 
 export function getStoredCars(): Car[] {
   if (typeof window === "undefined") return CARS;
+  purgeLegacyStorage();
   try {
     const raw = window.localStorage.getItem(CARS_KEY);
     if (!raw) return CARS;

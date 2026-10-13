@@ -107,3 +107,27 @@ Soru-Cevap oturumunda netleşen 4 temel karar:
   - Detay modalında varsayılan sekme Admin'den kapatıldığında otomatik olarak ilk aktif sekmeye (`specs` -> `extras` -> `offer`) düşmesi sağlandı.
   - **Otomatik Geri Alma (`Son İşlemi Geri Al` / Undo Snapshot)**, **JSON Tam Yedek İndir / Geri Yükle** ve **Cloudflare D1 SQLite (`.sql`) Veritabanı Dışa Aktarma (`exportD1SqlDump`)** özellikleri eklendi.
 
+---
+
+## 7. 🚀 Faz 8 (`/speckit-plan`): Sıfır Kod Bağımlılığı & %100 Admin-Driven CMS Mimarisi (Headless Showroom Engine)
+
+### 7.1 Koda Bağımlılık Denetimi (Şu An Kodda Sabit Kalan Noktaların Röntgeni)
+Mevcut durumda **Araçlar**, **Fotoğraf Sıralaması**, **CRM Talepleri** ve **Filtre/Modal Görünürlük Ayarları** Admin'den yönetiliyor; ancak bir yazılımcıya ihtiyaç duymadan sitenin **%100'ünü** Admin panelinden yönetebilmek için aşağıdaki **6 alanın** koddan (`src/lib/bycar.ts` ve `src/routes/index.tsx` sabitlerinden) çıkarılıp dinamik `SiteCMSConfig` veritabanı katmanına taşınması gerekiyor:
+
+| # | Alan / Modül | Şu Anki Durum (Kod Bağımlılığı) | Faz 8 Hedefi (%100 Admin Kontrolü) |
+|---|---|---|---|
+| **M1** | **İletişim, WhatsApp, Showroom & Sosyal Medya** | `CONTACT` objesi (`+90 540 061 16 34`, `Fethiye Bulvarı...`, çalışma saatleri, harita koordinatı, Instagram/E-posta) `bycar.ts` içinde sabit. | Admin'den telefon, WhatsApp numarası, açık adres, Google Maps iframe/link, çalışma saatleri, Instagram/YouTube/X linkleri ve otomatik WhatsApp karşılama mesaj şablonu değiştirilebilir olacak. |
+| **M2** | **Hero (Ana Vitrin Karşılama) & İstatistik Sayaçları** | Hero arka plan görseli (`hero.jpg`), üst rozet, ana başlık (`Kusursuzluğun Yeni Tanımı`), alt metin ve 4 istatistik kartı (`150+`, `12+`, `%100`, `7/24`) kodda sabit. | Admin'den Hero arka plan fotoğrafı/videosu yüklenebilir, TR/EN başlıklar ve 4 istatistik sayacı (`sayı + etiket`) canlı düzenlenebilir olacak. |
+| **M3** | **Dinamik Hazır Etiket (Preset Chips) Yöneticisi** | `ADMIN_PRESETS` (`Markalar`, `Paketler`, `Kasa Tipleri`, `Yakıt`, `Vites`, `Motor Gücü`, `Renkler`, `Ekspertiz`, `25+ Donanım`) `bycar.ts` içinde sabit dizi. | Admin kendi sık kullandığı yeni bir markayı, paketi, kasa tipini veya donanımı **"+ Kalıcı Etiket Olarak Kaydet"** diyerek çip listesine kalıcı ekleyebilecek veya istemediği hazır çipi silebilecek. |
+| **M4** | **Kurumsal İçerik: Hakkımızda, VIP Hizmetler & İthalat Adımları** | Hakkımızda hikayesi, 4 VIP Hizmet kartı ve 4 Özel İthalat adımı `T.tr` / `T.en` içinde sabit. | Admin'den Hakkımızda metinleri, 4 VIP Hizmet kartı (başlık + açıklama + ikon) ve 4 İthalat süreci adımı (TR + otomatik/manuel EN) düzenlenebilir olacak. |
+| **M5** | **Sosyal Kanıt (Müşteri Yorumları) & SSS (FAQ) Yöneticisi** | 3 müşteri yorumu (`testimonials`) ve 5 SSS (`faqs`) maddesi kodda sabit. | Admin'den yeni müşteri yorumu ekleme/silme/düzenleme ve SSS (Soru-Cevap) maddesi ekleme/silme/sıralama yapılabilecek. |
+| **M6** | **Güvenlik, Şifre Yönetimi, SEO & Yasal Metinler (KVKK/Çerez)** | Admin şifresi (`bycar2024` / `bycar2026` PBKDF2 hash), SEO site başlığı ve KVKK/Gizlilik metinleri kodda sabit. | Admin panelinden **Admin Şifresi Değiştirme** (tarayıcıda yeni PBKDF2 hash üretip kaydetme), **Bakım Modu (VIP Private Mode)** açma/kapama, **Bölüm Gizle/Göster** (örn. Yorumlar veya SSS bölümünü komple kapatma) ve KVKK/Gizlilik/Çerez metinlerini düzenleme. |
+
+### 7.2 Faz 8 Uygulama Görevleri (`T015` – `T020`)
+- [ ] **T015 (`CRITICAL`):** `SiteCMSConfig` veri modelini (`contact`, `hero`, `stats`, `sectionsVisibility`, `customPresets`, `about`, `services`, `conciergeSteps`, `testimonials`, `faqs`, `legal`, `seo`, `customPasswordHash`) `src/lib/bycar.ts` ve `schema.sql` içinde tanımla; tüm okuma/yazma/yedekleme (`JSON` + `D1 .sql`) fonksiyonlarına bağla.
+- [ ] **T016 (`CRITICAL`):** Admin Paneli "2. Araç Düzenle" formundaki tüm hazır etiket (Chip) gruplarına **"+ Kalıcı Etiket Ekle / Sil" (`customPresets`)** özelliği ekle (yeni yazılan kasa tipi, marka, paket veya donanım istenirse tek tıkla kalıcı çip olsun).
+- [ ] **T017 (`HIGH`):** Admin Paneline **"5. Site İçeriği & Kurumsal CMS"** sekmesi ekle: Hero görseli/başlığı, 4 İstatistik sayacı, Hakkımızda, VIP Hizmetler, Özel İthalat adımları, Müşteri Yorumları (Ekle/Sil/Düzenle) ve SSS (Ekle/Sil/Düzenle) yönetimi.
+- [ ] **T018 (`HIGH`):** Admin Paneline **"6. İletişim, SEO, Yasal & Güvenlik"** sekmesi ekle: WhatsApp & Telefon numarası, Showroom adresi, Google Harita linki, Çalışma saatleri, Sosyal medya linkleri, WhatsApp mesaj şablonları, Bölüm Görünürlük Şalterleri (`Show/Hide Sections`), KVKK/Çerez metinleri ve **Admin Şifre Değiştirme (PBKDF2)**.
+- [ ] **T019 (`HIGH`):** Ana sayfa (`src/routes/index.tsx`) ve Araç Detay sayfasını (`src/routes/arac.$slug.tsx`) statik `CONTACT` ve `T` sabitleri yerine %100 dinamik `SiteCMSConfig` verisiyle besle (Admin'de yapılan her değişiklik anında tüm sitede ve WhatsApp butonlarında canlı görünsün).
+- [ ] **T020 (`MEDIUM`):** Tüm CMS modüllerini `JSON Tam Yedek`, `Cloudflare D1 (.sql) Dump` ve `Son İşlemi Geri Al (Undo)` sistemine dahil et ve testlerini doğrula.
+
