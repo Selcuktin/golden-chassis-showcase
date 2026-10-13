@@ -31,6 +31,16 @@ export type R2Bucket = {
     httpMetadata?: { contentType?: string; cacheControl?: string };
   } | null>;
   delete: (key: string) => Promise<void>;
+  list?: (options?: {
+    prefix?: string;
+    limit?: number;
+    cursor?: string;
+    delimiter?: string;
+  }) => Promise<{
+    objects: Array<{ key: string; size: number }>;
+    truncated: boolean;
+    cursor?: string;
+  }>;
 };
 
 export type ServerEnv = {
@@ -159,14 +169,21 @@ export const VehicleSchema = z.object({
   featured: z.boolean().default(false),
 });
 
-export const CmsPayloadSchema = z.object({
-  cars: z.array(VehicleSchema).optional(),
-  settings: z.record(z.unknown()).optional(),
-  cmsConfig: z.record(z.unknown()).optional(),
-  allowEmptyCatalog: z.boolean().optional(),
-  deletedCarIds: z.array(z.string().min(1).max(100)).max(500).optional(),
-  revision: z.number().int().nonnegative().optional(),
-});
+export const CmsPayloadSchema = z
+  .object({
+    cars: z.array(VehicleSchema).optional(),
+    settings: z.record(z.unknown()).optional(),
+    cmsConfig: z.record(z.unknown()).optional(),
+    allowEmptyCatalog: z.boolean().optional(),
+    deletedCarIds: z.array(z.string().min(1).max(100)).max(500).optional(),
+    revision: z.number().int().nonnegative().optional(),
+    force: z.boolean().optional(),
+  })
+  .refine((data) => typeof data.revision === "number" || data.force === true, {
+    message:
+      "Eşzamanlılık koruması ve CAS doğrulaması için geçerli bir 'revision' numarası zorunludur (veya force: true belirtilmelidir).",
+    path: ["revision"],
+  });
 
 export const InquiryStatusSchema = z.object({
   id: z.string().min(1),
@@ -378,6 +395,27 @@ function getClientIp(request: Request): string {
   const realIp = request.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
   return "127.0.0.1";
+}
+
+// Safe JSON Body Parser: Catches SyntaxError on malformed JSON and returns 400 Bad Request
+async function parseJsonBody<T = unknown>(
+  request: Request,
+): Promise<{ success: true; data: T } | { success: false; response: Response }> {
+  try {
+    const data = (await request.json()) as T;
+    return { success: true, data };
+  } catch {
+    return {
+      success: false,
+      response: new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Geçersiz JSON formatı: İstek gövdesi çözümlenemedi.",
+        }),
+        { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+      ),
+    };
+  }
 }
 
 // PBKDF2 Web Crypto implementation (100,000 iterations per Cloudflare Web Crypto limit)
@@ -749,7 +787,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const body = (await request.json()) as { password?: string; username?: string };
+      const parsedBody = await parseJsonBody<{ password?: string; username?: string }>(request);
+      if (!parsedBody.success) return parsedBody.response;
+      const body = parsedBody.data;
       const rawPassword = String(body.password || "").trim();
       const rawUsername = String(body.username || "admin").trim();
 
@@ -968,7 +1008,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const body = await request.json();
+      const parsedBody = await parseJsonBody(request);
+      if (!parsedBody.success) return parsedBody.response;
+      const body = parsedBody.data;
       const validated = ChangePasswordSchema.safeParse(body);
       if (!validated.success) {
         return new Response(
@@ -1147,7 +1189,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
   }
 
-  // 5b. POST /api/admin/media/gc — PROTECTED: Garbage collect orphaned R2 media files from retry queue
+  // 5b. POST /api/admin/media/gc — PROTECTED: Garbage collect orphaned R2 media files (Queue Retry + Bucket Historical Sweep)
   if (url.pathname === "/api/admin/media/gc" && request.method === "POST") {
     const isAuthed = await verifyAdminToken(request, db);
     if (!isAuthed) {
@@ -1172,49 +1214,126 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
     try {
       await ensureD1Tables(db);
-      const queueRows = await db
-        .prepare(
-          "SELECT id, r2_key, attempts FROM r2_cleanup_queue ORDER BY created_at ASC LIMIT 50",
-        )
-        .all<{ id: string; r2_key: string; attempts: number }>();
 
-      const items = queueRows.results || [];
-      let deletedCount = 0;
-      let skippedInUseCount = 0;
-      let failedCount = 0;
+      // Parse optional GC parameters from request body
+      let mode = "full"; // "queue" | "scan" | "full"
+      let scanLimit = 50;
+      let scanCursor: string | undefined = undefined;
 
-      for (const item of items) {
-        // Shared media reference check: verify no vehicle image still references this key
-        const inUseRow = await db
-          .prepare(
-            "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
-          )
-          .bind(item.r2_key, `%${encodeURIComponent(item.r2_key)}%`)
-          .first<{ count: number }>();
-
-        if ((inUseRow?.count || 0) > 0) {
-          // Key is currently in use, remove from cleanup queue
-          await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
-          skippedInUseCount++;
-          continue;
-        }
-
-        if (resolvedEnv.BUCKET) {
-          try {
-            await resolvedEnv.BUCKET.delete(item.r2_key);
-            await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
-            deletedCount++;
-          } catch (delErr) {
-            failedCount++;
-            await db
-              .prepare(
-                "UPDATE r2_cleanup_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-              )
-              .bind(String(delErr), item.id)
-              .run();
+      const bodyText = await request
+        .clone()
+        .text()
+        .catch(() => "");
+      if (bodyText && bodyText.trim().startsWith("{")) {
+        try {
+          const bodyJson = JSON.parse(bodyText) as {
+            mode?: string;
+            limit?: number;
+            cursor?: string;
+          };
+          if (bodyJson.mode) mode = bodyJson.mode;
+          if (typeof bodyJson.limit === "number") {
+            scanLimit = Math.min(100, Math.max(1, bodyJson.limit));
           }
-        } else {
-          failedCount++;
+          if (bodyJson.cursor) scanCursor = bodyJson.cursor;
+        } catch {
+          // Default to full
+        }
+      }
+
+      let queueProcessed = 0;
+      let queueDeleted = 0;
+      let queueSkippedInUse = 0;
+      let queueFailed = 0;
+
+      // 1. Process Retry Queue (when mode is "queue" or "full")
+      if (mode !== "scan") {
+        const queueRows = await db
+          .prepare(
+            "SELECT id, r2_key, attempts FROM r2_cleanup_queue ORDER BY created_at ASC LIMIT 50",
+          )
+          .all<{ id: string; r2_key: string; attempts: number }>();
+
+        const items = queueRows.results || [];
+        queueProcessed = items.length;
+
+        for (const item of items) {
+          // Shared media reference check: verify no vehicle image still references this key
+          const inUseRow = await db
+            .prepare(
+              "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+            )
+            .bind(item.r2_key, `%${encodeURIComponent(item.r2_key)}%`)
+            .first<{ count: number }>();
+
+          if ((inUseRow?.count || 0) > 0) {
+            // Key is currently in use, remove from cleanup queue
+            await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
+            queueSkippedInUse++;
+            continue;
+          }
+
+          if (resolvedEnv.BUCKET) {
+            try {
+              await resolvedEnv.BUCKET.delete(item.r2_key);
+              await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
+              queueDeleted++;
+            } catch (delErr) {
+              queueFailed++;
+              await db
+                .prepare(
+                  "UPDATE r2_cleanup_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+                )
+                .bind(String(delErr), item.id)
+                .run();
+            }
+          } else {
+            queueFailed++;
+          }
+        }
+      }
+
+      // 2. Historical Orphan Bucket Sweep (when mode is "scan" or "full")
+      let scannedBucketCount = 0;
+      let historicalDeletedCount = 0;
+      let historicalRetainedCount = 0;
+      let nextCursor: string | undefined = undefined;
+      let isTruncated = false;
+
+      if (mode !== "queue" && resolvedEnv.BUCKET && typeof resolvedEnv.BUCKET.list === "function") {
+        try {
+          const listOptions: { prefix: string; limit: number; cursor?: string } = {
+            prefix: "vehicles/",
+            limit: scanLimit,
+          };
+          if (scanCursor) {
+            listOptions.cursor = scanCursor;
+          }
+          const listResult = await resolvedEnv.BUCKET.list(listOptions);
+          const objects = listResult.objects || [];
+          scannedBucketCount = objects.length;
+          isTruncated = Boolean(listResult.truncated);
+          nextCursor = listResult.cursor;
+
+          for (const obj of objects) {
+            // Check if key is used by ANY vehicle in D1
+            const inUseRow = await db
+              .prepare(
+                "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+              )
+              .bind(obj.key, `%${encodeURIComponent(obj.key)}%`)
+              .first<{ count: number }>();
+
+            if ((inUseRow?.count || 0) === 0) {
+              // Historical orphan! Never referenced by any car in D1
+              await resolvedEnv.BUCKET.delete(obj.key);
+              historicalDeletedCount++;
+            } else {
+              historicalRetainedCount++;
+            }
+          }
+        } catch (scanErr) {
+          console.error("Historical R2 bucket scan error:", scanErr);
         }
       }
 
@@ -1225,11 +1344,26 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       return new Response(
         JSON.stringify({
           ok: true,
-          processed: items.length,
-          deleted: deletedCount,
-          skippedInUse: skippedInUseCount,
-          failed: failedCount,
+          mode,
+          processed: queueProcessed + scannedBucketCount,
+          deleted: queueDeleted + historicalDeletedCount,
+          skippedInUse: queueSkippedInUse + historicalRetainedCount,
+          failed: queueFailed,
           remainingQueue: remainingRow?.count || 0,
+          queue: {
+            processed: queueProcessed,
+            deleted: queueDeleted,
+            skippedInUse: queueSkippedInUse,
+            failed: queueFailed,
+            remaining: remainingRow?.count || 0,
+          },
+          bucketScan: {
+            scanned: scannedBucketCount,
+            historicalDeleted: historicalDeletedCount,
+            activeRetained: historicalRetainedCount,
+            truncated: isTruncated,
+            nextCursor,
+          },
         }),
         { headers: { "content-type": "application/json; charset=utf-8" } },
       );
@@ -1305,7 +1439,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const rawBody = await request.json();
+      const parsedBody = await parseJsonBody(request);
+      if (!parsedBody.success) return parsedBody.response;
+      const rawBody = parsedBody.data;
       const validated = InquiryStatusSchema.safeParse(rawBody);
       if (!validated.success) {
         return new Response(
@@ -1509,7 +1645,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const rawPayload = await request.json();
+      const parsedBody = await parseJsonBody(request);
+      if (!parsedBody.success) return parsedBody.response;
+      const rawPayload = parsedBody.data;
 
       // Server-side Zod Schema Validation
       const parseResult = CmsPayloadSchema.safeParse(rawPayload);
@@ -1585,60 +1723,68 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
 
         // 1. Explicit Targeted Deletion: Only delete vehicles specifically flagged for deletion by admin
+        // Uses parameter chunking (<= 40 IDs per statement) to strictly protect against D1 bound variable limits
         if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
-          const placeholders = payload.deletedCarIds.map(() => "?").join(",");
-          try {
-            const imagesToClean = await db
-              .prepare(
-                `SELECT r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
-              )
-              .bind(...payload.deletedCarIds)
-              .all<ImageDbRow>();
-            for (const img of imagesToClean.results || []) {
-              const k = extractR2Key(img.public_url, img.r2_key);
-              if (k) orphanedR2Keys.add(k);
+          const ID_CHUNK_SIZE = 40;
+          for (let i = 0; i < payload.deletedCarIds.length; i += ID_CHUNK_SIZE) {
+            const chunk = payload.deletedCarIds.slice(i, i + ID_CHUNK_SIZE);
+            const placeholders = chunk.map(() => "?").join(",");
+            try {
+              const imagesToClean = await db
+                .prepare(
+                  `SELECT r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
+                )
+                .bind(...chunk)
+                .all<ImageDbRow>();
+              for (const img of imagesToClean.results || []) {
+                const k = extractR2Key(img.public_url, img.r2_key);
+                if (k) orphanedR2Keys.add(k);
+              }
+            } catch (err) {
+              console.error("Failed to query orphaned images for deleted cars chunk:", err);
             }
-          } catch (err) {
-            console.error("Failed to query orphaned images for deleted cars:", err);
-          }
 
-          stmts.push(
-            db
-              .prepare(`DELETE FROM vehicle_images WHERE vehicle_id IN (${placeholders})`)
-              .bind(...payload.deletedCarIds),
-          );
-          stmts.push(
-            db
-              .prepare(`DELETE FROM vehicles WHERE id IN (${placeholders})`)
-              .bind(...payload.deletedCarIds),
-          );
+            stmts.push(
+              db
+                .prepare(`DELETE FROM vehicle_images WHERE vehicle_id IN (${placeholders})`)
+                .bind(...chunk),
+            );
+            stmts.push(
+              db.prepare(`DELETE FROM vehicles WHERE id IN (${placeholders})`).bind(...chunk),
+            );
+          }
         }
 
         // 2. Safe Upsert for Vehicles & Images (Does NOT wipe other vehicles in the catalog)
         if (Array.isArray(payload.cars) && payload.cars.length > 0) {
-          // Detect replaced images to clean up
+          // Detect replaced images to clean up using chunked queries (<= 40 IDs per query)
           const carIds = payload.cars.map((c) => c.id);
-          const placeholders = carIds.map(() => "?").join(",");
-          try {
-            const existingImages = await db
-              .prepare(
-                `SELECT vehicle_id, r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
-              )
-              .bind(...carIds)
-              .all<ImageDbRow>();
-            const activeUrlsByCar = new Map<string, Set<string>>();
-            for (const c of payload.cars) {
-              activeUrlsByCar.set(c.id, new Set(c.images || []));
-            }
-            for (const img of existingImages.results || []) {
-              const activeUrls = activeUrlsByCar.get(img.vehicle_id);
-              if (activeUrls && !activeUrls.has(img.public_url)) {
-                const k = extractR2Key(img.public_url, img.r2_key);
-                if (k) orphanedR2Keys.add(k);
+          const activeUrlsByCar = new Map<string, Set<string>>();
+          for (const c of payload.cars) {
+            activeUrlsByCar.set(c.id, new Set(c.images || []));
+          }
+
+          const ID_CHUNK_SIZE = 40;
+          for (let i = 0; i < carIds.length; i += ID_CHUNK_SIZE) {
+            const chunk = carIds.slice(i, i + ID_CHUNK_SIZE);
+            const placeholders = chunk.map(() => "?").join(",");
+            try {
+              const existingImages = await db
+                .prepare(
+                  `SELECT vehicle_id, r2_key, public_url FROM vehicle_images WHERE vehicle_id IN (${placeholders})`,
+                )
+                .bind(...chunk)
+                .all<ImageDbRow>();
+              for (const img of existingImages.results || []) {
+                const activeUrls = activeUrlsByCar.get(img.vehicle_id);
+                if (activeUrls && !activeUrls.has(img.public_url)) {
+                  const k = extractR2Key(img.public_url, img.r2_key);
+                  if (k) orphanedR2Keys.add(k);
+                }
               }
+            } catch (err) {
+              console.error("Failed to query replaced images chunk:", err);
             }
-          } catch (err) {
-            console.error("Failed to query replaced images:", err);
           }
 
           // Upsert each vehicle
@@ -1815,14 +1961,26 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           }
         } catch (batchErr: unknown) {
           const errMsg = String(batchErr);
-          if (
-            errMsg.includes("NOT NULL constraint failed: site_settings.key") ||
-            errMsg.includes("site_settings.key")
-          ) {
+          let conflictRevision = currentRevision;
+          try {
             const conflictRevRow = await db
               .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
               .first<{ value: string }>();
-            const conflictRevision = conflictRevRow ? parseInt(conflictRevRow.value, 10) || 1 : 1;
+            if (conflictRevRow) {
+              conflictRevision = parseInt(conflictRevRow.value, 10) || 1;
+            }
+          } catch {
+            // Keep default
+          }
+
+          const isConstraintOrCasMismatch =
+            (typeof payload.revision === "number" && conflictRevision !== payload.revision) ||
+            errMsg.includes("site_settings.key") ||
+            errMsg.includes("NOT NULL") ||
+            errMsg.includes("SQLITE_CONSTRAINT") ||
+            errMsg.includes("constraint");
+
+          if (isConstraintOrCasMismatch) {
             return new Response(
               JSON.stringify({
                 ok: false,
@@ -1999,7 +2157,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      const body = (await request.json()) as {
+      const parsedBody = await parseJsonBody<{
         type?: string;
         car?: string;
         name?: string;
@@ -2007,7 +2165,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         offerOrBudget?: string;
         details?: string;
         vehicleId?: string;
-      };
+      }>(request);
+      if (!parsedBody.success) return parsedBody.response;
+      const body = parsedBody.data;
 
       // Input Validation
       const name = String(body.name || "").trim();

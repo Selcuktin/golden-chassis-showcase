@@ -353,7 +353,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
         authorization: `Bearer ${loginData.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ cars: initialCars }),
+      body: JSON.stringify({ cars: initialCars, revision: 1 }),
     });
     const seedRes = await handleApiRequest(seedReq, {});
     expect(seedRes?.status).toBe(200);
@@ -365,7 +365,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
         authorization: `Bearer ${loginData.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ cars: [initialCars[0]] }),
+      body: JSON.stringify({ cars: [initialCars[0]], revision: 2 }),
     });
     const staleRes = await handleApiRequest(staleReq, {});
     expect(staleRes?.status).toBe(200);
@@ -386,7 +386,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
         authorization: `Bearer ${loginData.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ deletedCarIds: ["car-preserve-2"] }),
+      body: JSON.stringify({ deletedCarIds: ["car-preserve-2"], revision: 3 }),
     });
     const deleteRes = await handleApiRequest(deleteReq, {});
     expect(deleteRes?.status).toBe(200);
@@ -434,6 +434,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
+        revision: 1,
         cars: [
           {
             id: "car-should-never-be-saved",
@@ -1000,5 +1001,216 @@ describe("Server API, D1 Security & Stability Engine", () => {
     // Both queue items should be cleared (orphan because deleted, in-use because preserved)
     expect(queueDeletedIds).toContain("queue-1");
     expect(queueDeletedIds).toContain("queue-2");
+  });
+
+  it("Regression Test 4a: Rejects malformed JSON body across all endpoints with 400 Bad Request instead of 500", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // 1. Malformed JSON on /api/cms
+    const badCmsReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: "INVALID_JSON_BODY{{{",
+    });
+    const cmsRes = await handleApiRequest(badCmsReq, {});
+    expect(cmsRes?.status).toBe(400);
+    const cmsBody = (await cmsRes?.json()) as { ok: boolean; error: string };
+    expect(cmsBody.error).toContain("Geçersiz JSON formatı");
+
+    // 2. Malformed JSON on /api/inquiry
+    const badInquiryReq = new Request("https://bycarglobal.com/api/inquiry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{ broken: json ]",
+    });
+    const inquiryRes = await handleApiRequest(badInquiryReq, {});
+    expect(inquiryRes?.status).toBe(400);
+
+    // 3. Malformed JSON on /api/admin/login
+    const badLoginReq = new Request("https://bycarglobal.com/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "NOT_JSON",
+    });
+    const badLoginRes = await handleApiRequest(badLoginReq, {});
+    expect(badLoginRes?.status).toBe(400);
+  });
+
+  it("Regression Test 4b: Enforces mandatory revision in POST /api/cms (rejects missing revision unless force: true)", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // Missing revision without force: true -> 400 Bad Request
+    const noRevReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ settings: { title: "Test" } }),
+    });
+    const noRevRes = await handleApiRequest(noRevReq, {});
+    expect(noRevRes?.status).toBe(400);
+    const noRevData = (await noRevRes?.json()) as { ok: boolean; error: string };
+    expect(noRevData.error).toContain("revision");
+
+    // Explicit force: true allows authorized bypass
+    const forceReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ settings: { title: "Force Override" }, force: true }),
+    });
+    const forceRes = await handleApiRequest(forceReq, {});
+    expect(forceRes?.status).toBe(200);
+  });
+
+  it("Regression Test 4c: POST /api/admin/media/gc scans R2 bucket objects with BUCKET.list and deletes historical orphans", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const deletedR2Keys: string[] = [];
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => {
+            if (sql.includes("COUNT(*) as count FROM vehicle_images")) {
+              if (args[0] === "vehicles/active-car/hero.webp") {
+                return { count: 1 }; // Still in use!
+              }
+              return { count: 0 }; // Historical orphan!
+            }
+            if (sql.includes("COUNT(*) as count FROM r2_cleanup_queue")) {
+              return { count: 0 };
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => ({ count: 0 }),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedR2Keys.push(key);
+      },
+      list: async () => ({
+        objects: [
+          { key: "vehicles/active-car/hero.webp", size: 1024 },
+          { key: "vehicles/historical-orphan/old.webp", size: 2048 },
+        ],
+        truncated: false,
+      }),
+    };
+
+    const gcReq = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ mode: "scan" }),
+    });
+
+    const gcRes = await handleApiRequest(gcReq, { DB: mockDb, BUCKET: mockBucket });
+    expect(gcRes?.status).toBe(200);
+
+    const gcBody = (await gcRes?.json()) as {
+      ok: boolean;
+      bucketScan: { scanned: number; historicalDeleted: number; activeRetained: number };
+    };
+    expect(gcBody.ok).toBe(true);
+    expect(gcBody.bucketScan.scanned).toBe(2);
+    expect(gcBody.bucketScan.historicalDeleted).toBe(1);
+    expect(gcBody.bucketScan.activeRetained).toBe(1);
+
+    expect(deletedR2Keys).toContain("vehicles/historical-orphan/old.webp");
+    expect(deletedR2Keys).not.toContain("vehicles/active-car/hero.webp");
+  });
+
+  it("Regression Test 4d: deletedCarIds parameter chunking ensures statements never exceed 40 variables", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const batchStatements: string[] = [];
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => {
+          // Verify that NO statement receives more than 40 bound parameters
+          expect(args.length).toBeLessThanOrEqual(40);
+          return {
+            run: async () => ({ success: true }),
+            all: async () => ({ results: [], success: true }),
+            first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+          };
+        },
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+      }),
+      batch: async (stmts: unknown[]) => {
+        batchStatements.push(`batch_of_${stmts.length}`);
+        return stmts.map(() => ({ success: true }));
+      },
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    // 100 deleted car IDs
+    const deletedCarIds = Array.from({ length: 100 }, (_, i) => `bulk-del-${i}`);
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ deletedCarIds, revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(200);
+    expect(batchStatements.length).toBeGreaterThanOrEqual(1);
   });
 });
