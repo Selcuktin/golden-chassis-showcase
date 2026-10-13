@@ -26,4 +26,4 @@ bucket_name = "bycar-media"
 
 [vars]
 NODE_ENV = "production"
-GIT_COMMIT = "ef95063"
+GIT_COMMIT = "aeced6f"
