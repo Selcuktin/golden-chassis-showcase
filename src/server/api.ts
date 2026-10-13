@@ -1010,15 +1010,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             );
             await db
               .prepare(
-                `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations)
-                 VALUES ('admin-master', 'admin', ?, ?, ?)
-                 ON CONFLICT(id) DO UPDATE SET
+                `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
+                 VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
+                 ON CONFLICT(username) DO UPDATE SET
                    password_hash = excluded.password_hash,
                    password_salt = excluded.password_salt,
-                   iterations = excluded.iterations,
-                   updated_at = datetime('now')`,
+                   iterations = excluded.iterations`,
               )
-              .bind(freshHash, freshSalt, PBKDF2_ITERATIONS)
+              .bind(freshHash, freshSalt)
               .run();
             authenticatedAdminId = "admin-master";
           }
