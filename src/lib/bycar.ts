@@ -271,7 +271,7 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
   },
   stats: [
     { value: "150+", labelTr: "Teslim Edilen Özel Araç", labelEn: "Delivered Vehicles" },
-    { value: "12+", labelTr: "Yıllık Deneyim", labelEn: "Years of Heritage" },
+    { value: "6+", labelTr: "Yıllık Deneyim", labelEn: "Years of Heritage" },
     { value: "%100", labelTr: "Ekspertiz Garantisi", labelEn: "Certified Inspection" },
     { value: "7/24", labelTr: "VIP Danışmanlık", labelEn: "VIP Concierge" },
   ],

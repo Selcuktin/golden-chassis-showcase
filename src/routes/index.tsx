@@ -551,7 +551,7 @@ function Index() {
                 key={i}
                 className="rounded-2xl border border-primary/20 bg-background/50 p-4 text-center sm:text-left backdrop-blur-sm shadow-sm md:rounded-none md:border-0 md:border-l-2 md:border-primary/60 md:bg-transparent md:p-0 md:pl-4 md:shadow-none"
               >
-                <div className="font-display text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary via-[#F5D061] to-primary bg-clip-text text-transparent md:bg-none md:text-gold">
+                <div className="font-display text-2xl sm:text-3xl md:text-4xl font-bold text-gold tracking-tight">
                   {st.value}
                 </div>
                 <div className="mt-1 text-[10px] sm:text-xs uppercase tracking-wider md:tracking-widest text-muted-foreground font-medium">
