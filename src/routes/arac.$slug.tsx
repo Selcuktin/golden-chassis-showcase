@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, notFound, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -25,19 +25,32 @@ import {
 import { QuickOfferForm } from "./index";
 
 export const Route = createFileRoute("/arac/$slug")({
-  head: ({ params }) => {
+  loader: ({ params }) => {
     const pool = typeof window !== "undefined" ? getStoredCars() : CARS;
     const found =
       pool.find((c) => c.id === params.slug && c.status !== "draft") ||
       CARS.find((c) => c.id === params.slug && c.status !== "draft");
     if (!found) {
+      throw notFound();
+    }
+    return { car: found };
+  },
+  notFoundComponent: VehicleNotFoundPage,
+  head: ({ loaderData }) => {
+    const found = loaderData?.car;
+    if (!found) {
       return {
         meta: [
-          { title: "Araç Detayı — ByCar Global" },
-          { name: "robots", content: "noindex" },
+          { title: "Araç Bulunamadı (404) — ByCar Global" },
+          { name: "robots", content: "noindex, nofollow" },
         ],
       };
     }
+    const rawImage = found.images[0] || "/hero.png";
+    const ogImage = rawImage.startsWith("http")
+      ? rawImage
+      : `https://bycarglobal.com${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
+
     return {
       meta: [
         { title: `${found.year} ${found.title} | ByCar — Exclusive Automotive` },
@@ -52,15 +65,41 @@ export const Route = createFileRoute("/arac/$slug")({
           property: "og:description",
           content: `${found.specs.power} · ${found.km.toLocaleString("tr-TR")} KM · ${found.specs.expertise}`,
         },
-        { property: "og:image", content: found.images[0] },
+        { property: "og:image", content: ogImage },
+        { property: "og:url", content: `https://bycarglobal.com/arac/${found.id}` },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:image", content: ogImage },
       ],
     };
   },
   component: VehicleDetailPage,
 });
 
+function VehicleNotFoundPage() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center text-foreground">
+      <p className="mb-2 text-xs uppercase tracking-[0.4em] text-primary">
+        HTTP 404 · BYCAR GLOBAL
+      </p>
+      <h1 className="font-display text-4xl font-semibold md:text-6xl">Araç Bulunamadı</h1>
+      <p className="mt-4 max-w-md text-sm text-muted-foreground">
+        Aradığınız araç koleksiyondan kaldırılmış, taslağa alınmış veya satılmış olabilir.
+      </p>
+      <Link
+        to="/"
+        hash="koleksiyon"
+        className="mt-8 inline-flex items-center gap-2 bg-gold px-6 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Koleksiyona Dön
+      </Link>
+    </div>
+  );
+}
+
 function VehicleDetailPage() {
   const { slug } = Route.useParams();
+  const loaderData = Route.useLoaderData();
   const { cars, settings, cmsConfig, lang, setLang } = useByCarStore();
   const t = T[lang];
   const [img, setImg] = useState(0);
@@ -68,7 +107,7 @@ function VehicleDetailPage() {
   const [copied, setCopied] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const car = cars.find((c) => c.id === slug && c.status !== "draft");
+  const car = cars.find((c) => c.id === slug && c.status !== "draft") || loaderData?.car;
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -79,29 +118,7 @@ function VehicleDetailPage() {
   }, [car]);
 
   if (!car) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center text-foreground">
-        <p className="mb-2 text-xs uppercase tracking-[0.4em] text-primary">
-          HTTP 404 · BYCAR GLOBAL
-        </p>
-        <h1 className="font-display text-4xl font-semibold md:text-6xl">
-          {lang === "tr" ? "Araç Bulunamadı" : "Vehicle Not Found"}
-        </h1>
-        <p className="mt-4 max-w-md text-sm text-muted-foreground">
-          {lang === "tr"
-            ? "Aradığınız araç koleksiyondan kaldırılmış, taslağa alınmış veya satılmış olabilir."
-            : "The requested vehicle may have been removed, archived, or placed in draft mode."}
-        </p>
-        <Link
-          to="/"
-          hash="koleksiyon"
-          className="mt-8 inline-flex items-center gap-2 bg-gold px-6 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {lang === "tr" ? "Koleksiyona Dön" : "Back to Collection"}
-        </Link>
-      </div>
-    );
+    return <VehicleNotFoundPage />;
   }
 
   const isSold = Boolean(car.sold || car.status === "sold");
@@ -109,6 +126,10 @@ function VehicleDetailPage() {
     lang === "en" && car.extrasEn && car.extrasEn.length > 0
       ? car.extrasEn
       : (car.extras || []).map((item) => translateTerm(item, lang));
+
+  const absoluteImages = car.images.map((im) =>
+    im.startsWith("http") ? im : `https://bycarglobal.com${im.startsWith("/") ? "" : "/"}${im}`,
+  );
 
   const carJsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -121,7 +142,7 @@ function VehicleDetailPage() {
     fuelType: car.fuel,
     vehicleTransmission: car.gear,
     color: car.specs.color,
-    image: car.images,
+    image: absoluteImages,
     mileageFromOdometer: {
       "@type": "QuantitativeValue",
       value: car.km,
@@ -130,9 +151,7 @@ function VehicleDetailPage() {
     offers: {
       "@type": "Offer",
       url: `https://bycarglobal.com/arac/${car.id}`,
-      availability: isSold
-        ? "https://schema.org/SoldOut"
-        : "https://schema.org/InStock",
+      availability: isSold ? "https://schema.org/SoldOut" : "https://schema.org/InStock",
     },
   });
 
@@ -147,10 +166,7 @@ function VehicleDetailPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: carJsonLd }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: carJsonLd }} />
 
       {/* Top Bar */}
       <header className="border-b border-border bg-background/90 backdrop-blur-md">
@@ -279,7 +295,9 @@ function VehicleDetailPage() {
                 <button
                   onClick={() => setShowVideo(true)}
                   className={`flex w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-2 bg-card text-[10px] font-semibold uppercase ${
-                    showVideo ? "border-primary text-primary" : "border-border text-muted-foreground"
+                    showVideo
+                      ? "border-primary text-primary"
+                      : "border-border text-muted-foreground"
                   }`}
                 >
                   <Play className="h-4 w-4 fill-current" />

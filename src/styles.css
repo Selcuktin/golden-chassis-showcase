@@ -144,11 +144,17 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: var(--font-display);
   }
 
-  button, a, input, select, textarea {
+  button,
+  a,
+  input,
+  select,
+  textarea {
     touch-action: manipulation;
   }
 }
@@ -189,7 +195,15 @@
   margin-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
-@utility bg-gold { background-image: var(--gradient-gold); }
-@utility text-gold { background-image: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
-@utility shadow-gold { box-shadow: var(--shadow-gold); }
-
+@utility bg-gold {
+  background-image: var(--gradient-gold);
+}
+@utility text-gold {
+  background-image: var(--gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility shadow-gold {
+  box-shadow: var(--shadow-gold);
+}

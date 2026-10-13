@@ -42,6 +42,7 @@ import {
   getLoginLockoutState,
   importDatabaseJSON,
   recordLoginAttempt,
+  syncInquiriesFromServer,
   translateTerm,
   useByCarStore,
   verifyAdminPasswordPBKDF2,
@@ -59,7 +60,10 @@ export const Route = createFileRoute("/admin")({
   head: () => ({
     meta: [
       { title: "VIP Yönetim Paneli — ByCar Global" },
-      { name: "description", content: "ByCar araç koleksiyonu, filtre ve VIP talep yönetim paneli." },
+      {
+        name: "description",
+        content: "ByCar araç koleksiyonu, filtre ve VIP talep yönetim paneli.",
+      },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -217,12 +221,19 @@ function Admin() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setAuthed(window.sessionStorage.getItem("bycar_admin_auth") === "1");
+      const isA = window.sessionStorage.getItem("bycar_admin_auth") === "1";
+      setAuthed(isA);
       setLockout(getLoginLockoutState());
+      const token = window.sessionStorage.getItem("bycar_admin_token");
+      if (isA && token) {
+        void syncInquiriesFromServer(token);
+      }
     }
   }, []);
 
-  const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings" | "content" | "system">("fleet");
+  const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings" | "content" | "system">(
+    "fleet",
+  );
 
   const effectivePresets = getEffectivePresets(cmsConfig.customPresets);
 
@@ -356,7 +367,9 @@ function Admin() {
       const orig = cars.find((c) => c.id === editingId);
       if (orig) {
         startEdit(orig);
-        flashNotice("Düzenleme sıfırlandı: Aracın kayıtlı orijinal bilgileri ve fotoğrafları geri yüklendi.");
+        flashNotice(
+          "Düzenleme sıfırlandı: Aracın kayıtlı orijinal bilgileri ve fotoğrafları geri yüklendi.",
+        );
         return;
       }
     }
@@ -463,8 +476,11 @@ function Admin() {
       if (target < 0 || target >= prev.length) return prev;
       const copy = [...prev];
       const temp = copy[idx];
-      copy[idx] = copy[target];
-      copy[target] = temp;
+      const targetVal = copy[target];
+      if (temp !== undefined && targetVal !== undefined) {
+        copy[idx] = targetVal;
+        copy[target] = temp;
+      }
       return copy;
     });
     setPreviewIdx((prevIdx) => {
@@ -480,7 +496,9 @@ function Admin() {
       if (fromIdx >= prev.length || toIdx >= prev.length) return prev;
       const next = [...prev];
       const [moved] = next.splice(fromIdx, 1);
-      next.splice(toIdx, 0, moved);
+      if (moved !== undefined) {
+        next.splice(toIdx, 0, moved);
+      }
       return next;
     });
     setPreviewIdx(toIdx);
@@ -505,7 +523,9 @@ function Admin() {
     }
     const next = [...images];
     const [moved] = next.splice(dragIdx, 1);
-    next.splice(dragOverIdx, 0, moved);
+    if (moved !== undefined) {
+      next.splice(dragOverIdx, 0, moved);
+    }
     return next;
   })();
 
@@ -532,9 +552,7 @@ function Admin() {
   };
 
   const handleToggleFeatured = (id: string) => {
-    updateCars(
-      cars.map((c) => (c.id === id ? { ...c, featured: !c.featured } : c)),
-    );
+    updateCars(cars.map((c) => (c.id === id ? { ...c, featured: !c.featured } : c)));
   };
 
   const moveCarInFleet = (idx: number, dir: -1 | 1) => {
@@ -542,9 +560,12 @@ function Admin() {
     if (target < 0 || target >= cars.length) return;
     const next = [...cars];
     const temp = next[idx];
-    next[idx] = next[target];
-    next[target] = temp;
-    updateCars(next);
+    const targetVal = next[target];
+    if (temp !== undefined && targetVal !== undefined) {
+      next[idx] = targetVal;
+      next[target] = temp;
+      updateCars(next);
+    }
   };
 
   const handleDeleteCar = (id: string) => {
@@ -557,9 +578,17 @@ function Admin() {
   };
 
   const handleInquiryStatus = (id: string, nextStatus: Inquiry["status"]) => {
-    updateInquiries(
-      inquiries.map((m) => (m.id === id ? { ...m, status: nextStatus } : m)),
-    );
+    updateInquiries(inquiries.map((m) => (m.id === id ? { ...m, status: nextStatus } : m)));
+    if (typeof window !== "undefined") {
+      const token = window.sessionStorage.getItem("bycar_admin_token");
+      if (token) {
+        void fetch("/api/admin/inquiries/status", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ id, status: nextStatus }),
+        });
+      }
+    }
   };
 
   const handleDeleteInquiry = (id: string) => {
@@ -614,9 +643,7 @@ function Admin() {
             <p className="text-[10px] uppercase tracking-[0.4em] text-primary">
               BYCAR GLOBAL · PBKDF2 KORUMALI
             </p>
-            <h1 className="mt-1 font-display text-3xl font-semibold">
-              VIP Yönetim Girişi
-            </h1>
+            <h1 className="mt-1 font-display text-3xl font-semibold">VIP Yönetim Girişi</h1>
           </div>
           <form
             onSubmit={async (e) => {
@@ -626,11 +653,37 @@ function Admin() {
                 setLockout(currentLock);
                 return;
               }
-              const ok = await verifyAdminPasswordPBKDF2(pw);
+
+              let serverOk = false;
+              let serverToken: string | null = null;
+              try {
+                const res = await fetch("/api/admin/login", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ password: pw }),
+                });
+                if (res.ok) {
+                  const data = (await res.json()) as { ok: boolean; token?: string };
+                  if (data.ok && data.token) {
+                    serverOk = true;
+                    serverToken = data.token;
+                  }
+                }
+              } catch {
+                // Network or offline fallback
+              }
+
+              const localOk = await verifyAdminPasswordPBKDF2(pw);
+              const ok = serverOk || localOk;
               const nextLock = recordLoginAttempt(ok);
               setLockout(nextLock);
+
               if (ok) {
                 window.sessionStorage.setItem("bycar_admin_auth", "1");
+                if (serverToken) {
+                  window.sessionStorage.setItem("bycar_admin_token", serverToken);
+                  void syncInquiriesFromServer(serverToken);
+                }
                 setAuthed(true);
                 setPwErr("");
               } else {
@@ -658,19 +711,16 @@ function Admin() {
                 autoFocus
               />
               <p className="mt-2 text-xs text-muted-foreground">
-                Demo Giriş Şifresi:{" "}
-                <code className="font-semibold text-primary">bycar2024</code> veya{" "}
-                <code className="font-semibold text-primary">bycar2026</code>
+                Demo Giriş Şifresi: <code className="font-semibold text-primary">bycar2024</code>{" "}
+                veya <code className="font-semibold text-primary">bycar2026</code>
               </p>
               {isLocked && (
                 <p className="mt-2 border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
-                  Güvenlik kilidi aktif: Çok fazla hatalı deneme yapıldı. Lütfen{" "}
-                  {remainingMins} dakika sonra tekrar deneyin.
+                  Güvenlik kilidi aktif: Çok fazla hatalı deneme yapıldı. Lütfen {remainingMins}{" "}
+                  dakika sonra tekrar deneyin.
                 </p>
               )}
-              {pwErr && !isLocked && (
-                <p className="mt-1 text-xs text-destructive">{pwErr}</p>
-              )}
+              {pwErr && !isLocked && <p className="mt-1 text-xs text-destructive">{pwErr}</p>}
             </div>
             <button type="submit" disabled={isLocked} className={`${goldBtn} w-full`}>
               <Lock className="h-4 w-4" /> Panele Giriş Yap
@@ -737,7 +787,19 @@ function Admin() {
               ← Canlı Vitrine Dön
             </Link>
             <button
-              onClick={() => {
+              onClick={async () => {
+                const token = window.sessionStorage.getItem("bycar_admin_token");
+                if (token) {
+                  try {
+                    await fetch("/api/admin/logout", {
+                      method: "POST",
+                      headers: { authorization: `Bearer ${token}` },
+                    });
+                  } catch {
+                    // Ignore offline
+                  }
+                }
+                window.sessionStorage.removeItem("bycar_admin_token");
                 window.sessionStorage.removeItem("bycar_admin_auth");
                 setAuthed(false);
               }}
@@ -883,12 +945,15 @@ function Admin() {
                   type="button"
                   onClick={() => {
                     clearAllBrowserStorage();
-                    setDbMsg("Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.");
+                    setDbMsg(
+                      "Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.",
+                    );
                     setTimeout(() => setDbMsg(""), 4000);
                   }}
                   className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" /> Varsayılan 10 Aracı Yükle (Önbelleği Temizle)
+                  <RotateCcw className="h-3.5 w-3.5" /> Varsayılan 10 Aracı Yükle (Önbelleği
+                  Temizle)
                 </button>
               </div>
             </div>
@@ -907,8 +972,7 @@ function Admin() {
                   );
                 })
                 .map(({ c, originalIdx }) => {
-                  const currentStatus: CarStatus =
-                    c.status || (c.sold ? "sold" : "active");
+                  const currentStatus: CarStatus = c.status || (c.sold ? "sold" : "active");
                   const currentFit: ImageFit = c.imageFit || "cover";
                   return (
                     <div
@@ -972,14 +1036,12 @@ function Admin() {
                               {c.body}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              · {c.year} · {c.km.toLocaleString("tr-TR")} KM ·{" "}
-                              {c.images.length} Açı Fotoğraf
+                              · {c.year} · {c.km.toLocaleString("tr-TR")} KM · {c.images.length} Açı
+                              Fotoğraf
                               {c.video ? " + Video" : ""}
                             </span>
                           </div>
-                          <div className="font-display text-xl font-semibold">
-                            {c.title}
-                          </div>
+                          <div className="font-display text-xl font-semibold">{c.title}</div>
                           <div className="text-xs text-muted-foreground">
                             {c.specs.power} · {c.specs.package}
                           </div>
@@ -991,10 +1053,7 @@ function Admin() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleFitChange(
-                              c.id,
-                              currentFit === "contain" ? "cover" : "contain",
-                            )
+                            handleFitChange(c.id, currentFit === "contain" ? "cover" : "contain")
                           }
                           title="Kart Fotoğraf Kadrajı: Tam Sığdır (Kesmeden) / Tam Doldur"
                           className={`inline-flex cursor-pointer items-center gap-1 border px-2.5 py-1.5 text-[11px] transition ${
@@ -1084,8 +1143,7 @@ function Admin() {
               const parsedKm = Number(String(km).replace(/[^0-9]/g, ""));
               const numKm = parsedKm >= 0 ? parsedKm : 0;
               const cleanBrand = brand.trim() || "Porsche";
-              const finalTitle =
-                title.trim() || `${cleanBrand} ${pkg.trim() || "Exclusive"}`;
+              const finalTitle = title.trim() || `${cleanBrand} ${pkg.trim() || "Exclusive"}`;
               const finalImages =
                 images.length > 0
                   ? Array.from(new Set(images))
@@ -1108,9 +1166,7 @@ function Admin() {
                   expertise,
                 );
 
-              const finalExtrasEn = selectedExtras.map((trItem) =>
-                translateTerm(trItem, "en"),
-              );
+              const finalExtrasEn = selectedExtras.map((trItem) => translateTerm(trItem, "en"));
 
               const newCar: Car = {
                 id: editingId || `car-${Date.now()}`,
@@ -1166,7 +1222,8 @@ function Admin() {
                   {editingId ? "Araç Bilgilerini Düzenle" : "Koleksiyona Yeni Araç Ekle"}
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  Hazır etiketlere tıklayarak hızlıca seçebilir veya tüm kutulara sınırlama olmadan serbestçe yazabilirsiniz.
+                  Hazır etiketlere tıklayarak hızlıca seçebilir veya tüm kutulara sınırlama olmadan
+                  serbestçe yazabilirsiniz.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1198,7 +1255,8 @@ function Admin() {
             {/* 1. MARKA (Clickable Chips + Free Input) */}
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-primary">
-                1. Marka Seçin veya İstediğiniz Markayı Yazın (Sınırlama Yok — Filtrede Otomatik Oluşur)
+                1. Marka Seçin veya İstediğiniz Markayı Yazın (Sınırlama Yok — Filtrede Otomatik
+                Oluşur)
               </label>
               <ChipList
                 items={effectivePresets.brands}
@@ -1642,7 +1700,8 @@ function Admin() {
             <div className="space-y-4 border border-border bg-background/50 p-5 sm:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
-                  <ImageIcon className="h-4 w-4" /> Çok Açılı Fotoğraf Galerisi (Sürükle-Sırala + Canlı Vitrin Önizlemesi)
+                  <ImageIcon className="h-4 w-4" /> Çok Açılı Fotoğraf Galerisi (Sürükle-Sırala +
+                  Canlı Vitrin Önizlemesi)
                 </label>
                 <div className="flex items-center gap-3">
                   {new Set(images).size !== images.length && (
@@ -1682,9 +1741,7 @@ function Admin() {
                   void processFiles(files);
                 }}
                 className={`grid gap-3 border-2 border-dashed p-4 transition sm:grid-cols-2 ${
-                  isDragging
-                    ? "border-primary bg-primary/10"
-                    : "border-border/80 bg-card/60"
+                  isDragging ? "border-primary bg-primary/10" : "border-border/80 bg-card/60"
                 }`}
               >
                 <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground">
@@ -1730,7 +1787,8 @@ function Admin() {
                     <div className="flex items-center justify-between">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
                         <Eye className="h-3.5 w-3.5" />
-                        Canlı Galeri Önizlemesi — Açı #{activePreviewIndex + 1} / {previewImages.length}
+                        Canlı Galeri Önizlemesi — Açı #{activePreviewIndex + 1} /{" "}
+                        {previewImages.length}
                         {activePreviewIndex === 0 && " (★ KAPAK GÖRSELİ)"}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
@@ -1762,7 +1820,8 @@ function Admin() {
                       <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5">
                         {activePreviewIndex === 0 ? (
                           <span className="inline-flex items-center gap-1 bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow">
-                            <Star className="h-3 w-3 fill-primary-foreground" /> #1 ANA VITRIN KAPAĞI
+                            <Star className="h-3 w-3 fill-primary-foreground" /> #1 ANA VITRIN
+                            KAPAĞI
                           </span>
                         ) : (
                           <span className="border border-primary/50 bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary backdrop-blur-md">
@@ -1886,11 +1945,10 @@ function Admin() {
                 >
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>
-                      Sıralamak için fotoğrafları basılı tutup sürükleyin (1. sıradaki fotoğraf vitrin kapağı olur):
+                      Sıralamak için fotoğrafları basılı tutup sürükleyin (1. sıradaki fotoğraf
+                      vitrin kapağı olur):
                     </span>
-                    <span className="font-semibold text-primary">
-                      Toplam {images.length} Açı
-                    </span>
+                    <span className="font-semibold text-primary">Toplam {images.length} Açı</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -1928,7 +1986,11 @@ function Admin() {
                             setDragOverIdx(null);
                           }}
                           onDragEnd={() => {
-                            if (dragIdx !== null && dragOverIdx !== null && dragIdx !== dragOverIdx) {
+                            if (
+                              dragIdx !== null &&
+                              dragOverIdx !== null &&
+                              dragIdx !== dragOverIdx
+                            ) {
                               reorderImages(dragIdx, dragOverIdx);
                             }
                             setDragIdx(null);
@@ -2046,9 +2108,7 @@ function Admin() {
 
             <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row">
               <button type="submit" className={`${goldBtn} flex-1 py-4`}>
-                {editingId
-                  ? "Değişiklikleri Kaydet & Yayınla"
-                  : "Aracı Koleksiyona Kaydet"}
+                {editingId ? "Değişiklikleri Kaydet & Yayınla" : "Aracı Koleksiyona Kaydet"}
               </button>
               <button
                 type="button"
@@ -2102,8 +2162,10 @@ function Admin() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border border-primary/40 bg-card p-4 text-xs text-muted-foreground">
               <div>
-                <strong className="text-primary">Çift Kanal Talep Sistemi Aktif:</strong>{" "}
-                Müşteriler sitedeki "Site Üzerinden Teklif Ver" veya "Özel İthalat Talebi" formunu gönderdiğinde talep hem bu listeye düşer hem de otomatik olarak WhatsApp (`+90 540 061 16 34`) mesaj ekranını hazırlar.
+                <strong className="text-primary">Çift Kanal Talep Sistemi Aktif:</strong> Müşteriler
+                sitedeki "Site Üzerinden Teklif Ver" veya "Özel İthalat Talebi" formunu
+                gönderdiğinde talep hem bu listeye düşer hem de otomatik olarak WhatsApp (`+90 540
+                061 16 34`) mesaj ekranını hazırlar.
               </div>
               <button
                 type="button"
@@ -2141,15 +2203,10 @@ function Admin() {
                         </span>
                         <span className="text-muted-foreground">· {m.time}</span>
                       </div>
-                      <div className="font-display text-2xl font-semibold">
-                        {m.car}
-                      </div>
+                      <div className="font-display text-2xl font-semibold">{m.car}</div>
                       <div className="text-sm text-foreground">
                         <span className="font-semibold">{m.name}</span> ·{" "}
-                        <a
-                          href={`tel:${m.phone}`}
-                          className="text-primary hover:underline"
-                        >
+                        <a href={`tel:${m.phone}`} className="text-primary hover:underline">
                           {m.phone}
                         </a>
                       </div>
@@ -2157,9 +2214,7 @@ function Admin() {
                         Teklif / Bütçe: <span className="text-foreground">{m.offerOrBudget}</span>
                       </div>
                       {m.details && (
-                        <div className="text-xs text-muted-foreground">
-                          Not: {m.details}
-                        </div>
+                        <div className="text-xs text-muted-foreground">Not: {m.details}</div>
                       )}
                     </div>
 
@@ -2167,10 +2222,7 @@ function Admin() {
                       <select
                         value={m.status}
                         onChange={(e) =>
-                          handleInquiryStatus(
-                            m.id,
-                            e.target.value as Inquiry["status"],
-                          )
+                          handleInquiryStatus(m.id, e.target.value as Inquiry["status"])
                         }
                         className="border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary"
                       >
@@ -2214,7 +2266,9 @@ function Admin() {
                 </h2>
               </div>
               <p className="mb-4 text-xs text-muted-foreground">
-                Vitrindeki koleksiyon bölümünde hangi filtrelerin müşterilere gösterileceğini buradan tek tıkla açıp kapatabilirsiniz. Yeni eklediğiniz özel kasa, yakıt veya vites tipleri otomatik olarak filtreye dahil edilir.
+                Vitrindeki koleksiyon bölümünde hangi filtrelerin müşterilere gösterileceğini
+                buradan tek tıkla açıp kapatabilirsiniz. Yeni eklediğiniz özel kasa, yakıt veya
+                vites tipleri otomatik olarak filtreye dahil edilir.
               </p>
 
               <div className="space-y-3 text-sm">
@@ -2226,7 +2280,10 @@ function Admin() {
                     ["showFuelFilter", "Yakıt Türü (Sınırsız Hibrit Liste) Filtresi"],
                     ["showGearFilter", "Vites Tipi (Sınırsız Hibrit Liste) Filtresi"],
                     ["showStatusFilter", "Durum (Tümü / Satışta / Satılanlar) Filtresi"],
-                    ["filterPanelDefaultOpen", "Gelişmiş Filtre Paneli Sayfa Açılışında Açık Gelsin"],
+                    [
+                      "filterPanelDefaultOpen",
+                      "Gelişmiş Filtre Paneli Sayfa Açılışında Açık Gelsin",
+                    ],
                   ] as [keyof typeof settings, string][]
                 ).map(([key, label]) => {
                   const val = Boolean(settings[key]);
@@ -2239,9 +2296,7 @@ function Admin() {
                       <input
                         type="checkbox"
                         checked={val}
-                        onChange={(e) =>
-                          updateSettings({ ...settings, [key]: e.target.checked })
-                        }
+                        onChange={(e) => updateSettings({ ...settings, [key]: e.target.checked })}
                         className="h-4 w-4 accent-amber-500"
                       />
                     </label>
@@ -2299,10 +2354,7 @@ function Admin() {
                       onChange={(e) =>
                         updateSettings({
                           ...settings,
-                          modalDefaultTab: e.target.value as
-                            | "specs"
-                            | "extras"
-                            | "offer",
+                          modalDefaultTab: e.target.value as "specs" | "extras" | "offer",
                         })
                       }
                       className={input}
@@ -2342,9 +2394,7 @@ function Admin() {
                   </div>
 
                   <label className="flex cursor-pointer items-center justify-between border border-border bg-background/50 px-4 py-3">
-                    <span>
-                      "Talebi VIP Danışmana İlet" Gönderildiğinde Otomatik WhatsApp Aç
-                    </span>
+                    <span>"Talebi VIP Danışmana İlet" Gönderildiğinde Otomatik WhatsApp Aç</span>
                     <input
                       type="checkbox"
                       checked={settings.whatsappAutoOpenOnForm}
@@ -2413,13 +2463,18 @@ function Admin() {
                     Son Geri Alma Yedeği
                   </div>
                   <div className="truncate pt-1 text-xs font-semibold text-amber-300">
-                    {undoSnap ? `${undoSnap.label} (${undoSnap.timestamp})` : "Temiz (Henüz işlem yok)"}
+                    {undoSnap
+                      ? `${undoSnap.label} (${undoSnap.timestamp})`
+                      : "Temiz (Henüz işlem yok)"}
                   </div>
                 </div>
               </div>
 
               <p className="mb-4 text-xs text-muted-foreground">
-                Yaptığınız her araç ekleme, düzenleme, sıralama, fotoğraf sürükleme, talep durumu ve filtre ayarı değişikliği anında kaydedilir ve bir önceki durum otomatik yedeklenir. Dilediğiniz zaman JSON yedek alabilir, yedekten geri yükleyebilir veya tarayıcı önbelleğini sıfırlayabilirsiniz.
+                Yaptığınız her araç ekleme, düzenleme, sıralama, fotoğraf sürükleme, talep durumu ve
+                filtre ayarı değişikliği anında kaydedilir ve bir önceki durum otomatik yedeklenir.
+                Dilediğiniz zaman JSON yedek alabilir, yedekten geri yükleyebilir veya tarayıcı
+                önbelleğini sıfırlayabilirsiniz.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -2508,4 +2563,3 @@ function Admin() {
     </div>
   );
 }
-

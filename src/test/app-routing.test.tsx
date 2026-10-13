@@ -6,6 +6,7 @@ import { routeTree } from "@/routeTree.gen";
 import {
   ADMIN_PRESETS,
   CARS,
+  type Car,
   T,
   exportD1SqlDump,
   exportDatabaseJSON,
@@ -36,11 +37,13 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
 
   it("ensures all 10 gallery vehicles have >= 4 unique multi-angle photos, bilingual extrasEn, and no prices", () => {
     expect(CARS.length).toBeGreaterThanOrEqual(10);
-    expect(CARS[0].id).toBe("cupra-formentor-2023");
-    expect(CARS[0].imageFit).toBe("contain");
-    expect(CARS[0].video).toBe("/cars/cupra/video.mp4");
-    expect(CARS[1].id).toBe("audi-q2-design-2016");
-    expect(CARS[1].images.length).toBe(8);
+    const car0 = CARS[0]!;
+    const car1 = CARS[1]!;
+    expect(car0.id).toBe("cupra-formentor-2023");
+    expect(car0.imageFit).toBe("contain");
+    expect(car0.video).toBe("/cars/cupra/video.mp4");
+    expect(car1.id).toBe("audi-q2-design-2016");
+    expect(car1.images.length).toBe(8);
 
     for (const car of CARS) {
       expect(car.images.length).toBeGreaterThanOrEqual(4);
@@ -76,15 +79,16 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     recordLoginAttempt(true); // clean up
 
     // Test unrestricted custom body/fuel/gear persistence + Undo + JSON/SQL export
-    const customCar = {
-      ...CARS[0],
+    const car0 = CARS[0]!;
+    const customCar: Car = {
+      ...car0,
       id: "custom-shooting-brake-2026",
       body: "Özel Shooting Brake GT",
       fuel: "Hidrojen / E-Fuel",
       gear: "9G-Tronic Speedshift",
     };
     saveStoredCars([customCar, ...CARS], "Özel araç eklendi");
-    expect(getStoredCars()[0].body).toBe("Özel Shooting Brake GT");
+    expect(getStoredCars()[0]!.body).toBe("Özel Shooting Brake GT");
 
     const jsonBackup = exportDatabaseJSON();
     expect(jsonBackup).toContain("Özel Shooting Brake GT");
@@ -99,7 +103,7 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
 
     const importRes = importDatabaseJSON(jsonBackup);
     expect(importRes.ok).toBe(true);
-    expect(getStoredCars()[0].id).toBe("custom-shooting-brake-2026");
+    expect(getStoredCars()[0]!.id).toBe("custom-shooting-brake-2026");
 
     // Reset back to default CARS
     saveStoredCars(CARS, "Test temizliği");
@@ -169,4 +173,3 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(resetCfg.customPasswordHash).toBeNull();
   });
 });
-

@@ -62,12 +62,18 @@ export function ImageLightboxModal({
 
   // Touch swipe handling
   const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.targetTouches[0].clientX;
+    const touch = e.targetTouches[0];
+    if (touch) {
+      touchStartX.current = touch.clientX;
+    }
     touchEndX.current = null;
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX;
+    const touch = e.targetTouches[0];
+    if (touch) {
+      touchEndX.current = touch.clientX;
+    }
   };
 
   const onTouchEnd = () => {

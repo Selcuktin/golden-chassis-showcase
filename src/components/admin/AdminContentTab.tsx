@@ -13,11 +13,7 @@ import {
   Award,
   Compass,
 } from "lucide-react";
-import {
-  type SiteCMSConfig,
-  translateTerm,
-  ADMIN_PRESETS,
-} from "@/lib/bycar";
+import { type SiteCMSConfig, translateTerm, ADMIN_PRESETS } from "@/lib/bycar";
 
 const input =
   "w-full bg-background border border-input px-3.5 py-2 text-xs outline-none focus:border-primary placeholder:text-muted-foreground";
@@ -79,9 +75,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       car: newTestimonial.car.trim() || "ByCar Collection",
       rating: Number(newTestimonial.rating) || 5,
       commentTr: newTestimonial.commentTr.trim(),
-      commentEn:
-        newTestimonial.commentEn.trim() ||
-        newTestimonial.commentTr.trim(),
+      commentEn: newTestimonial.commentEn.trim() || newTestimonial.commentTr.trim(),
     };
     const next = {
       ...form,
@@ -175,10 +169,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
     setTimeout(() => setMsg(""), 3500);
   };
 
-  const handleDeletePreset = (
-    cat: keyof SiteCMSConfig["customPresets"],
-    itemText: string,
-  ) => {
+  const handleDeletePreset = (cat: keyof SiteCMSConfig["customPresets"], itemText: string) => {
     if (cat === "extras") {
       const next = {
         ...form,
@@ -215,7 +206,8 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Hero banner, sayaçlar, hakkımızda, 4 hizmet kartı, concierge adımları, müşteri yorumları ve SSS'yi tek satır kod yazmadan yönetin.
+            Hero banner, sayaçlar, hakkımızda, 4 hizmet kartı, concierge adımları, müşteri yorumları
+            ve SSS'yi tek satır kod yazmadan yönetin.
           </p>
         </div>
 
@@ -225,11 +217,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               {msg}
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => handleSave()}
-            className={goldBtn}
-          >
+          <button type="button" onClick={() => handleSave()} className={goldBtn}>
             <Save className="h-4 w-4" /> Tüm Değişiklikleri Kaydet
           </button>
         </div>
@@ -486,7 +474,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   SAYAÇ #{idx + 1}
                 </span>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Değer (Sayı / Metin)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Değer (Sayı / Metin)
+                  </label>
                   <input
                     value={st.value}
                     onChange={(e) => {
@@ -498,7 +488,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Başlık (Türkçe)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Başlık (Türkçe)
+                  </label>
                   <input
                     value={st.labelTr}
                     onChange={(e) => {
@@ -510,7 +502,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Label (English)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Label (English)
+                  </label>
                   <input
                     value={st.labelEn}
                     onChange={(e) => {
@@ -672,20 +666,23 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
         <div className="border border-border bg-card p-6 space-y-5">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <Award className="h-5 w-5 text-primary" />
-            <h3 className="font-display text-xl font-semibold">
-              4. 4 VIP Hizmet Kartı
-            </h3>
+            <h3 className="font-display text-xl font-semibold">4. 4 VIP Hizmet Kartı</h3>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             {form.services.map((srv, idx) => (
-              <div key={srv.id || idx} className="border border-border bg-background/50 p-4 space-y-3">
+              <div
+                key={srv.id || idx}
+                className="border border-border bg-background/50 p-4 space-y-3"
+              >
                 <span className="text-[10px] uppercase font-bold tracking-widest text-primary">
                   HİZMET #{idx + 1}
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="mb-1 block text-[11px] text-muted-foreground">Başlık (TR)</label>
+                    <label className="mb-1 block text-[11px] text-muted-foreground">
+                      Başlık (TR)
+                    </label>
                     <input
                       value={srv.titleTr}
                       onChange={(e) => {
@@ -697,7 +694,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] text-muted-foreground">Title (EN)</label>
+                    <label className="mb-1 block text-[11px] text-muted-foreground">
+                      Title (EN)
+                    </label>
                     <input
                       value={srv.titleEn}
                       onChange={(e) => {
@@ -710,7 +709,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Açıklama (TR)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Açıklama (TR)
+                  </label>
                   <textarea
                     value={srv.descTr}
                     onChange={(e) => {
@@ -723,7 +724,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Description (EN)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Description (EN)
+                  </label>
                   <textarea
                     value={srv.descEn}
                     onChange={(e) => {
@@ -753,13 +756,18 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
 
           <div className="grid gap-4 md:grid-cols-2">
             {form.conciergeSteps.map((st, idx) => (
-              <div key={st.step || idx} className="border border-border bg-background/50 p-4 space-y-3">
+              <div
+                key={st.step || idx}
+                className="border border-border bg-background/50 p-4 space-y-3"
+              >
                 <span className="text-[10px] uppercase font-bold tracking-widest text-primary">
                   ADIM {st.step}
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="mb-1 block text-[11px] text-muted-foreground">Başlık (TR)</label>
+                    <label className="mb-1 block text-[11px] text-muted-foreground">
+                      Başlık (TR)
+                    </label>
                     <input
                       value={st.titleTr}
                       onChange={(e) => {
@@ -771,7 +779,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] text-muted-foreground">Title (EN)</label>
+                    <label className="mb-1 block text-[11px] text-muted-foreground">
+                      Title (EN)
+                    </label>
                     <input
                       value={st.titleEn}
                       onChange={(e) => {
@@ -784,7 +794,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Açıklama (TR)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Açıklama (TR)
+                  </label>
                   <textarea
                     value={st.descTr}
                     onChange={(e) => {
@@ -797,7 +809,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] text-muted-foreground">Description (EN)</label>
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Description (EN)
+                  </label>
                   <textarea
                     value={st.descEn}
                     onChange={(e) => {
@@ -832,7 +846,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </span>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Müşteri Adı Soyadı</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Müşteri Adı Soyadı
+                </label>
                 <input
                   value={newTestimonial.name}
                   onChange={(e) => setNewTestimonial({ ...newTestimonial, name: e.target.value })}
@@ -841,7 +857,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Rol / Unvan (TR)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Rol / Unvan (TR)
+                </label>
                 <input
                   value={newTestimonial.roleTr}
                   onChange={(e) => setNewTestimonial({ ...newTestimonial, roleTr: e.target.value })}
@@ -850,7 +868,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Satın Alınan Araç</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Satın Alınan Araç
+                </label>
                 <input
                   value={newTestimonial.car}
                   onChange={(e) => setNewTestimonial({ ...newTestimonial, car: e.target.value })}
@@ -861,31 +881,35 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Yorum (Türkçe)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Yorum (Türkçe)
+                </label>
                 <textarea
                   value={newTestimonial.commentTr}
-                  onChange={(e) => setNewTestimonial({ ...newTestimonial, commentTr: e.target.value })}
+                  onChange={(e) =>
+                    setNewTestimonial({ ...newTestimonial, commentTr: e.target.value })
+                  }
                   rows={2}
                   placeholder="Müşterinin deneyimi..."
                   className={input}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Review (English)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Review (English)
+                </label>
                 <textarea
                   value={newTestimonial.commentEn}
-                  onChange={(e) => setNewTestimonial({ ...newTestimonial, commentEn: e.target.value })}
+                  onChange={(e) =>
+                    setNewTestimonial({ ...newTestimonial, commentEn: e.target.value })
+                  }
                   rows={2}
                   placeholder="Leave blank to use Turkish auto-translation..."
                   className={input}
                 />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleAddTestimonial}
-              className={`${goldBtn} !py-2`}
-            >
+            <button type="button" onClick={handleAddTestimonial} className={`${goldBtn} !py-2`}>
               <Plus className="h-3.5 w-3.5" /> Yorumu Listeye Ekle
             </button>
           </div>
@@ -897,11 +921,16 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </span>
             <div className="grid gap-3 sm:grid-cols-2">
               {form.testimonials.map((t) => (
-                <div key={t.id} className="relative border border-border bg-background/50 p-4 space-y-2">
+                <div
+                  key={t.id}
+                  className="relative border border-border bg-background/50 p-4 space-y-2"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-semibold text-foreground text-sm">{t.name}</div>
-                      <div className="text-[11px] text-primary">{t.roleTr} · {t.car}</div>
+                      <div className="text-[11px] text-primary">
+                        {t.roleTr} · {t.car}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -937,7 +966,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </span>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Soru (Türkçe)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Soru (Türkçe)
+                </label>
                 <input
                   value={newFaq.qTr}
                   onChange={(e) => setNewFaq({ ...newFaq, qTr: e.target.value })}
@@ -946,7 +977,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Question (English)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Question (English)
+                </label>
                 <input
                   value={newFaq.qEn}
                   onChange={(e) => setNewFaq({ ...newFaq, qEn: e.target.value })}
@@ -957,7 +990,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Cevap (Türkçe)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Cevap (Türkçe)
+                </label>
                 <textarea
                   value={newFaq.aTr}
                   onChange={(e) => setNewFaq({ ...newFaq, aTr: e.target.value })}
@@ -967,7 +1002,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">Answer (English)</label>
+                <label className="mb-1 block text-[11px] text-muted-foreground">
+                  Answer (English)
+                </label>
                 <textarea
                   value={newFaq.aEn}
                   onChange={(e) => setNewFaq({ ...newFaq, aEn: e.target.value })}
@@ -977,11 +1014,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleAddFaq}
-              className={`${goldBtn} !py-2`}
-            >
+            <button type="button" onClick={handleAddFaq} className={`${goldBtn} !py-2`}>
               <Plus className="h-3.5 w-3.5" /> Soruyu SSS'ye Ekle
             </button>
           </div>
@@ -993,10 +1026,15 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </span>
             <div className="space-y-2">
               {form.faqs.map((f, idx) => (
-                <div key={f.id || idx} className="border border-border bg-background/50 p-4 space-y-2">
+                <div
+                  key={f.id || idx}
+                  className="border border-border bg-background/50 p-4 space-y-2"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="font-semibold text-sm text-foreground">{idx + 1}. {f.qTr}</div>
+                      <div className="font-semibold text-sm text-foreground">
+                        {idx + 1}. {f.qTr}
+                      </div>
                       <div className="text-[11px] text-primary">{f.qEn}</div>
                     </div>
                     <button
@@ -1026,7 +1064,8 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </h3>
           </div>
           <p className="text-xs text-muted-foreground">
-            Araç ekleme ve filtreleme ekranlarında görünen hazır butonları buradan kalıcı olarak ekleyebilir veya silebilirsiniz. Koda bağımlılık %0'dır.
+            Araç ekleme ve filtreleme ekranlarında görünen hazır butonları buradan kalıcı olarak
+            ekleyebilir veya silebilirsiniz. Koda bağımlılık %0'dır.
           </p>
 
           {/* Add Preset Bar */}
@@ -1036,9 +1075,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               <select
                 value={presetCategory}
                 onChange={(e) =>
-                  setPresetCategory(
-                    e.target.value as keyof SiteCMSConfig["customPresets"],
-                  )
+                  setPresetCategory(e.target.value as keyof SiteCMSConfig["customPresets"])
                 }
                 className={input}
               >
@@ -1055,7 +1092,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               </select>
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="mb-1 block text-[11px] text-muted-foreground">Yeni Etiket Metni</label>
+              <label className="mb-1 block text-[11px] text-muted-foreground">
+                Yeni Etiket Metni
+              </label>
               <input
                 value={newPresetValue}
                 onChange={(e) => setNewPresetValue(e.target.value)}
@@ -1069,11 +1108,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 className={input}
               />
             </div>
-            <button
-              type="button"
-              onClick={handleAddPreset}
-              className={`${goldBtn} !py-2`}
-            >
+            <button type="button" onClick={handleAddPreset} className={`${goldBtn} !py-2`}>
               <Plus className="h-3.5 w-3.5" /> Kalıcı Çip Ekle
             </button>
           </div>
@@ -1097,11 +1132,15 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               return (
                 <div key={catKey} className="border border-border bg-background/40 p-3 space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                    <span>{title} ({list.length})</span>
+                    <span>
+                      {title} ({list.length})
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {list.length === 0 ? (
-                      <span className="text-[11px] italic text-muted-foreground">Henüz özel çip eklenmedi (Varsayılanlar aktif).</span>
+                      <span className="text-[11px] italic text-muted-foreground">
+                        Henüz özel çip eklenmedi (Varsayılanlar aktif).
+                      </span>
                     ) : (
                       list.map((item) => (
                         <span
@@ -1128,11 +1167,15 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             {/* Custom Extras */}
             <div className="border border-border bg-background/40 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                <span>Özel Eklenen Donanım & Opsiyonlar ({(form.customPresets?.extras || []).length})</span>
+                <span>
+                  Özel Eklenen Donanım & Opsiyonlar ({(form.customPresets?.extras || []).length})
+                </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {(form.customPresets?.extras || []).length === 0 ? (
-                  <span className="text-[11px] italic text-muted-foreground">Henüz özel donanım çipi eklenmedi.</span>
+                  <span className="text-[11px] italic text-muted-foreground">
+                    Henüz özel donanım çipi eklenmedi.
+                  </span>
                 ) : (
                   (form.customPresets?.extras || []).map((ex) => (
                     <span

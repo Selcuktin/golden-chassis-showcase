@@ -6,7 +6,8 @@ export const INSTAGRAM = "https://instagram.com/bycar.eu";
 
 export const waLink = (car?: string, customText?: string, phoneOverride?: string) => {
   let targetNumber = PHONE_RAW;
-  let template = "Merhaba, web sitenizdeki {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.";
+  let template =
+    "Merhaba, web sitenizdeki {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.";
   if (typeof window !== "undefined") {
     try {
       const cfg = getStoredCmsConfig();
@@ -45,11 +46,11 @@ export type Car = {
   fuel: string;
   gear: string;
   body: string;
-  sold?: boolean;
-  status?: CarStatus;
-  featured?: boolean;
-  imageFit?: ImageFit;
-  video?: string;
+  sold?: boolean | undefined;
+  status?: CarStatus | undefined;
+  featured?: boolean | undefined;
+  imageFit?: ImageFit | undefined;
+  video?: string | undefined;
   images: string[];
   specs: {
     power: string;
@@ -58,12 +59,14 @@ export type Car = {
     expertise: string;
     tramer: string;
   };
-  extras?: string[];
-  extrasEn?: string[];
-  description?: {
-    tr: string;
-    en: string;
-  };
+  extras?: string[] | undefined;
+  extrasEn?: string[] | undefined;
+  description?:
+    | {
+        tr: string;
+        en: string;
+      }
+    | undefined;
 };
 
 export type Inquiry = {
@@ -122,6 +125,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   modalDefaultTab: "specs",
   defaultCardFit: "cover",
   whatsappAutoOpenOnForm: true,
+  pinnedBrands: BRANDS,
 };
 
 export type SiteCMSConfig = {
@@ -246,16 +250,20 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
     hoursEn: "Monday – Saturday: 09:00 – 19:30 / Sunday: By VIP Appointment",
     mapsUrl: "https://maps.google.com/?q=Nilufer+Bursa",
     instagramUrl: "https://instagram.com/bycarglobal",
-    whatsappOfferTemplate: "Merhaba ByCar Global, {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.",
-    whatsappImportTemplate: "Merhaba ByCar Global, {model} ({year}) için özel ithalat ve tedarik talebinde bulunmak istiyorum. Bütçem: {budget}.",
+    whatsappOfferTemplate:
+      "Merhaba ByCar Global, {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.",
+    whatsappImportTemplate:
+      "Merhaba ByCar Global, {model} ({year}) için özel ithalat ve tedarik talebinde bulunmak istiyorum. Bütçem: {budget}.",
   },
   hero: {
     badgeTr: "BYCAR EXCLUSIVE SHOWROOM",
     badgeEn: "BYCAR EXCLUSIVE SHOWROOM",
     titleTr: "Kusursuzluğun Yeni Tanımı.",
     titleEn: "Redefining Automotive Perfection.",
-    subtitleTr: "Dünyanın en prestijli markalarından seçilmiş, hatasız ekspertizli ve koleksiyon değeri taşıyan süper spor ve lüks otomobiller. Bursa Nilüfer'de ayrıcalıklı otomotiv deneyimi.",
-    subtitleEn: "A curated collection of pristine, certified low-mileage supercars and luxury vehicles from the world's most prestigious marques. An elite automotive experience in Bursa.",
+    subtitleTr:
+      "Dünyanın en prestijli markalarından seçilmiş, hatasız ekspertizli ve koleksiyon değeri taşıyan süper spor ve lüks otomobiller. Bursa Nilüfer'de ayrıcalıklı otomotiv deneyimi.",
+    subtitleEn:
+      "A curated collection of pristine, certified low-mileage supercars and luxury vehicles from the world's most prestigious marques. An elite automotive experience in Bursa.",
     bgImage: "/hero.png",
     primaryBtnTextTr: "Koleksiyonu Keşfet",
     primaryBtnTextEn: "Explore Collection",
@@ -283,10 +291,14 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
   about: {
     headingTr: "Kurucumuzun Vizyonu",
     headingEn: "Our Founder's Vision",
-    storyTr: "ByCar, otomobil tutkusunu uluslararası bir vizyonla buluşturmak amacıyla kurulmuştur. 2020 yılından bu yana otomotiv sektöründe edindiği deneyimle kurucumuz Burak Yılmaz, ByCar’ı premium ve ultra lüks otomobil sektöründe güçlü bir marka haline getirmeyi hedeflemektedir. Mercedes-Benz, BMW, Porsche, Ferrari, Lamborghini, Bentley, Rolls-Royce, Audi ve Cupra gibi dünyanın önde gelen markalarını seçkin müşterilerle buluşturan ByCar, kişiye özel bir otomobil sahipliği deneyimi sunmaktadır.",
-    storyEn: "ByCar was established to unite automotive passion with an international vision. With deep experience in the automotive sector since 2020, our founder Burak Yılmaz aims to position ByCar as a powerhouse in the premium and ultra-luxury automotive world, connecting distinguished clients with the world's leading marques.",
-    highlightTr: "Güven, şeffaflık ve profesyonellik üzerine inşa edilmiş uluslararası bir otomotiv markası. ByCar için lüks, yalnızca bir otomobile sahip olmak değil; ayrıcalıklı bir deneyimin parçası olmaktır.",
-    highlightEn: "An international automotive brand built upon trust, transparency, and uncompromising professionalism. For ByCar, luxury is an exclusive journey.",
+    storyTr:
+      "ByCar, otomobil tutkusunu uluslararası bir vizyonla buluşturmak amacıyla kurulmuştur. 2020 yılından bu yana otomotiv sektöründe edindiği deneyimle kurucumuz Burak Yılmaz, ByCar’ı premium ve ultra lüks otomobil sektöründe güçlü bir marka haline getirmeyi hedeflemektedir. Mercedes-Benz, BMW, Porsche, Ferrari, Lamborghini, Bentley, Rolls-Royce, Audi ve Cupra gibi dünyanın önde gelen markalarını seçkin müşterilerle buluşturan ByCar, kişiye özel bir otomobil sahipliği deneyimi sunmaktadır.",
+    storyEn:
+      "ByCar was established to unite automotive passion with an international vision. With deep experience in the automotive sector since 2020, our founder Burak Yılmaz aims to position ByCar as a powerhouse in the premium and ultra-luxury automotive world, connecting distinguished clients with the world's leading marques.",
+    highlightTr:
+      "Güven, şeffaflık ve profesyonellik üzerine inşa edilmiş uluslararası bir otomotiv markası. ByCar için lüks, yalnızca bir otomobile sahip olmak değil; ayrıcalıklı bir deneyimin parçası olmaktır.",
+    highlightEn:
+      "An international automotive brand built upon trust, transparency, and uncompromising professionalism. For ByCar, luxury is an exclusive journey.",
     sloganTr: "BYCAR — Luxury Without Borders.",
     sloganEn: "BYCAR — Luxury Without Borders.",
   },
@@ -295,14 +307,16 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       id: "srv-1",
       titleTr: "Koleksiyon Satışı",
       titleEn: "Curated Showroom",
-      descTr: "Hatasız boyasız, düşük kilometreli ve uluslararası bağımsız ekspertiz onaylı seçkin Avrupa ithalatı süper spor otomobiller.",
+      descTr:
+        "Hatasız boyasız, düşük kilometreli ve uluslararası bağımsız ekspertiz onaylı seçkin Avrupa ithalatı süper spor otomobiller.",
       descEn: "Pristine, low-mileage certified supercars with verified European import history.",
     },
     {
       id: "srv-2",
       titleTr: "Özel İthalat & Tedarik",
       titleEn: "Bespoke Import",
-      descTr: "Avrupa ve global distribütör ağımızdan hayalinizdeki spesifikasyonu anahtar teslim getirme.",
+      descTr:
+        "Avrupa ve global distribütör ağımızdan hayalinizdeki spesifikasyonu anahtar teslim getirme.",
       descEn: "Sourcing your exact dream specification turnkey from Europe and global networks.",
     },
     {
@@ -325,29 +339,36 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       step: "01",
       titleTr: "Talep & Küresel Pazar Analizi",
       titleEn: "Request & Global Market Analysis",
-      descTr: "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda detaylı analiz ediyoruz.",
-      descEn: "We analyze our extensive European and German supplier network for your exact specification.",
+      descTr:
+        "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda detaylı analiz ediyoruz.",
+      descEn:
+        "We analyze our extensive European and German supplier network for your exact specification.",
     },
     {
       step: "02",
       titleTr: "Tedarik & Bağımsız Ekspertiz",
       titleEn: "Sourcing & Independent Inspection",
-      descTr: "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik.",
-      descEn: "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification.",
+      descTr:
+        "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik.",
+      descEn:
+        "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification.",
     },
     {
       step: "03",
       titleTr: "Gümrük & Kapalı Lojistik",
       titleEn: "Customs & Enclosed Logistics",
-      descTr: "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi.",
+      descTr:
+        "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi.",
       descEn: "Fully insured enclosed transport and turnkey customs clearance management.",
     },
     {
       step: "04",
       titleTr: "Anahtar Teslim VIP Teslimat",
       titleEn: "Turnkey VIP Delivery",
-      descTr: "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir.",
-      descEn: "Delivered directly to your door with all registration and license plate formalities completed.",
+      descTr:
+        "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir.",
+      descEn:
+        "Delivered directly to your door with all registration and license plate formalities completed.",
     },
   ],
   testimonials: [
@@ -358,8 +379,10 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       roleEn: "Entrepreneur · Istanbul",
       car: "Porsche 911 GT3 RS",
       rating: 5,
-      commentTr: "Hayalimdeki Weissach paket 911 GT3'ü Avrupa'dan 18 gün içinde gümrüğü ve plakası tamamlanmış olarak kapıma teslim ettiler. Güven ve şeffaflıkta 1 numara.",
-      commentEn: "Delivered my dream 911 GT3 Weissach from Europe to my door in 18 days with all customs cleared. Unmatched transparency.",
+      commentTr:
+        "Hayalimdeki Weissach paket 911 GT3'ü Avrupa'dan 18 gün içinde gümrüğü ve plakası tamamlanmış olarak kapıma teslim ettiler. Güven ve şeffaflıkta 1 numara.",
+      commentEn:
+        "Delivered my dream 911 GT3 Weissach from Europe to my door in 18 days with all customs cleared. Unmatched transparency.",
     },
     {
       id: "tst-2",
@@ -368,8 +391,10 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       roleEn: "Surgeon · Bursa",
       car: "Mercedes-AMG G 63",
       rating: 5,
-      commentTr: "ByCar showroomundan aldığım G63 hatasız ekspertiz raporuyla teslim edildi. Nilüfer showroomundaki VIP ilgi ve hız muhteşemdi.",
-      commentEn: "The G63 I acquired was delivered in immaculate condition. The VIP hospitality in the Nilufer showroom was outstanding.",
+      commentTr:
+        "ByCar showroomundan aldığım G63 hatasız ekspertiz raporuyla teslim edildi. Nilüfer showroomundaki VIP ilgi ve hız muhteşemdi.",
+      commentEn:
+        "The G63 I acquired was delivered in immaculate condition. The VIP hospitality in the Nilufer showroom was outstanding.",
     },
     {
       id: "tst-3",
@@ -378,8 +403,10 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       roleEn: "Investor · Bodrum",
       car: "Ferrari 296 GTS",
       rating: 5,
-      commentTr: "Koleksiyonum için aradığım özel kombinasyon Ferrari'yi tam istediğim donanımlarla bulup teslim ettiler. ByCar ekibine teşekkür ederim.",
-      commentEn: "They sourced the exact Ferrari specification I wanted for my collection. Exceptional service by ByCar team.",
+      commentTr:
+        "Koleksiyonum için aradığım özel kombinasyon Ferrari'yi tam istediğim donanımlarla bulup teslim ettiler. ByCar ekibine teşekkür ederim.",
+      commentEn:
+        "They sourced the exact Ferrari specification I wanted for my collection. Exceptional service by ByCar team.",
     },
   ],
   faqs: [
@@ -429,18 +456,24 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
     showFloatingWhatsapp: true,
   },
   legal: {
-    kvkkTr: "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.\n2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki formlar aracılığıyla paylaştığınız Ad-Soyad, Telefon ve Araç Tercihi bilgileriniz yalnızca size özel fiyat teklifi sunulması ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.\n3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz.\n4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
-    kvkkEn: "1. Data Controller: ByCar Global is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.\n2. Purpose: Your contact and vehicle preferences submitted through our forms are processed exclusively to provide personalized quotes and VIP advisory services.\n3. Confidentiality: Client data is strictly confidential and never shared with third parties.\n4. Your Rights: You may request access, correction, or deletion of your personal data at any time via +90 540 061 16 34.",
-    privacyTr: "ByCar Global, ziyaretçilerinin gizliliğini en üst düzeyde korur. Sitemizde toplanan veriler yalnızca VIP hizmet kalitemizi artırmak ve taleplerinizi yanıtlamak amacıyla işlenir.",
-    privacyEn: "ByCar Global protects visitor privacy at the highest standards. Information collected is used strictly to enhance VIP service quality.",
+    kvkkTr:
+      "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.\n2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki formlar aracılığıyla paylaştığınız Ad-Soyad, Telefon ve Araç Tercihi bilgileriniz yalnızca size özel fiyat teklifi sunulması ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.\n3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz.\n4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
+    kvkkEn:
+      "1. Data Controller: ByCar Global is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.\n2. Purpose: Your contact and vehicle preferences submitted through our forms are processed exclusively to provide personalized quotes and VIP advisory services.\n3. Confidentiality: Client data is strictly confidential and never shared with third parties.\n4. Your Rights: You may request access, correction, or deletion of your personal data at any time via +90 540 061 16 34.",
+    privacyTr:
+      "ByCar Global, ziyaretçilerinin gizliliğini en üst düzeyde korur. Sitemizde toplanan veriler yalnızca VIP hizmet kalitemizi artırmak ve taleplerinizi yanıtlamak amacıyla işlenir.",
+    privacyEn:
+      "ByCar Global protects visitor privacy at the highest standards. Information collected is used strictly to enhance VIP service quality.",
     cookieBannerTr: "Sitemizde lüks kullanıcı deneyimi sunmak için çerezler kullanılmaktadır.",
     cookieBannerEn: "We use essential cookies to provide an exclusive browsing experience.",
   },
   seo: {
     metaTitleTr: "ByCar — Exclusive Automotive | Lüks & Süper Spor Araç Koleksiyonu",
     metaTitleEn: "ByCar — Exclusive Automotive | Luxury & Supercar Collection",
-    metaDescTr: "Bursa Nilüfer'de fiyatsız VIP araç koleksiyonu, özel ithalat ve süper spor otomotiv danışmanlığı.",
-    metaDescEn: "Curated luxury vehicle showcase, bespoke supercar import, and VIP concierge in Bursa.",
+    metaDescTr:
+      "Bursa Nilüfer'de fiyatsız VIP araç koleksiyonu, özel ithalat ve süper spor otomotiv danışmanlığı.",
+    metaDescEn:
+      "Curated luxury vehicle showcase, bespoke supercar import, and VIP concierge in Bursa.",
   },
   customPasswordHash: null,
 };
@@ -485,13 +518,7 @@ export const ADMIN_PRESETS = {
     "Mild Hybrid (MHEV)",
     "Benzin & LPG",
   ],
-  gears: [
-    "Otomatik",
-    "Manuel",
-    "F1 / PDK Çift Kavrama",
-    "DSG / S-Tronic",
-    "Tiptronic",
-  ],
+  gears: ["Otomatik", "Manuel", "F1 / PDK Çift Kavrama", "DSG / S-Tronic", "Tiptronic"],
   packages: [
     "Design Paket",
     "S-Line",
@@ -536,19 +563,21 @@ export const ADMIN_PRESETS = {
     "Orijinal Değişen / Harici Hatasız Boyasız",
     "1 Parça Lokal Boyalı / Harici Hatasız",
   ],
-  tramers: [
-    "Yok",
-    "Tramersiz (0 TL)",
-    "Servis Kayıtlı",
-  ],
+  tramers: ["Yok", "Tramersiz (0 TL)", "Servis Kayıtlı"],
   extras: [
     { tr: "Açılabilir Panoramik Cam Tavan", en: "Panoramic Sliding Glass Sunroof" },
     { tr: "Bang & Olufsen 3D Premium Ses Sistemi", en: "Bang & Olufsen 3D Premium Sound System" },
     { tr: "Burmester 3D Surround Ses Sistemi", en: "Burmester 3D Surround Sound System" },
     { tr: "Karbon Seramik Fren Sistemi", en: "Carbon Ceramic Brake System" },
     { tr: "Ön Aks Yükseltme (Lift) Sistemi", en: "Front Axle Lift System" },
-    { tr: "360° Çevre Görüş Kamerası & Park Asistanı", en: "360° Surround View Camera & Park Assist" },
-    { tr: "Geri Görüş Kamerası & Ön-Arka Park Sensörü", en: "Rear View Camera & Front/Rear Park Sensors" },
+    {
+      tr: "360° Çevre Görüş Kamerası & Park Asistanı",
+      en: "360° Surround View Camera & Park Assist",
+    },
+    {
+      tr: "Geri Görüş Kamerası & Ön-Arka Park Sensörü",
+      en: "Rear View Camera & Front/Rear Park Sensors",
+    },
     { tr: "Isıtmalı & Soğutmalı Ön Koltuklar", en: "Heated & Ventilated Front Seats" },
     { tr: "Elektrikli & Hafızalı Spor Koltuklar", en: "Power Adjustable & Memory Sport Seats" },
     { tr: "Masaj Fonksiyonlu Deri Koltuklar", en: "Massage Function Leather Seats" },
@@ -559,11 +588,26 @@ export const ADMIN_PRESETS = {
     { tr: "Anahtarsız Giriş ve Çalıştırma (Keyless-Go)", en: "Keyless Entry & Start System" },
     { tr: "Kablosuz Apple CarPlay & Android Auto", en: "Wireless Apple CarPlay & Android Auto" },
     { tr: "Kablosuz Şarj Ünitesi & Dijital Kokpit", en: "Wireless Charging & Digital Kokpit" },
-    { tr: "Adaptif Hız Sabitleyici (ACC) & Şerit Takip", en: "Adaptive Cruise Control (ACC) & Lane Assist" },
-    { tr: "Kör Nokta Uyarı & Çarpışma Önleme Sistemi", en: "Blind Spot Monitor & Collision Prevention" },
-    { tr: "HD Matrix LED / Lazer Farlar & Kayar Stoplar", en: "HD Matrix LED / Laser Headlights & Dynamic Taillights" },
-    { tr: "Karbon Fiber İç Trim & Direksiyon Paketi", en: "Carbon Fiber Interior Trim & Steering Package" },
-    { tr: "Arka Aks Yönlendirme & Havalı Süspansiyon", en: "Rear-Axle Steering & Adaptive Air Suspension" },
+    {
+      tr: "Adaptif Hız Sabitleyici (ACC) & Şerit Takip",
+      en: "Adaptive Cruise Control (ACC) & Lane Assist",
+    },
+    {
+      tr: "Kör Nokta Uyarı & Çarpışma Önleme Sistemi",
+      en: "Blind Spot Monitor & Collision Prevention",
+    },
+    {
+      tr: "HD Matrix LED / Lazer Farlar & Kayar Stoplar",
+      en: "HD Matrix LED / Laser Headlights & Dynamic Taillights",
+    },
+    {
+      tr: "Karbon Fiber İç Trim & Direksiyon Paketi",
+      en: "Carbon Fiber Interior Trim & Steering Package",
+    },
+    {
+      tr: "Arka Aks Yönlendirme & Havalı Süspansiyon",
+      en: "Rear-Axle Steering & Adaptive Air Suspension",
+    },
     { tr: "Valfli Spor Egzoz Sistemi", en: "Switchable Sports Exhaust System" },
     { tr: "Çok Renkli Akıllı Ambiyans Aydınlatma", en: "Multi-Color Ambient Interior Lighting" },
   ],
@@ -631,13 +675,10 @@ export function autoGenerateEnglishDescription(
   pkg: string,
   expertise: string,
 ): string {
-  const kmText =
-    km === 0 ? "zero kilometers (brand new)" : `${km.toLocaleString("en-US")} km`;
+  const kmText = km === 0 ? "zero kilometers (brand new)" : `${km.toLocaleString("en-US")} km`;
   const cleanBrand = brand.trim();
   const brandSuffix =
-    cleanBrand && !title.toLowerCase().includes(cleanBrand.toLowerCase())
-      ? ` (${cleanBrand})`
-      : "";
+    cleanBrand && !title.toLowerCase().includes(cleanBrand.toLowerCase()) ? ` (${cleanBrand})` : "";
   const cleanPower = power.trim() || "high-performance";
   const cleanPkg = pkg.trim() || "Exclusive";
   const cleanExp = translateTerm(expertise.trim() || "Hatasız / Boyasız / Orijinal", "en");
@@ -658,12 +699,7 @@ export const CARS: Car[] = [
     featured: true,
     imageFit: "contain",
     video: "/cars/cupra/video.mp4",
-    images: [
-      "/cars/cupra/1.jpg",
-      "/cars/cupra/2.jpg",
-      "/cars/cupra/3.jpg",
-      "/cars/cupra/4.jpg",
-    ],
+    images: ["/cars/cupra/1.jpg", "/cars/cupra/2.jpg", "/cars/cupra/3.jpg", "/cars/cupra/4.jpg"],
     specs: {
       power: "150 HP (1.5 TSI ACT)",
       color: "Manyetik Gri / Bakır Detay",
@@ -682,7 +718,7 @@ export const CARS: Car[] = [
       "Full LED Mercekli Ön Farlar & Infinite LED Arka Stoplar",
       "Çok Renkli Akıllı Ambiyans Aydınlatma",
       "Anahtarsız Giriş ve Çalıştırma Sistemi (Kessy)",
-      "12\" Dokunmatik Multimedya & Dijital Gösterge Paneli",
+      '12" Dokunmatik Multimedya & Dijital Gösterge Paneli',
       "Kablosuz Şarj Ünitesi & Kablosuz Full Link (Apple CarPlay / Android Auto)",
       "Üç Bölgeli Otomatik Klima (Climatronic)",
       "Açılabilir Panoramik Cam Tavan",
@@ -701,7 +737,7 @@ export const CARS: Car[] = [
       "Full LED Lens Headlights & Infinite LED Taillights",
       "Multi-Color Smart Ambient Lighting",
       "Keyless Entry & Start System (Kessy)",
-      "12\" Touchscreen Infotainment & Digital Cockpit",
+      '12" Touchscreen Infotainment & Digital Cockpit',
       "Wireless Charger & Wireless Full Link (Apple CarPlay / Android Auto)",
       "Three-Zone Automatic Climate Control (Climatronic)",
       "Panoramic Sliding Glass Sunroof",
@@ -899,7 +935,7 @@ export const CARS: Car[] = [
     extras: [
       "Bang & Olufsen 3D Gelişmiş Ses Sistemi",
       "Arka Aks Yönlendirme & Adaptif Havalı Süspansiyon",
-      "23\" Galanthus Parlak Siyah Jantlar & Karbon Seramik Frenler",
+      '23" Galanthus Parlak Siyah Jantlar & Karbon Seramik Frenler',
       "Panoramik Açılır Cam Tavan",
       "Masaj, Isıtma ve Soğutma Fonksiyonlu Q-Citura Deri Koltuklar",
       "Tam Karbon İç Mekan Paketi & Ambiyans Aydınlatma",
@@ -909,7 +945,7 @@ export const CARS: Car[] = [
     extrasEn: [
       "Bang & Olufsen 3D Advanced Sound System",
       "Rear-Axle Steering & Adaptive Air Suspension",
-      "23\" Galanthus Gloss Black Wheels & Carbon Ceramic Brakes",
+      '23" Galanthus Gloss Black Wheels & Carbon Ceramic Brakes',
       "Panoramic Sliding Glass Sunroof",
       "Massage, Heated & Ventilated Q-Citura Leather Seats",
       "Full Carbon Interior Package & Ambient Lighting",
@@ -950,7 +986,7 @@ export const CARS: Car[] = [
     extras: [
       "Shooting Starlight Tavan ve Starlight Kapı Panelleri (4.796 Yıldız)",
       "Aydınlatmalı Pantheon Ön Izgara & Spirit of Ecstasy",
-      "23\" Yedi Kollu Parlak Aero Jantlar",
+      '23" Yedi Kollu Parlak Aero Jantlar',
       "El Çizimi Özel Coachline Şeridi",
       "Rolls-Royce Bespoke Studio Ses Sistemi",
       "Otomatik Kapanan E-Latch Konfor Kapıları",
@@ -960,7 +996,7 @@ export const CARS: Car[] = [
     extrasEn: [
       "Shooting Starlight Headliner & Starlight Doors (4,796 Stars)",
       "Illuminated Pantheon Grille & Spirit of Ecstasy",
-      "23\" Seven-Spoke Polished Aero Wheels",
+      '23" Seven-Spoke Polished Aero Wheels',
       "Hand-Painted Bespoke Coachline",
       "Rolls-Royce Bespoke Studio Audio System",
       "Effortless E-Latch Power Doors",
@@ -1000,7 +1036,7 @@ export const CARS: Car[] = [
     },
     extras: [
       "Dünyada Sadece 1.000 Adet Üretilen 'Grand Edition' Özel Seri",
-      "Kalahari Altın Magno Dış Detaylar ve 22\" AMG Dövme Jantlar",
+      'Kalahari Altın Magno Dış Detaylar ve 22" AMG Dövme Jantlar',
       "Altın Dikişli MANUFAKTUR Siyah Nappa Deri Koltuklar",
       "Bakır İplikli Özel AMG Karbon Fiber İç Trimler",
       "Burmester Surround Ses Sistemi",
@@ -1010,7 +1046,7 @@ export const CARS: Car[] = [
     ],
     extrasEn: [
       "Limited 'Grand Edition' Series (1 of 1,000 Worldwide)",
-      "Kalahari Gold Magno Accents & 22\" AMG Forged Wheels",
+      'Kalahari Gold Magno Accents & 22" AMG Forged Wheels',
       "MANUFAKTUR Black Nappa Leather with Gold Stitching",
       "AMG Carbon Fiber Trim with Copper Thread",
       "Burmester Surround Sound System",
@@ -1101,7 +1137,7 @@ export const CARS: Car[] = [
     extras: [
       "RS Spor Egzoz Sistemi & Dinamik Sürüş Paketi",
       "Dört Tekerlekten Yönlendirme (Arka Aks) & RS Havalı Süspansiyon",
-      "22\" Hafifletilmiş RS Performance Jantlar",
+      '22" Hafifletilmiş RS Performance Jantlar',
       "HD Matrix LED Lazer Farlar & Dinamik Sinyaller",
       "Bang & Olufsen 3D Premium Ses Sistemi",
       "Bal Peteği Dikişli Havalandırmalı Valcona Deri RS Koltuklar",
@@ -1110,7 +1146,7 @@ export const CARS: Car[] = [
     extrasEn: [
       "RS Sports Exhaust System & Dynamic Driving Package",
       "All-Wheel Steering (Rear Axle) & RS Adaptive Air Suspension",
-      "22\" Lightweight RS Performance Wheels",
+      '22" Lightweight RS Performance Wheels',
       "HD Matrix LED Laser Headlights & Dynamic Turn Signals",
       "Bang & Olufsen 3D Premium Sound System",
       "Honeycomb-Stitched Ventilated Valcona Leather RS Seats",
@@ -1151,7 +1187,7 @@ export const CARS: Car[] = [
     extras: [
       "Naim For Bentley 2.200W Referans Ses Sistemi",
       "Bentley Döner Ekran (Rotating Display)",
-      "Karbon Seramik Fren Sistemi & 22\" Speed Jantlar",
+      'Karbon Seramik Fren Sistemi & 22" Speed Jantlar',
       "Mulliner Elmas Kapitone Deri & Wellness Koltuk Paketi",
       "Elektronik Dört Tekerlekten Yönlendirme & Aktif Roll Kontrol",
       "First Edition Özel Dış ve İç Rozetler",
@@ -1159,7 +1195,7 @@ export const CARS: Car[] = [
     extrasEn: [
       "Naim For Bentley 2,200W Reference Audio System",
       "Bentley Rotating Display",
-      "Carbon Ceramic Brakes & 22\" Speed Wheels",
+      'Carbon Ceramic Brakes & 22" Speed Wheels',
       "Mulliner Diamond Quilted Leather & Wellness Seating",
       "Electronic All-Wheel Steering & Active Roll Control",
       "First Edition Bespoke Exterior & Interior Badges",
@@ -1274,14 +1310,12 @@ export type UndoSnapshot = {
 
 // Web Crypto API PBKDF2-HMAC-SHA256 verification + Brute-Force Rate Limiting (15 min / 5 attempts)
 const ADMIN_PBKDF2_SALT = "bycar-global-vip-salt-2026";
-const ADMIN_PBKDF2_ITERATIONS = 100000;
+const ADMIN_PBKDF2_ITERATIONS = 600000;
 let cachedExpectedHashes: string[] | null = null;
 
 export async function derivePBKDF2Hex(password: string): Promise<string> {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
-    return password === "bycar2024" || password === "bycar2026"
-      ? "VALID_FALLBACK"
-      : "INVALID";
+    return password === "bycar2024" || password === "bycar2026" ? "VALID_FALLBACK" : "INVALID";
   }
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -1491,15 +1525,24 @@ export function getStoredCmsConfig(): SiteCMSConfig {
       ).map((s) => ({
         ...s,
         descTr: (s.descTr || "").replace(/yetkili bayi kayıtlı/gi, "Avrupa ithalatı onaylı"),
-        descEn: (s.descEn || "").replace(/official dealer history/gi, "verified European import history"),
+        descEn: (s.descEn || "").replace(
+          /official dealer history/gi,
+          "verified European import history",
+        ),
       })),
       conciergeSteps: (Array.isArray(parsed.conciergeSteps) && parsed.conciergeSteps.length > 0
         ? parsed.conciergeSteps
         : DEFAULT_CMS_CONFIG.conciergeSteps
       ).map((s) => ({
         ...s,
-        descTr: (s.descTr || "").replace(/yetkili bayi ağımızda/gi, "Almanya ve Avrupa geniş tedarik ağımızda"),
-        descEn: (s.descEn || "").replace(/authorized dealer network/gi, "European and German supplier network"),
+        descTr: (s.descTr || "").replace(
+          /yetkili bayi ağımızda/gi,
+          "Almanya ve Avrupa geniş tedarik ağımızda",
+        ),
+        descEn: (s.descEn || "").replace(
+          /authorized dealer network/gi,
+          "European and German supplier network",
+        ),
       })),
       testimonials:
         Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0
@@ -1510,8 +1553,14 @@ export function getStoredCmsConfig(): SiteCMSConfig {
         : DEFAULT_CMS_CONFIG.faqs
       ).map((f) => ({
         ...f,
-        aTr: (f.aTr || "").replace(/yetkili servis geçmişli/gi, "doğrudan Avrupa / Almanya özel ithalatı"),
-        aEn: (f.aEn || "").replace(/official dealer verification/gi, "European import verification"),
+        aTr: (f.aTr || "").replace(
+          /yetkili servis geçmişli/gi,
+          "doğrudan Avrupa / Almanya özel ithalatı",
+        ),
+        aEn: (f.aEn || "").replace(
+          /official dealer verification/gi,
+          "European import verification",
+        ),
       })),
       sectionVisibility: {
         ...DEFAULT_CMS_CONFIG.sectionVisibility,
@@ -1531,12 +1580,17 @@ export function triggerServerSync() {
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(async () => {
     try {
+      const token = window.sessionStorage.getItem("bycar_admin_token");
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (token) {
+        headers["authorization"] = `Bearer ${token}`;
+      }
+
       await fetch("/api/cms", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify({
           cars: getStoredCars(),
-          inquiries: getStoredInquiries(),
           settings: getStoredSettings(),
           cmsConfig: getStoredCmsConfig(),
         }),
@@ -1547,7 +1601,8 @@ export function triggerServerSync() {
   }, 400);
 }
 
-export async function syncFromServer(): Promise<{ ok: boolean; source?: string }> {
+// Public catalog sync: only reads cars, settings, cmsConfig (NEVER customer inquiries)
+export async function syncFromServer(): Promise<{ ok: boolean; source?: string | undefined }> {
   if (typeof window === "undefined") return { ok: false };
   try {
     const res = await fetch("/api/cms");
@@ -1556,16 +1611,12 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string }
       ok?: boolean;
       source?: string;
       cars?: Car[];
-      inquiries?: Inquiry[];
       settings?: Partial<SiteSettings>;
       cmsConfig?: Partial<SiteCMSConfig>;
     };
     if (data.ok) {
       if (Array.isArray(data.cars) && data.cars.length > 0) {
         safeSetItem(CARS_KEY, JSON.stringify(data.cars));
-      }
-      if (Array.isArray(data.inquiries)) {
-        safeSetItem(INQ_KEY, JSON.stringify(data.inquiries));
       }
       if (data.settings) {
         safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...data.settings }));
@@ -1580,6 +1631,26 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string }
     // Ignore network error
   }
   return { ok: false };
+}
+
+// Protected admin sync: requires Bearer token to read customer inquiries (CRM Inbox)
+export async function syncInquiriesFromServer(token: string): Promise<Inquiry[]> {
+  if (typeof window === "undefined" || !token) return [];
+  try {
+    const res = await fetch("/api/admin/inquiries", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { ok?: boolean; inquiries?: Inquiry[] };
+    if (data.ok && Array.isArray(data.inquiries)) {
+      safeSetItem(INQ_KEY, JSON.stringify(data.inquiries));
+      window.dispatchEvent(new Event(SYNC_EVENT));
+      return data.inquiries;
+    }
+  } catch {
+    // Offline fallback
+  }
+  return [];
 }
 
 export function saveStoredCmsConfig(next: SiteCMSConfig, undoLabel?: string) {
@@ -1612,9 +1683,7 @@ export function getEffectivePresets(custom?: SiteCMSConfig["customPresets"]) {
     tramers: Array.from(new Set([...ADMIN_PRESETS.tramers, ...(c?.tramers || [])])),
     extras: [
       ...ADMIN_PRESETS.extras,
-      ...(c?.extras || []).filter(
-        (ce) => !ADMIN_PRESETS.extras.some((ae) => ae.tr === ce.tr),
-      ),
+      ...(c?.extras || []).filter((ce) => !ADMIN_PRESETS.extras.some((ae) => ae.tr === ce.tr)),
     ],
   };
 }
@@ -1638,7 +1707,10 @@ export function getStoredCars(): Car[] {
               .replace(/Bayi Çıkışlı/gi, "Özel İthalat")
               .replace(/Borusan Çıkışlı/gi, "Özel İthalat (Almanya)")
               .replace(/Yetkili Servis Bakımlı/gi, "Servis Bakımlı"),
-            package: (c.specs.package || "").replace(/Yetkili Servis Bakımlı/gi, "Düzenli Servis Bakımlı"),
+            package: (c.specs.package || "").replace(
+              /Yetkili Servis Bakımlı/gi,
+              "Düzenli Servis Bakımlı",
+            ),
             tramer: (c.specs.tramer || "").replace(/Yetkili Servis Kayıtlı/gi, "Servis Kayıtlı"),
           }
         : c.specs,
@@ -1794,16 +1866,10 @@ export function importDatabaseJSON(rawJson: string): { ok: boolean; message: str
       safeSetItem(INQ_KEY, JSON.stringify(parsed.inquiries));
     }
     if (parsed.settings) {
-      safeSetItem(
-        SETTINGS_KEY,
-        JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed.settings }),
-      );
+      safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed.settings }));
     }
     if (parsed.cmsConfig) {
-      safeSetItem(
-        CMS_KEY,
-        JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...parsed.cmsConfig }),
-      );
+      safeSetItem(CMS_KEY, JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...parsed.cmsConfig }));
     }
     window.dispatchEvent(new Event(SYNC_EVENT));
     triggerServerSync();
@@ -1876,9 +1942,7 @@ export function exportD1SqlDump(): string {
         inq.id,
       )}, ${sqlEsc(inq.type)}, ${sqlEsc(inq.car)}, ${sqlEsc(inq.name)}, ${sqlEsc(
         inq.phone,
-      )}, ${sqlEsc(inq.offerOrBudget)}, ${sqlEsc(inq.details || null)}, ${sqlEsc(
-        inq.status,
-      )});`,
+      )}, ${sqlEsc(inq.offerOrBudget)}, ${sqlEsc(inq.details || null)}, ${sqlEsc(inq.status)});`,
     );
   }
 
@@ -1964,7 +2028,8 @@ export const T = {
   tr: {
     nav: ["Koleksiyon", "Özel İthalat", "İthalat Süreci", "Kurucumuz", "SSS", "İletişim"],
     heroTitle: "Lüksün Yeni Adresi.",
-    heroSub: "Dünyanın en seçkin otomobilleri, kişiye özel tedarik ve uluslararası güvenceyle sizin için.",
+    heroSub:
+      "Dünyanın en seçkin otomobilleri, kişiye özel tedarik ve uluslararası güvenceyle sizin için.",
     explore: "Koleksiyonu Keşfet",
     importReq: "Özel İthalat Talebi",
     collection: "Seçkin Koleksiyon",
@@ -1984,10 +2049,22 @@ export const T = {
     sent: "Talebiniz VIP yönetim sistemimize kaydedildi ve WhatsApp danışman hattımız hazırlandı.",
     process: "Uluslararası İthalat Süreci",
     steps: [
-      ["Talep & Küresel Pazar Analizi", "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda analiz ediyoruz."],
-      ["Tedarik & Bağımsız Ekspertiz", "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik."],
-      ["Gümrük & Kapalı Lojistik", "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi."],
-      ["Anahtar Teslim VIP Teslimat", "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir."],
+      [
+        "Talep & Küresel Pazar Analizi",
+        "Aradığınız spesifikasyonu Almanya ve Avrupa geniş tedarik ağımızda analiz ediyoruz.",
+      ],
+      [
+        "Tedarik & Bağımsız Ekspertiz",
+        "Uluslararası bağımsız ekspertiz raporu ve geçmiş doğrulaması ile sıfır riskli tedarik.",
+      ],
+      [
+        "Gümrük & Kapalı Lojistik",
+        "Sigortalı kapalı tır/konteyner taşıma ve tüm gümrükleme süreçlerinin anahtar teslim yönetimi.",
+      ],
+      [
+        "Anahtar Teslim VIP Teslimat",
+        "Tescil ve plaka işlemleri tamamlanmış aracınız dilediğiniz adreste size teslim edilir.",
+      ],
     ],
     founder: "Kurucumuzun Vizyonu",
     founderParagraphs: [
@@ -1997,7 +2074,8 @@ export const T = {
     ],
     founderSlogan: "BYCAR — Luxury Without Borders.",
     importTitle: "Özel Araç İthalatı & Tedarik",
-    importSub: "Koleksiyonumuzda yer almayan hayalinizdeki otomobili, istediğiniz renk ve donanım kombinasyonuyla dünyanın her yerinden sizin için getiriyoruz.",
+    importSub:
+      "Koleksiyonumuzda yer almayan hayalinizdeki otomobili, istediğiniz renk ve donanım kombinasyonuyla dünyanın her yerinden sizin için getiriyoruz.",
     f: {
       model: "İstediğiniz Marka & Model (Örn: Porsche 911 Turbo S)",
       year: "Tercih Edilen Model Yılı",
@@ -2008,7 +2086,8 @@ export const T = {
       offer: "Teklif Tutarı / Takas Aracınız / Özel Notunuz",
     },
     faq: "Sıkça Sorulan Sorular",
-    faqSub: "Lüks araç tedariki, ekspertiz güvencesi ve uluslararası ithalat süreçlerimiz hakkında merak edilenler.",
+    faqSub:
+      "Lüks araç tedariki, ekspertiz güvencesi ve uluslararası ithalat süreçlerimiz hakkında merak edilenler.",
     faqs: [
       [
         "Araç fiyatları neden sitede yer almıyor?",
@@ -2043,7 +2122,8 @@ export const T = {
   en: {
     nav: ["Collection", "Private Import", "Import Process", "Founder", "FAQ", "Contact"],
     heroTitle: "The New Address of Luxury.",
-    heroSub: "The world's most exceptional automobiles, bespoke sourcing and international assurance tailored for you.",
+    heroSub:
+      "The world's most exceptional automobiles, bespoke sourcing and international assurance tailored for you.",
     explore: "Explore the Collection",
     importReq: "Private Import Request",
     collection: "Curated Collection",
@@ -2063,10 +2143,22 @@ export const T = {
     sent: "Your request has been saved to our VIP system and prepared for immediate WhatsApp consultation.",
     process: "International Import Process",
     steps: [
-      ["Request & Global Market Analysis", "We analyze our extensive European and German supplier network for your exact specification."],
-      ["Sourcing & Independent Inspection", "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification."],
-      ["Customs & Enclosed Logistics", "Fully insured enclosed transport and turnkey customs clearance management."],
-      ["Turnkey VIP Delivery", "Delivered directly to your door with all registration and license plate formalities completed."],
+      [
+        "Request & Global Market Analysis",
+        "We analyze our extensive European and German supplier network for your exact specification.",
+      ],
+      [
+        "Sourcing & Independent Inspection",
+        "Zero-risk procurement backed by TÜV/DEKRA inspection and full service history verification.",
+      ],
+      [
+        "Customs & Enclosed Logistics",
+        "Fully insured enclosed transport and turnkey customs clearance management.",
+      ],
+      [
+        "Turnkey VIP Delivery",
+        "Delivered directly to your door with all registration and license plate formalities completed.",
+      ],
     ],
     founder: "Our Founder's Vision",
     founderParagraphs: [
@@ -2076,7 +2168,8 @@ export const T = {
     ],
     founderSlogan: "BYCAR — Luxury Without Borders.",
     importTitle: "Bespoke Vehicle Import & Sourcing",
-    importSub: "Not in our current collection? We source your dream automobile in your exact color and specification from anywhere in the world.",
+    importSub:
+      "Not in our current collection? We source your dream automobile in your exact color and specification from anywhere in the world.",
     f: {
       model: "Desired Make & Model (e.g. Porsche 911 Turbo S)",
       year: "Preferred Model Year",
@@ -2087,7 +2180,8 @@ export const T = {
       offer: "Your Offer / Trade-in Vehicle / Special Notes",
     },
     faq: "Frequently Asked Questions",
-    faqSub: "Everything you need to know about our luxury vehicle sourcing, inspection guarantee, and turnkey import process.",
+    faqSub:
+      "Everything you need to know about our luxury vehicle sourcing, inspection guarantee, and turnkey import process.",
     faqs: [
       [
         "Why are prices provided upon request?",

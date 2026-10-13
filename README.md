@@ -1,24 +1,108 @@
-# Golden Chassis Showcase
+# ByCar — Exclusive Automotive Showcase
 
-Implement exactly the screenshot and nothing else
+> Lüks, süper spor ve özel ithalat araçlar için fiyatsız (teklif usulü) VIP vitrin, SSR destekli katalog ve Cloudflare D1 destekli yönetim platformu.
 
-This project was built with [Lovable](https://lovable.dev).
+---
 
-## Build with Lovable
+## 🌐 Canlı Yayın & Domain Bilgileri
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/d8ad5b68-3560-4bef-b51d-33270e0fb20b).
+- **Aktif Cloudflare Worker URL:**  
+  [https://selcuktin-golden-chassis-showcase.selcuktin.workers.dev](https://selcuktin-golden-chassis-showcase.selcuktin.workers.dev)
+- **Hedef Özel Alan Adı (Custom Domain):**  
+  `https://bycarglobal.com` (ve `https://www.bycarglobal.com`)
+- **VIP Yönetim Paneli:**  
+  `/admin` (PBKDF2-HMAC-SHA256 600.000 iterasyon ve IP brute-force korumalı)
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+---
 
-## Development
+## 🛠️ Mimari & Teknolojiler
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+- **Frontend & SSR Framework:** [TanStack Start](https://tanstack.com/start) + [TanStack Router](https://tanstack.com/router)
+- **Sunucu & Kenar Altyapısı (Edge):** Cloudflare Workers (Nitro SSR adaptörü ile)
+- **Veritabanı:** Cloudflare D1 (SQLite) — `bycar_db` (`cb9bbc34-a9ef-446e-b993-46405a7ca765`)
+- **Stil & Arayüz:** Tailwind CSS v4, Lucide Icons, Cormorant Garamond & Manrope tipografi
+- **Test & Kalite:** Vitest, TypeScript (Strict: `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`), ESLint + Prettier
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+---
+
+## 🛡️ Güvenlik ve KVKK Uyumluluğu
+
+1. **Sunucu Tarafı API Yetkilendirmesi:**  
+   `POST /api/cms`, `GET /api/admin/inquiries` ve `POST /api/admin/inquiries/status` endpoint'leri kriptografik Bearer session token ile korunmaktadır.
+2. **KVKK Veri İzolasyonu:**  
+   Müşteri ad-soyad, telefon ve teklif bilgileri genel katalog sorgusundan (`GET /api/cms`) tamamen izole edilmiştir; sadece yetkili yönetici oturumuyla erişilebilir.
+3. **NIST Standartlarında PBKDF2 Şifreleme:**  
+   Yönetici girişi 600.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve IP bazlı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
+4. **Talep & CSRF Sınırları:**  
+   Teklif formu (`POST /api/inquiry`) IP başına 10 dakikada en fazla 5 istekle sınırlandırılmış olup, gövde boyutları ve girdi temizliği sunucu tarafında doğrulanır.
+5. **SEO & Gerçek HTTP 404:**  
+   Var olmayan araç linklerinde veya taslak araçlarda soft-404 yerine gerçek HTTP 404 döndürülür. Dinamik XML sitemap (`/sitemap.xml`) yalnızca aktif araçları listeler.
+
+---
+
+## 🚀 Cloudflare Custom Domain (bycarglobal.com) Bağlama Rehberi
+
+Domain satın alındıktan sonra Cloudflare üzerinden canlıya almak için:
+
+### 1. Cloudflare Dashboard Üzerinden Domain Ekleme
+
+1. [Cloudflare Dashboard](https://dash.cloudflare.com)'a giriş yapın ve **Add a Site** diyerek `bycarglobal.com` alan adını ekleyin.
+2. Domain firmanızdaki (isimtescil, godaddy vb.) Name Server'ları Cloudflare'in size vereceği iki NS adresine yönlendirin.
+
+### 2. Worker'a Custom Domain Bağlama
+
+1. Cloudflare Dashboard > **Workers & Pages** > `selcuktin-golden-chassis-showcase` worker'ına tıklayın.
+2. **Settings** > **Domains & Routes** sekmesine gelin.
+3. **Add** butonuna basıp **Custom Domain** seçeneğini seçin.
+4. `bycarglobal.com` ve `www.bycarglobal.com` adreslerini ekleyin.
+5. Cloudflare SSL/TLS sertifikalarını (Edge Certificates) otomatik olarak aktif edecektir.
+
+### 3. DNS Ayarları (Otomatik Yapılmazsa)
+
+- **Root (@):** CNAME veya Proxied (Turuncu bulut)
+- **www:** CNAME `bycarglobal.com` (Proxied)
+- **SSL Modu:** **Full (Strict)** olarak ayarlanmalıdır.
+
+---
+
+## 💻 Yerel Geliştirme & Komutlar
+
+```bash
+# Bağımlılıkları yükle
+npm install
+
+# Geliştirme sunucusunu başlat (http://localhost:5173)
 npm run dev
+
+# TypeScript tip denetimi (0 hata)
+npm run typecheck
+
+# Kod stili & Lint denetimi (0 hata)
+npm run lint
+
+# Otomatik kod formatlama
+npm run format
+
+# Birim & Entegrasyon testleri
+npm test
+
+# Production SSR derlemesi
+npm run build
+
+# Cloudflare Workers'a deploy et
+npx wrangler deploy --config .output/server/wrangler.json
+```
+
+---
+
+## 📁 D1 Veritabanı Yönetimi
+
+Veritabanı şeması `schema.sql` dosyasında yer almaktadır.
+
+```bash
+# Şemayı Cloudflare D1 üretim veritabanına uygulamak için:
+npx wrangler d1 execute bycar_db --file=./schema.sql --remote
+
+# Yerel test ortamında çalıştırmak için:
+npx wrangler d1 execute bycar_db --file=./schema.sql --local
 ```

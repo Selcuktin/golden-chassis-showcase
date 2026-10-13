@@ -54,6 +54,10 @@ export const Route = createFileRoute("/")({
         property: "og:description",
         content: "Lüksün Yeni Adresi. Dünyanın en seçkin otomobilleri, sizin için.",
       },
+      { property: "og:image", content: "https://bycarglobal.com/hero.png" },
+      { property: "og:url", content: "https://bycarglobal.com" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: "https://bycarglobal.com/hero.png" },
     ],
   }),
   component: Index,
@@ -145,10 +149,7 @@ function Index() {
     };
   }, [mobileMenuOpen]);
 
-  const visibleCars = useMemo(
-    () => cars.filter((c) => c.status !== "draft"),
-    [cars],
-  );
+  const visibleCars = useMemo(() => cars.filter((c) => c.status !== "draft"), [cars]);
 
   // Hybrid Brand List: Pinned luxury brands + any new custom brands from added vehicles
   const hybridBrands = useMemo(() => {
@@ -159,8 +160,8 @@ function Index() {
 
   const availableYears = useMemo(
     () =>
-      Array.from(new Set(visibleCars.map((c) => String(c.year)))).sort((a, b) =>
-        Number(b) - Number(a),
+      Array.from(new Set(visibleCars.map((c) => String(c.year)))).sort(
+        (a, b) => Number(b) - Number(a),
       ),
     [visibleCars],
   );
@@ -196,26 +197,15 @@ function Index() {
   const availableGears = useMemo(
     () =>
       Array.from(
-        new Set([
-          "Otomatik",
-          "Manuel",
-          ...visibleCars.map((c) => c.gear).filter(Boolean),
-        ]),
+        new Set(["Otomatik", "Manuel", ...visibleCars.map((c) => c.gear).filter(Boolean)]),
       ),
     [visibleCars],
   );
 
   const activeFilterCount = useMemo(
     () =>
-      [
-        brand,
-        q,
-        year,
-        body,
-        fuel,
-        gear,
-        statusFilter !== "all" ? statusFilter : "",
-      ].filter(Boolean).length,
+      [brand, q, year, body, fuel, gear, statusFilter !== "all" ? statusFilter : ""].filter(Boolean)
+        .length,
     [brand, q, year, body, fuel, gear, statusFilter],
   );
 
@@ -240,8 +230,7 @@ function Index() {
           !brand ||
           c.brand === brand ||
           (brand === "Audi" && c.brand.startsWith("Audi")) ||
-          (brand === "Audi RS" &&
-            (c.brand === "Audi RS" || c.title.toLowerCase().includes("rs")));
+          (brand === "Audi RS" && (c.brand === "Audi RS" || c.title.toLowerCase().includes("rs")));
 
         return (
           brandMatches &&
@@ -286,7 +275,9 @@ function Index() {
             fuelType: c.fuel,
             vehicleTransmission: c.gear,
             color: c.specs.color,
-            image: c.images[0],
+            image: c.images[0]?.startsWith("http")
+              ? c.images[0]
+              : `https://bycarglobal.com${c.images[0]?.startsWith("/") ? "" : "/"}${c.images[0] || "hero.png"}`,
             mileageFromOdometer: {
               "@type": "QuantitativeValue",
               value: c.km,
@@ -300,15 +291,15 @@ function Index() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLd }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
 
       {/* HEADER */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-          <a href="#" className="flex items-center gap-3 leading-none transition-opacity hover:opacity-90">
+          <a
+            href="#"
+            className="flex items-center gap-3 leading-none transition-opacity hover:opacity-90"
+          >
             <img
               src="/bycar-logo-dark.png"
               alt="ByCar Exclusive Automotive"
@@ -438,7 +429,8 @@ function Index() {
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1 shadow-[0_0_20px_rgba(212,175,55,0.2)] backdrop-blur-md">
             <Sparkles className="h-3 w-3 text-primary" />
             <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
-              {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "BYCAR EXCLUSIVE SHOWROOM"}
+              {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
+                "BYCAR EXCLUSIVE SHOWROOM"}
             </span>
           </div>
 
@@ -464,13 +456,17 @@ function Index() {
               className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f7e7a8] via-primary to-[#a9822a] px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-black shadow-[0_8px_30px_-8px_rgba(212,175,55,0.7)] active:scale-95 transition-all"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
+              {(lang === "tr"
+                ? cmsConfig.hero.primaryBtnTextTr
+                : cmsConfig.hero.primaryBtnTextEn) || t.explore}
             </a>
             <a
               href="#ithalat"
               className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/50 bg-primary/10 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-primary backdrop-blur-md active:scale-95 transition-all"
             >
-              {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
+              {(lang === "tr"
+                ? cmsConfig.hero.secondaryBtnTextTr
+                : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
             </a>
           </div>
 
@@ -510,7 +506,8 @@ function Index() {
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-background/15" />
         <div className="relative mx-auto w-full max-w-7xl px-6 pb-16 lg:pb-24">
           <p className="mb-3 text-xs tracking-[0.5em] text-primary">
-            {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "EXCLUSIVE AUTOMOTIVE"}
+            {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
+              "EXCLUSIVE AUTOMOTIVE"}
           </p>
           <h1 className="max-w-3xl font-display text-5xl lg:text-7xl xl:text-8xl font-semibold leading-tight tracking-tight">
             {(lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle}
@@ -520,10 +517,14 @@ function Index() {
           </p>
           <div className="mt-8 lg:mt-10 flex flex-row flex-wrap gap-4">
             <a href="#koleksiyon" className={`${goldBtn} text-center justify-center`}>
-              {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
+              {(lang === "tr"
+                ? cmsConfig.hero.primaryBtnTextTr
+                : cmsConfig.hero.primaryBtnTextEn) || t.explore}
             </a>
             <a href="#ithalat" className={`${outlineBtn} text-center justify-center`}>
-              {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
+              {(lang === "tr"
+                ? cmsConfig.hero.secondaryBtnTextTr
+                : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
             </a>
           </div>
         </div>
@@ -661,9 +662,7 @@ function Index() {
             {settings.showStatusFilter && (
               <select
                 value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as "all" | "available" | "sold")
-                }
+                onChange={(e) => setStatusFilter(e.target.value as "all" | "available" | "sold")}
                 className={input}
               >
                 <option value="all">{t.statusAll}</option>
@@ -788,8 +787,7 @@ function Index() {
                       <h3 className="text-2xl font-semibold">{c.title}</h3>
                     </Link>
                     <p className="mb-5 text-xs text-muted-foreground">
-                      {translateTerm(c.specs.power, lang)} ·{" "}
-                      {translateTerm(c.specs.color, lang)}
+                      {translateTerm(c.specs.power, lang)} · {translateTerm(c.specs.color, lang)}
                     </p>
                   </div>
 
@@ -851,11 +849,7 @@ function Index() {
               </div>
             </div>
           </div>
-          <ImportRequestForm
-            t={t}
-            lang={lang}
-            autoWhatsApp={settings.whatsappAutoOpenOnForm}
-          />
+          <ImportRequestForm t={t} lang={lang} autoWhatsApp={settings.whatsappAutoOpenOnForm} />
         </div>
       </section>
 
@@ -959,9 +953,7 @@ function Index() {
       {cmsConfig.sectionVisibility.showFaq && (
         <section id="sss" className="mx-auto max-w-4xl scroll-mt-20 px-4 py-24">
           <SectionTitle kicker="FAQ" title={t.faq} center />
-          <p className="-mt-6 mb-10 text-center text-sm text-muted-foreground">
-            {t.faqSub}
-          </p>
+          <p className="-mt-6 mb-10 text-center text-sm text-muted-foreground">{t.faqSub}</p>
           <div className="divide-y divide-border border border-border bg-card">
             {(cmsConfig.faqs?.length > 0
               ? cmsConfig.faqs.map((f) => [
@@ -997,7 +989,10 @@ function Index() {
       )}
 
       {/* FOOTER */}
-      <footer id="iletisim" className="scroll-mt-20 border-t border-border bg-card/50 pt-16 pb-28 sm:pb-16 pb-safe">
+      <footer
+        id="iletisim"
+        className="scroll-mt-20 border-t border-border bg-card/50 pt-16 pb-28 sm:pb-16 pb-safe"
+      >
         <div className="mx-auto grid max-w-7xl gap-8 px-4 md:grid-cols-3">
           <div>
             <div className="flex items-center gap-3">
@@ -1015,9 +1010,7 @@ function Index() {
             <p className="mt-3 text-sm text-muted-foreground">
               Luxury Without Borders · bycarglobal.com
             </p>
-            <p className="mt-1 text-xs text-muted-foreground/80">
-              {cmsConfig.contact.address}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground/80">{cmsConfig.contact.address}</p>
             <p className="mt-1 text-xs text-primary/80">
               {lang === "tr" ? cmsConfig.contact.hoursTr : cmsConfig.contact.hoursEn}
             </p>
@@ -1299,7 +1292,12 @@ function ImportRequestForm({
           <option value="TL">TL</option>
         </select>
       </div>
-      <input name="country" required placeholder={t.f.country} className={`${input} sm:col-span-2`} />
+      <input
+        name="country"
+        required
+        placeholder={t.f.country}
+        className={`${input} sm:col-span-2`}
+      />
       <input name="name" required placeholder={t.f.name} className={input} />
       <input name="phone" required placeholder={t.f.phone} className={input} />
       <button type="submit" className={`${goldBtn} sm:col-span-2`}>
@@ -1439,9 +1437,7 @@ function Modal({
         </div>
 
         {/* Scrollable Modal Content */}
-        <div className="overflow-y-auto p-4 sm:p-6 no-scrollbar sm:scroll-auto">
-          {children}
-        </div>
+        <div className="overflow-y-auto p-4 sm:p-6 no-scrollbar sm:scroll-auto">{children}</div>
       </div>
     </div>
   );
@@ -1693,9 +1689,7 @@ function DetailModal({
               </div>
             </div>
 
-            <h2 className="mt-1 font-display text-2xl sm:text-3xl font-semibold">
-              {car.title}
-            </h2>
+            <h2 className="mt-1 font-display text-2xl sm:text-3xl font-semibold">{car.title}</h2>
 
             <div className="my-2.5 flex flex-wrap gap-1.5 text-xs uppercase">
               <span className="border border-border bg-card px-2.5 py-0.5">{car.year}</span>

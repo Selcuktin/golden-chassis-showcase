@@ -160,7 +160,8 @@ export function AdminSystemTab({
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Telefon, WhatsApp, adres, vitrindeki bölümleri anında gizleyip açma ve Cloudflare D1 canlı senkronizasyonu.
+            Telefon, WhatsApp, adres, vitrindeki bölümleri anında gizleyip açma ve Cloudflare D1
+            canlı senkronizasyonu.
           </p>
         </div>
 
@@ -379,7 +380,8 @@ export function AdminSystemTab({
               </h3>
             </div>
             <p className="text-xs text-muted-foreground">
-              Vitrinde hangi bölümlerin açık olacağını tek tıkla açıp kapatabilirsiniz. Gizlenen bölümler vitrinde ve menüde otomatik olarak gizlenir.
+              Vitrinde hangi bölümlerin açık olacağını tek tıkla açıp kapatabilirsiniz. Gizlenen
+              bölümler vitrinde ve menüde otomatik olarak gizlenir.
             </p>
 
             <div className="space-y-2.5 text-sm">
@@ -432,7 +434,8 @@ export function AdminSystemTab({
               </h3>
             </div>
             <p className="text-xs text-muted-foreground">
-              Panel giriş şifresini doğrudan buradan değiştirebilirsiniz. Şifreniz PBKDF2 (SHA-256) kriptografik hash olarak güvenle saklanır.
+              Panel giriş şifresini doğrudan buradan değiştirebilirsiniz. Şifreniz PBKDF2 (SHA-256)
+              kriptografik hash olarak güvenle saklanır.
             </p>
 
             <form onSubmit={handlePasswordChange} className="space-y-3">
@@ -502,9 +505,7 @@ export function AdminSystemTab({
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
               Kayıtlı Araç Sayısı
             </div>
-            <div className="font-display text-2xl font-semibold text-primary">
-              {carsCount} Araç
-            </div>
+            <div className="font-display text-2xl font-semibold text-primary">{carsCount} Araç</div>
           </div>
           <div className="border border-border bg-background/50 p-3">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -556,11 +557,7 @@ export function AdminSystemTab({
           <button
             type="button"
             onClick={() =>
-              downloadFile(
-                exportD1SqlDump(),
-                "bycar-cloudflare-d1-dump.sql",
-                "text/sql",
-              )
+              downloadFile(exportD1SqlDump(), "bycar-cloudflare-d1-dump.sql", "text/sql")
             }
             className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary"
           >
@@ -570,11 +567,7 @@ export function AdminSystemTab({
           <button
             type="button"
             onClick={() =>
-              downloadFile(
-                exportDatabaseJSON(),
-                "bycar-veritabani-yedek.json",
-                "application/json",
-              )
+              downloadFile(exportDatabaseJSON(), "bycar-veritabani-yedek.json", "application/json")
             }
             className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary"
           >
@@ -594,7 +587,11 @@ export function AdminSystemTab({
           <button
             type="button"
             onClick={() => {
-              if (confirm("Tüm tarayıcı önbelleği temizlenecek ve fabrika ayarlarına dönülecektir. Onaylıyor musunuz?")) {
+              if (
+                confirm(
+                  "Tüm tarayıcı önbelleği temizlenecek ve fabrika ayarlarına dönülecektir. Onaylıyor musunuz?",
+                )
+              ) {
                 clearAllBrowserStorage();
                 onReset();
                 setMsg("Tarayıcı önbelleği ve tüm ayarlar fabrika ayarlarına sıfırlandı.");

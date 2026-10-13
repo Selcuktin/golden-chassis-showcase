@@ -33,7 +33,7 @@ describe("ByCar Fleet & ImageLightboxModal Verification", () => {
         images={images}
         initialIndex={0}
         title="2023 Cupra Formentor"
-      />
+      />,
     );
 
     // Checks title and initial counter
@@ -57,12 +57,7 @@ describe("ByCar Fleet & ImageLightboxModal Verification", () => {
 
     // Re-render closed
     rerender(
-      <ImageLightboxModal
-        isOpen={false}
-        onClose={onClose}
-        images={images}
-        initialIndex={0}
-      />
+      <ImageLightboxModal isOpen={false} onClose={onClose} images={images} initialIndex={0} />,
     );
     expect(screen.queryByText("1 / 3")).not.toBeInTheDocument();
   });
