@@ -256,7 +256,10 @@ function applyPayloadToMemoryStore(payload: z.infer<typeof CmsPayloadSchema>) {
   }
 }
 
-const memorySessions = new Map<string, { token: string; expiresAt: number; ttl?: number }>();
+const memorySessions = new Map<
+  string,
+  { token: string; expiresAt: number; ttl?: number; hasDb?: boolean }
+>();
 const ipLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
 const ipInquiryAttempts = new Map<string, number[]>();
 
@@ -371,17 +374,19 @@ const D1_SCHEMA_STATEMENTS = [
 
 let d1Initialized = false;
 
+// Constant-time string equality to prevent timing attacks
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 async function ensureD1Tables(db: D1Database) {
   if (d1Initialized) return;
   try {
-    const check = await db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vehicles' LIMIT 1")
-      .first()
-      .catch(() => null);
-    if (check) {
-      d1Initialized = true;
-      return;
-    }
     for (const stmt of D1_SCHEMA_STATEMENTS) {
       await db
         .prepare(stmt)
@@ -515,6 +520,15 @@ function generateSecureToken(): string {
   );
 }
 
+// Cryptographic salt generator
+function generateRandomSaltHex(byteLength: number = 16): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // Admin Token Verification Middleware
 export async function verifyAdminToken(request: Request, db?: D1Database): Promise<boolean> {
   const authHeader = request.headers.get("authorization") || request.headers.get("x-admin-token");
@@ -528,12 +542,8 @@ export async function verifyAdminToken(request: Request, db?: D1Database): Promi
 
   const memSession = memorySessions.get(tokenHash);
 
-  // 1. Fast path: check short-lived verified TTL in memory (max 30 seconds to bound cross-isolate latency)
-  if (memSession && memSession.expiresAt > nowMs && memSession.ttl && memSession.ttl > nowMs) {
-    return true;
-  }
-
-  // 2. Authoritative check: verify against D1 admin_sessions whenever D1 is available
+  // If running in an environment WITH D1 database:
+  // D1 is the authoritative source of truth for session validity & revocation
   if (db) {
     try {
       await ensureD1Tables(db);
@@ -543,25 +553,29 @@ export async function verifyAdminToken(request: Request, db?: D1Database): Promi
         )
         .bind(tokenHash)
         .first<{ id: string }>();
+
       if (row?.id) {
-        // Cache for max 30s TTL
-        if (memSession) {
-          memSession.ttl = nowMs + 30000;
-        } else {
-          memorySessions.set(tokenHash, {
-            token: tokenHash,
-            expiresAt: nowMs + 86400000,
-            ttl: nowMs + 30000,
-          });
-        }
         return true;
       }
+
+      // If D1 returned null, check if this session was created in a pure-memory mock test (!memSession?.hasDb)
+      if (memSession && !memSession.hasDb && memSession.expiresAt > nowMs) {
+        return true;
+      }
+
+      // Authoritatively revoked, deleted or expired in D1: purge memory cache immediately
+      memorySessions.delete(tokenHash);
+      return false;
     } catch (err) {
       console.error("verifyAdminToken D1 error:", err);
+      if (memSession && !memSession.hasDb && memSession.expiresAt > nowMs) {
+        return true;
+      }
+      return false;
     }
   }
 
-  // 3. Fallback: if memory session exists (e.g. testing or mock DB without admin_sessions table)
+  // Pure memory fallback (when db is undefined)
   if (memSession && memSession.expiresAt > nowMs) {
     return true;
   }
@@ -857,10 +871,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         });
       }
 
-      // Candidate hash with default salt & 100k iterations
-      const candidateHash = await deriveServerPBKDF2Hex(rawPassword);
-
       let isMatch = false;
+      let matchedViaEnv = false;
+      let authenticatedAdminId = "admin-master";
 
       // 1. Check D1 admin_users table first
       if (db) {
@@ -877,8 +890,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
               adminRow.password_salt || PBKDF2_SALT,
               adminRow.iterations || PBKDF2_ITERATIONS,
             );
-            if (rowCandidateHash === adminRow.password_hash) {
+            if (timingSafeEqual(rowCandidateHash, adminRow.password_hash)) {
               isMatch = true;
+              authenticatedAdminId = adminRow.id || "admin-master";
             }
           }
         } catch (dbErr) {
@@ -886,10 +900,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
       }
 
-      // 2. Check environment secret
+      // 2. Check environment secret (lazy PBKDF2 computation only when needed)
       if (!isMatch && resolvedEnv?.ADMIN_PASSWORD) {
         const expectedEnvHash = await deriveServerPBKDF2Hex(resolvedEnv.ADMIN_PASSWORD.trim());
-        isMatch = candidateHash === expectedEnvHash;
+        const candidateHash = await deriveServerPBKDF2Hex(rawPassword);
+        if (timingSafeEqual(candidateHash, expectedEnvHash)) {
+          isMatch = true;
+          matchedViaEnv = true;
+        }
       }
 
       if (!isMatch) {
@@ -969,23 +987,49 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const expiresAtDate = new Date(now + 24 * 60 * 60 * 1000);
       const expiresAtIso = expiresAtDate.toISOString();
 
-      // Store in memory for non-D1 environments
+      // Store in memory
       memorySessions.set(tokenHash, {
         token: tokenHash,
         expiresAt: expiresAtDate.getTime(),
+        hasDb: Boolean(db),
       });
 
       // Store in D1 if available
       if (db) {
         try {
           await ensureD1Tables(db);
+
+          // If authenticated via environment secret, ensure admin-master row exists in admin_users
+          // to satisfy FOREIGN KEY (admin_id) REFERENCES admin_users(id) on admin_sessions table
+          if (matchedViaEnv) {
+            const freshSalt = generateRandomSaltHex(16);
+            const freshHash = await deriveServerPBKDF2HexWithParams(
+              rawPassword,
+              freshSalt,
+              PBKDF2_ITERATIONS,
+            );
+            await db
+              .prepare(
+                `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations)
+                 VALUES ('admin-master', 'admin', ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                   password_hash = excluded.password_hash,
+                   password_salt = excluded.password_salt,
+                   iterations = excluded.iterations,
+                   updated_at = datetime('now')`,
+              )
+              .bind(freshHash, freshSalt, PBKDF2_ITERATIONS)
+              .run();
+            authenticatedAdminId = "admin-master";
+          }
+
           await db
             .prepare(
               "INSERT INTO admin_sessions (id, admin_id, token_hash, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind(
               `sess-${crypto.randomUUID()}`,
-              "admin-master",
+              authenticatedAdminId,
               tokenHash,
               ip,
               request.headers.get("user-agent") || "browser",
@@ -1009,10 +1053,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       });
     } catch (err) {
       console.error("POST /api/admin/login error:", err);
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      return jsonResponse(
+        { ok: false, error: "Giriş işlemi sırasında sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 
@@ -1141,10 +1185,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         { headers: { "content-type": "application/json; charset=utf-8" } },
       );
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      console.error("POST /api/admin/change-password error:", err);
+      return jsonResponse(
+        { ok: false, error: "Şifre güncelleme sırasında sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 
@@ -1238,7 +1283,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         bytes[10] === 0x42 &&
         bytes[11] === 0x50; // 'WEBP'
       const isAvif =
-        bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70; // 'ftyp'
+        bytes[4] === 0x66 &&
+        bytes[5] === 0x74 &&
+        bytes[6] === 0x79 &&
+        bytes[7] === 0x70 && // 'ftyp'
+        bytes[8] === 0x61 &&
+        bytes[9] === 0x76 &&
+        bytes[10] === 0x69 && // 'avi'
+        (bytes[11] === 0x66 || bytes[11] === 0x73); // 'f' or 's' (avif or avis)
 
       let detectedMime = "";
       if (isJpeg) detectedMime = "image/jpeg";
@@ -1290,10 +1342,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         headers: { "content-type": "application/json; charset=utf-8" },
       });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      console.error("POST /api/admin/upload error:", err);
+      return jsonResponse(
+        { ok: false, error: "Dosya yükleme sırasında sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 
@@ -1566,10 +1619,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         { headers: { "content-type": "application/json; charset=utf-8" } },
       );
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      console.error("POST /api/admin/media/gc error:", err);
+      return jsonResponse(
+        { ok: false, error: "Medya temizleme işlemi sırasında sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 
@@ -1672,10 +1726,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         headers: { "content-type": "application/json; charset=utf-8" },
       });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      console.error("PATCH /api/admin/inquiries error:", err);
+      return jsonResponse(
+        { ok: false, error: "Talep durumu güncellenirken sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 
@@ -1956,12 +2011,13 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
 
         if (payload.cmsConfig) {
+          const sanitizedPayloadConfig = sanitizeCmsConfig(payload.cmsConfig);
           stmts.push(
             db
               .prepare(
                 "INSERT INTO site_settings (key, value, updated_at) VALUES ('cms_config', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
               )
-              .bind(JSON.stringify(payload.cmsConfig)),
+              .bind(JSON.stringify(sanitizedPayloadConfig)),
           );
         }
 
@@ -2397,10 +2453,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       }
     } catch (err) {
       console.error("POST /api/cms error:", err);
-      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      });
+      return jsonResponse(
+        { ok: false, error: "Katalog kaydedilirken sunucu hatası oluştu." },
+        { status: 500 },
+      );
     }
   }
 

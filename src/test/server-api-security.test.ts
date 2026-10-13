@@ -1815,4 +1815,259 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const res = await handleApiRequest(req, {});
     expect(res?.status).toBe(403);
   });
+
+  it("Regression Test 12: D1 session revocation authoritatively invalidates token and deletes isolate memory session", async () => {
+    const d1Sessions = new Map<string, { id: string; expires_at: string }>();
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => ({
+          run: async () => {
+            if (sql.includes("INSERT INTO admin_sessions")) {
+              const [, , tokenHash, , , expiresAt] = args as [
+                string,
+                string,
+                string,
+                string,
+                string,
+                string,
+              ];
+              d1Sessions.set(tokenHash, { id: "sess-1", expires_at: expiresAt });
+            }
+            if (sql.includes("DELETE FROM admin_sessions")) {
+              const [tokenHash] = args as [string];
+              d1Sessions.delete(tokenHash);
+            }
+            return { success: true };
+          },
+          all: async () => ({ results: [], success: true }),
+          first: async () => {
+            if (sql.includes("FROM admin_sessions")) {
+              const [tokenHash] = args as [string];
+              const s = d1Sessions.get(tokenHash);
+              if (s) return { id: s.id };
+              return null;
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async () => [{ success: true }],
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const env = { DB: mockDb, ADMIN_PASSWORD: TEST_ADMIN_PASSWORD };
+
+    // 1. Login with D1
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.91" },
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
+      }),
+      env,
+    );
+    expect(loginRes?.status).toBe(200);
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // 2. Validate token against /api/admin/me (success)
+    const meReq1 = new Request("https://bycarglobal.com/api/admin/me", {
+      headers: { authorization: `Bearer ${loginData.token}` },
+    });
+    const meRes1 = await handleApiRequest(meReq1, env);
+    expect(meRes1?.status).toBe(200);
+
+    // 3. Authoritative D1 revocation: session is deleted from D1
+    d1Sessions.clear();
+
+    // 4. Verify that next request MUST return 401 Unauthorized (memory fallback is NOT used when D1 is available)
+    const meReq2 = new Request("https://bycarglobal.com/api/admin/me", {
+      headers: { authorization: `Bearer ${loginData.token}` },
+    });
+    const meRes2 = await handleApiRequest(meReq2, env);
+    expect(meRes2?.status).toBe(401);
+  });
+
+  it("Regression Test 13: Login via ADMIN_PASSWORD on fresh DB auto-provisions admin-master to satisfy FK", async () => {
+    const adminUsers = new Map<string, { id: string; username: string }>();
+    const adminSessions = new Map<string, { id: string; admin_id: string }>();
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => ({
+          run: async () => {
+            if (sql.includes("INSERT INTO admin_users")) {
+              adminUsers.set("admin-master", { id: "admin-master", username: "admin" });
+            }
+            if (sql.includes("INSERT INTO admin_sessions")) {
+              const [, adminId, tokenHash] = args as [string, string, string];
+              // Simulate Foreign Key enforcement
+              if (!adminUsers.has(adminId)) {
+                throw new Error("SQLITE_CONSTRAINT: FOREIGN KEY constraint failed");
+              }
+              adminSessions.set(tokenHash, { id: "sess-1", admin_id: adminId });
+            }
+            return { success: true };
+          },
+          all: async () => ({ results: [], success: true }),
+          first: async () => {
+            if (sql.includes("FROM admin_users")) {
+              return null; // 0 rows in admin_users
+            }
+            if (sql.includes("FROM admin_sessions")) {
+              const [tokenHash] = args as [string];
+              if (adminSessions.has(tokenHash)) return { id: "sess-1" };
+              return null;
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async () => [{ success: true }],
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const env = { DB: mockDb, ADMIN_PASSWORD: "FreshSecretPassword2026!" };
+
+    // Fresh login with 0 rows in admin_users: MUST succeed with 200 (not 500)
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.92" },
+        body: JSON.stringify({ password: "FreshSecretPassword2026!" }),
+      }),
+      env,
+    );
+
+    expect(loginRes?.status).toBe(200);
+    expect(adminUsers.has("admin-master")).toBe(true);
+  });
+
+  it("Regression Test 14: POST /api/cms strips customPasswordHash on D1 write path", async () => {
+    let savedCmsConfigSqlVal = "";
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => {
+          if (sql.includes("cms_config")) {
+            savedCmsConfigSqlVal = String(args[0]);
+          }
+          return {
+            run: async () => ({ success: true }),
+            all: async () => ({ results: [], success: true }),
+            first: async () => {
+              if (sql.includes("cms_revision")) return { value: "1" };
+              return null;
+            },
+          };
+        },
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async () => [{ success: true }],
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.93" },
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        revision: 1,
+        cmsConfig: {
+          brandName: "ByCar Test",
+          customPasswordHash: "malicious_leaked_hash_12345",
+          secret: "super_secret_value",
+        },
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(200);
+    expect(savedCmsConfigSqlVal).toContain("ByCar Test");
+    expect(savedCmsConfigSqlVal).not.toContain("customPasswordHash");
+    expect(savedCmsConfigSqlVal).not.toContain("malicious_leaked_hash_12345");
+    expect(savedCmsConfigSqlVal).not.toContain("secret");
+  });
+
+  it("Regression Test 15: AVIF magic byte check accepts real AVIF and rejects fake video container", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.94" },
+        body: JSON.stringify({ password: TEST_ADMIN_PASSWORD }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    // 1. Fake MP4 disguised as AVIF: bytes 4-7 are 'ftyp', but bytes 8-11 are 'mp42'
+    const fakeMp4Bytes = new Uint8Array(32);
+    // bytes 4-7: 'ftyp' (0x66, 0x74, 0x79, 0x70)
+    fakeMp4Bytes[4] = 0x66;
+    fakeMp4Bytes[5] = 0x74;
+    fakeMp4Bytes[6] = 0x79;
+    fakeMp4Bytes[7] = 0x70;
+    // bytes 8-11: 'mp42' (0x6d, 0x70, 0x34, 0x32)
+    fakeMp4Bytes[8] = 0x6d;
+    fakeMp4Bytes[9] = 0x70;
+    fakeMp4Bytes[10] = 0x34;
+    fakeMp4Bytes[11] = 0x32;
+
+    const fakeUploadRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${loginData.token}`,
+          "content-type": "image/avif",
+        },
+        body: fakeMp4Bytes.buffer,
+      }),
+      { BUCKET: { put: async () => ({}) } },
+    );
+    expect(fakeUploadRes?.status).toBe(400);
+
+    // 2. Real AVIF: bytes 4-7 are 'ftyp', and bytes 8-11 are 'avif' (0x61, 0x76, 0x69, 0x66)
+    const realAvifBytes = new Uint8Array(32);
+    realAvifBytes[4] = 0x66;
+    realAvifBytes[5] = 0x74;
+    realAvifBytes[6] = 0x79;
+    realAvifBytes[7] = 0x70;
+    realAvifBytes[8] = 0x61;
+    realAvifBytes[9] = 0x76;
+    realAvifBytes[10] = 0x69;
+    realAvifBytes[11] = 0x66;
+
+    const realUploadRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${loginData.token}`,
+          "content-type": "image/avif",
+        },
+        body: realAvifBytes.buffer,
+      }),
+      { BUCKET: { put: async () => ({}) } },
+    );
+    expect(realUploadRes?.status).toBe(200);
+  });
 });
