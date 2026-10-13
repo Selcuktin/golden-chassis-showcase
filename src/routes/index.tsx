@@ -415,51 +415,117 @@ function Index() {
         </div>
       )}
 
-      {/* HERO */}
-      <section className="relative flex min-h-[92svh] sm:min-h-screen items-end overflow-hidden pt-28 sm:pt-36">
-        <img
-          src={
-            cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
-              ? cmsConfig.hero.bgImage
-              : hero
-          }
-          alt="ByCar Exclusive hypercar"
-          width={1920}
-          height={1088}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-background/15" />
-        <div className="relative mx-auto w-full max-w-7xl px-4 pb-16 sm:pb-24">
-          <p className="mb-3 text-[11px] sm:text-xs tracking-[0.5em] text-primary">
-            {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "EXCLUSIVE AUTOMOTIVE"}
-          </p>
-          <h1 className="max-w-3xl text-4xl sm:text-6xl md:text-8xl font-semibold leading-tight tracking-tight">
-            {(lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle}
-          </h1>
-          <p className="mt-4 sm:mt-6 max-w-xl text-base sm:text-lg text-muted-foreground">
-            {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
-          </p>
-          <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
-            <a href="#koleksiyon" className={`${goldBtn} w-full sm:w-auto text-center justify-center`}>
-              {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
-            </a>
-            <a href="#ithalat" className={`${outlineBtn} w-full sm:w-auto text-center justify-center`}>
-              {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
-            </a>
+      {/* HERO (Essin Optik inspired responsive luxury layout) */}
+      <section className="relative overflow-hidden pt-28 pb-14 sm:pt-36 sm:pb-20 lg:pt-40 lg:pb-24">
+        {/* Ambient Top Glow */}
+        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-[radial-gradient(ellipse_at_top,rgba(212,175,55,0.18),transparent_70%)]" />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-12">
+            {/* Left Content Column */}
+            <div className="flex flex-col items-center text-center lg:items-start lg:text-left lg:col-span-7">
+              {/* Luxury Emblem Pill */}
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 shadow-[0_0_25px_rgba(212,175,55,0.2)] backdrop-blur-md">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.25em] text-primary">
+                  {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) || "BYCAR EXCLUSIVE SHOWROOM"}
+                </span>
+              </div>
+
+              {/* Headline with Gold Gradient */}
+              <h1 className="mt-4 font-display text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.15]">
+                <span className="block text-foreground">
+                  {lang === "tr" ? "Kusursuzluğun" : "The Definition of"}
+                </span>
+                <span className="block bg-gradient-to-r from-[#d4af37] via-[#f7e7a8] to-[#d4af37] bg-clip-text text-transparent">
+                  {lang === "tr" ? "Yeni Tanımı." : "Perfection."}
+                </span>
+              </h1>
+
+              {/* Subtitle */}
+              <p className="mt-4 max-w-xl text-xs sm:text-base leading-relaxed text-muted-foreground/90">
+                {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
+              </p>
+
+              {/* CTA Buttons (Essin Optik pill style) */}
+              <div className="mt-7 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 w-full sm:w-auto">
+                <a
+                  href="#koleksiyon"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f7e7a8] via-primary to-[#a9822a] px-8 py-3.5 text-xs font-semibold uppercase tracking-wider text-black shadow-[0_10px_35px_-10px_rgba(212,175,55,0.7)] hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {(lang === "tr" ? cmsConfig.hero.primaryBtnTextTr : cmsConfig.hero.primaryBtnTextEn) || t.explore}
+                </a>
+                <a
+                  href="#ithalat"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-primary/50 bg-primary/10 px-8 py-3.5 text-xs font-semibold uppercase tracking-wider text-primary backdrop-blur-md hover:bg-primary/20 active:scale-95 transition-all"
+                >
+                  {(lang === "tr" ? cmsConfig.hero.secondaryBtnTextTr : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
+                </a>
+              </div>
+            </div>
+
+            {/* Right: Featured Luxury Vehicle Spotlight Card */}
+            <div className="relative mx-auto w-full max-w-lg lg:max-w-none lg:col-span-5">
+              {/* Ambient Glow Aura */}
+              <div className="pointer-events-none absolute -inset-4 rounded-3xl bg-[radial-gradient(circle_at_50%_50%,rgba(212,175,55,0.22),transparent_70%)] blur-2xl" />
+
+              {/* Framed Vehicle Container */}
+              <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-card/70 p-2 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+                <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-black">
+                  <img
+                    src={
+                      cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
+                        ? cmsConfig.hero.bgImage
+                        : hero
+                    }
+                    alt="ByCar Exclusive hypercar"
+                    width={1920}
+                    height={1088}
+                    className="h-full w-full object-cover object-center transition duration-700 hover:scale-105"
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[10px] tracking-wider uppercase font-medium">
+                    <span className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-black/75 px-3 py-1 text-primary backdrop-blur-md">
+                      <ShieldCheck className="h-3 w-3" /> VIP SHOWROOM
+                    </span>
+                    <span className="rounded-full border border-border/80 bg-black/75 px-3 py-1 text-foreground/90 backdrop-blur-md">
+                      BURSA NİLÜFER
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Floating Sub-Badges */}
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-card/60 px-4 py-2.5 text-xs backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {lang === "tr" ? "Koleksiyon Değeri" : "Collector Grade"}
+                  </span>
+                </div>
+                <span className="text-[11px] font-semibold text-primary">
+                  {lang === "tr" ? "Hatasız Ekspertiz" : "Certified Inspection"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* STATS (Hero Altı Sayaçlar) */}
       {cmsConfig.sectionVisibility.showHeroStats && cmsConfig.stats?.length > 0 && (
-        <section className="border-b border-border bg-card/60 py-10 backdrop-blur-sm">
-          <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 md:grid-cols-4">
+        <section className="border-y border-border/60 bg-card/40 py-8 sm:py-10 backdrop-blur-md">
+          <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 sm:gap-6 px-4 md:grid-cols-4">
             {cmsConfig.stats.map((st, i) => (
-              <div key={i} className="border-l-2 border-primary/60 pl-4">
-                <div className="font-display text-3xl font-bold text-gold md:text-4xl">
+              <div
+                key={i}
+                className="rounded-2xl border border-primary/20 bg-background/50 p-4 text-center sm:text-left backdrop-blur-sm shadow-sm"
+              >
+                <div className="font-display text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary via-[#F5D061] to-primary bg-clip-text text-transparent">
                   {st.value}
                 </div>
-                <div className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">
+                <div className="mt-1 text-[10px] sm:text-xs uppercase tracking-wider text-muted-foreground font-medium">
                   {lang === "tr" ? st.labelTr : st.labelEn}
                 </div>
               </div>
@@ -479,10 +545,10 @@ function Index() {
               <button
                 key={b}
                 onClick={() => setBrand(b)}
-                className={`shrink-0 cursor-pointer border px-4 py-2 text-xs uppercase tracking-wider transition active:scale-95 ${
+                className={`shrink-0 cursor-pointer rounded-full border px-4 py-2 text-xs uppercase tracking-wider transition active:scale-95 ${
                   brand === b
-                    ? "border-primary bg-primary font-semibold text-primary-foreground shadow-sm"
-                    : "border-border bg-card/40 text-muted-foreground hover:border-primary hover:text-primary"
+                    ? "border-primary bg-primary font-semibold text-primary-foreground shadow-[0_0_15px_rgba(212,175,55,0.35)]"
+                    : "border-border/80 bg-card/60 text-muted-foreground hover:border-primary hover:text-primary backdrop-blur-sm"
                 }`}
               >
                 {b || t.all}
@@ -984,27 +1050,29 @@ function Index() {
         </div>
       </footer>
 
-      {/* VIP COOKIE CONSENT BANNER (F10) */}
+      {/* VIP COOKIE CONSENT BANNER (F10 - Compact Floating Glass Pill) */}
       {!cookieAccepted && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/40 bg-background/95 px-4 py-3.5 pb-safe shadow-2xl backdrop-blur-md">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs">
-            <p className="text-muted-foreground">
+        <div className="fixed bottom-3 inset-x-3 sm:bottom-4 sm:right-4 sm:left-auto sm:max-w-md z-50 rounded-2xl border border-primary/30 bg-background/95 p-3.5 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
               {lang === "tr"
-                ? "ByCar Global, size özel dil ve koleksiyon tercihlerinizi hatırlamak için KVKK uyumlu zorunlu çerezler kullanır."
-                : "ByCar Global uses essential GDPR/KVKK-compliant cookies to remember your language and showroom preferences."}
+                ? "ByCar Global, tercihlerinizi hatırlamak için KVKK uyumlu çerezler kullanır."
+                : "ByCar Global uses essential cookies to remember your VIP preferences."}{" "}
               <button
                 onClick={() => setShowKvkk(true)}
-                className="ml-2 cursor-pointer text-primary underline"
+                className="text-primary underline cursor-pointer hover:text-primary/80"
               >
                 {t.privacy}
               </button>
             </p>
             <button
               onClick={() => {
-                window.localStorage.setItem("bycar_cookie_consent_v1", "1");
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem("bycar_cookie_consent_v1", "1");
+                }
                 setCookieAccepted(true);
               }}
-              className={`${goldBtn} !px-5 !py-2 !text-xs`}
+              className="shrink-0 rounded-full bg-gradient-to-r from-[#f7e7a8] via-primary to-[#a9822a] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-black shadow-sm active:scale-95 transition"
             >
               {lang === "tr" ? "Kabul Et" : "Accept"}
             </button>
