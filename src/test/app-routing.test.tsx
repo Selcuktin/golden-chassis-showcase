@@ -66,7 +66,7 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(ADMIN_PRESETS.gears.length).toBeGreaterThanOrEqual(5);
 
     expect(await verifyAdminPasswordPBKDF2("bybycar1453")).toBe(true);
-    expect(await verifyAdminPasswordPBKDF2("bycar2024")).toBe(false);
+    expect(await verifyAdminPasswordPBKDF2("invalid-legacy-password")).toBe(false);
     expect(await verifyAdminPasswordPBKDF2("wrong-pass")).toBe(false);
 
     recordLoginAttempt(true); // reset

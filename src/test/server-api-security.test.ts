@@ -284,4 +284,119 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(bucketData.url).toContain("/api/media/");
     expect(savedKey).toContain("vehicles/test-car/");
   });
+
+  it("POST /api/cms preserves non-present vehicles and safely deletes only explicit deletedCarIds", async () => {
+    // 1. Login to obtain admin token
+    const loginReq = new Request("https://bycarglobal.com/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.99" },
+      body: JSON.stringify({ password: "bybycar1453" }),
+    });
+    const loginRes = await handleApiRequest(loginReq, {});
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const initialCars = [
+      {
+        id: "car-preserve-1",
+        brand: "Ferrari",
+        title: "Ferrari 296 GTB",
+        year: 2024,
+        km: 500,
+        fuel: "Hibrit",
+        gear: "Otomatik",
+        body: "Coupe",
+        status: "active" as const,
+        featured: false,
+        imageFit: "cover" as const,
+        images: ["/cars/ferrari/1.jpg"],
+        specs: {
+          power: "830 HP",
+          color: "Rosso Corsa",
+          package: "Assetto",
+          expertise: "Orijinal",
+          tramer: "Yok",
+        },
+        extras: [],
+        extrasEn: [],
+        description: { tr: "Test", en: "Test" },
+      },
+      {
+        id: "car-preserve-2",
+        brand: "McLaren",
+        title: "McLaren 750S",
+        year: 2024,
+        km: 200,
+        fuel: "Benzin",
+        gear: "Otomatik",
+        body: "Coupe",
+        status: "active" as const,
+        featured: false,
+        imageFit: "cover" as const,
+        images: ["/cars/mclaren/1.jpg"],
+        specs: {
+          power: "750 HP",
+          color: "Orange",
+          package: "Performance",
+          expertise: "Orijinal",
+          tramer: "Yok",
+        },
+        extras: [],
+        extrasEn: [],
+        description: { tr: "Test", en: "Test" },
+      },
+    ];
+
+    // Seed cars into catalog
+    const seedReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cars: initialCars }),
+    });
+    const seedRes = await handleApiRequest(seedReq, {});
+    expect(seedRes?.status).toBe(200);
+
+    // Stale sync that only sends Ferrari (omits McLaren, but does NOT specify deletedCarIds)
+    const staleReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cars: [initialCars[0]] }),
+    });
+    const staleRes = await handleApiRequest(staleReq, {});
+    expect(staleRes?.status).toBe(200);
+
+    // Read back: McLaren MUST still exist in memory catalog (not wiped by stale sync)
+    const readReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "GET",
+      headers: { authorization: `Bearer ${loginData.token}` },
+    });
+    const readRes = await handleApiRequest(readReq, {});
+    const readData = (await readRes?.json()) as { cars: Array<{ id: string }> };
+    expect(readData.cars.some((c) => c.id === "car-preserve-2")).toBe(true);
+
+    // Now explicitly delete McLaren with deletedCarIds
+    const deleteReq = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ deletedCarIds: ["car-preserve-2"] }),
+    });
+    const deleteRes = await handleApiRequest(deleteReq, {});
+    expect(deleteRes?.status).toBe(200);
+
+    // Read back: McLaren is now deleted
+    const readAfterDeleteRes = await handleApiRequest(readReq, {});
+    const readAfterDeleteData = (await readAfterDeleteRes?.json()) as {
+      cars: Array<{ id: string }>;
+    };
+    expect(readAfterDeleteData.cars.some((c) => c.id === "car-preserve-2")).toBe(false);
+    expect(readAfterDeleteData.cars.some((c) => c.id === "car-preserve-1")).toBe(true);
+  });
 });

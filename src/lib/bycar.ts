@@ -1532,7 +1532,38 @@ const CMS_KEY = "bycar_cms_v2";
 const LANG_KEY = "bycar_lang_v1";
 const LOCKOUT_KEY = "bycar_admin_lockout_v1";
 const UNDO_KEY = "bycar_undo_snapshot_v2";
+const DELETED_CAR_IDS_KEY = "bycar_pending_deleted_car_ids_v1";
 const SYNC_EVENT = "bycar-store-sync";
+
+export function getPendingDeletedCarIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_CAR_IDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function queueDeletedCarId(id: string) {
+  if (typeof window === "undefined" || !id) return;
+  const current = getPendingDeletedCarIds();
+  if (!current.includes(id)) {
+    current.push(id);
+    safeSetItem(DELETED_CAR_IDS_KEY, JSON.stringify(current));
+  }
+}
+
+export function clearPendingDeletedCarIds() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DELETED_CAR_IDS_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 const LEGACY_KEYS = [
   "bycar_fleet_v1",
@@ -1574,6 +1605,7 @@ export function clearAllBrowserStorage() {
       CMS_KEY,
       UNDO_KEY,
       LOCKOUT_KEY,
+      DELETED_CAR_IDS_KEY,
     ]) {
       window.localStorage.removeItem(k);
     }
@@ -1893,8 +1925,15 @@ export async function syncToServer(overrideData?: {
   cars?: Car[];
   settings?: SiteSettings;
   cmsConfig?: SiteCMSConfig;
+  deletedCarIds?: string[];
 }): Promise<{ ok: boolean; source?: string | undefined; error?: string | undefined }> {
   if (typeof window === "undefined") return { ok: false, error: "Server-side context" };
+
+  // Cancel any pending debounced sync since we are syncing now
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = null;
+  }
 
   try {
     window.dispatchEvent(
@@ -1909,10 +1948,16 @@ export async function syncToServer(overrideData?: {
       headers["authorization"] = `Bearer ${token}`;
     }
 
+    const pendingDeleted = getPendingDeletedCarIds();
+    const deletedCarIds = overrideData?.deletedCarIds
+      ? Array.from(new Set([...overrideData.deletedCarIds, ...pendingDeleted]))
+      : pendingDeleted;
+
     const payload = {
       cars: overrideData?.cars || getStoredCars(),
       settings: overrideData?.settings || getStoredSettings(),
       cmsConfig: overrideData?.cmsConfig || getStoredCmsConfig(),
+      deletedCarIds: deletedCarIds.length > 0 ? deletedCarIds : undefined,
     };
 
     const res = await fetch("/api/cms", {
@@ -1929,6 +1974,7 @@ export async function syncToServer(overrideData?: {
     };
 
     if (res.ok && data.ok) {
+      clearPendingDeletedCarIds();
       window.dispatchEvent(
         new CustomEvent(SYNC_STATUS_EVENT, {
           detail: {
@@ -1961,10 +2007,15 @@ export async function syncToServer(overrideData?: {
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+export function isSyncDebouncePending(): boolean {
+  return syncDebounceTimer !== null;
+}
+
 export function triggerServerSync() {
   if (typeof window === "undefined") return;
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(async () => {
+    syncDebounceTimer = null;
     await syncToServer();
   }, 400);
 }
@@ -2116,12 +2167,24 @@ export function getStoredCars(): Car[] {
   }
 }
 
-export function saveStoredCars(next: Car[], undoLabel?: string) {
+export function saveStoredCars(next: Car[], undoLabel?: string, immediate = false) {
   if (typeof window === "undefined") return;
   if (undoLabel) saveUndoSnapshot(undoLabel);
   safeSetItem(CARS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
-  triggerServerSync();
+  if (immediate) {
+    void syncToServer({ cars: next });
+  } else {
+    triggerServerSync();
+  }
+}
+
+export function deleteStoredCar(id: string, undoLabel?: string, immediate = true) {
+  if (typeof window === "undefined") return;
+  queueDeletedCarId(id);
+  const current = getStoredCars();
+  const next = current.filter((c) => c.id !== id);
+  saveStoredCars(next, undoLabel, immediate);
 }
 
 export function resetStoredCars() {
@@ -2437,6 +2500,8 @@ export function useByCarStore(initialData?: InitialStoreData | null) {
     syncStatus,
     setLang: saveStoredLang,
     updateCars: saveStoredCars,
+    deleteCar: deleteStoredCar,
+    queueDeletedCarId,
     resetCars: resetStoredCars,
     updateInquiries: saveStoredInquiries,
     resetInquiries: resetStoredInquiries,

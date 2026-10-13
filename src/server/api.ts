@@ -163,6 +163,7 @@ export const CmsPayloadSchema = z.object({
   settings: z.record(z.unknown()).optional(),
   cmsConfig: z.record(z.unknown()).optional(),
   allowEmptyCatalog: z.boolean().optional(),
+  deletedCarIds: z.array(z.string().min(1).max(100)).optional(),
 });
 
 export const InquiryStatusSchema = z.object({
@@ -182,7 +183,7 @@ interface MemoryStore {
   cmsConfig?: unknown;
 }
 
-let memoryStore: MemoryStore = {};
+const memoryStore: MemoryStore = {};
 const memorySessions = new Map<string, { token: string; expiresAt: number }>();
 const ipLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
 const ipInquiryAttempts = new Map<string, number[]>();
@@ -1350,12 +1351,34 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       const payload = parseResult.data;
 
-      memoryStore = {
-        cars: payload.cars,
-        inquiries: memoryStore.inquiries,
-        settings: payload.settings,
-        cmsConfig: payload.cmsConfig,
-      };
+      if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
+        const toDelete = new Set(payload.deletedCarIds);
+        if (Array.isArray(memoryStore.cars)) {
+          memoryStore.cars = (memoryStore.cars as Array<{ id: string }>).filter(
+            (c) => !toDelete.has(c.id),
+          );
+        }
+      }
+
+      if (Array.isArray(payload.cars)) {
+        if (!memoryStore.cars) {
+          memoryStore.cars = [];
+        }
+        const existingMap = new Map(
+          (memoryStore.cars as Array<{ id: string }>).map((c) => [c.id, c]),
+        );
+        for (const car of payload.cars) {
+          existingMap.set(car.id, car);
+        }
+        memoryStore.cars = Array.from(existingMap.values());
+      }
+
+      if (payload.settings) {
+        memoryStore.settings = payload.settings;
+      }
+      if (payload.cmsConfig) {
+        memoryStore.cmsConfig = payload.cmsConfig;
+      }
 
       if (db) {
         await ensureD1Tables(db);
@@ -1382,18 +1405,23 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           );
         }
 
-        // Safe Upsert/Diff for Vehicles & Images (Does NOT wipe the whole catalog)
-        if (Array.isArray(payload.cars) && payload.cars.length > 0) {
-          const incomingIds = payload.cars.map((c) => c.id);
-
-          // 1. Delete vehicles no longer present in payload (safely diffed deletion)
-          const placeholders = incomingIds.map(() => "?").join(",");
+        // 1. Explicit Targeted Deletion: Only delete vehicles specifically flagged for deletion by admin
+        if (Array.isArray(payload.deletedCarIds) && payload.deletedCarIds.length > 0) {
+          const placeholders = payload.deletedCarIds.map(() => "?").join(",");
           stmts.push(
             db
-              .prepare(`DELETE FROM vehicles WHERE id NOT IN (${placeholders})`)
-              .bind(...incomingIds),
+              .prepare(`DELETE FROM vehicle_images WHERE vehicle_id IN (${placeholders})`)
+              .bind(...payload.deletedCarIds),
           );
+          stmts.push(
+            db
+              .prepare(`DELETE FROM vehicles WHERE id IN (${placeholders})`)
+              .bind(...payload.deletedCarIds),
+          );
+        }
 
+        // 2. Safe Upsert for Vehicles & Images (Does NOT wipe other vehicles in the catalog)
+        if (Array.isArray(payload.cars) && payload.cars.length > 0) {
           // 2. Upsert each vehicle
           for (const c of payload.cars) {
             const specs = c.specs || {};
