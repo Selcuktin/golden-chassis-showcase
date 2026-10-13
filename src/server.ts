@@ -48,12 +48,17 @@ import { handleApiRequest } from "./server/api";
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const effectiveEnv =
+      env ||
+      (globalThis as unknown as { __env__?: unknown }).__env__ ||
+      (request as unknown as { runtime?: { cloudflare?: { env?: unknown } } })?.runtime?.cloudflare?.env;
+
     try {
-      const apiResponse = await handleApiRequest(request, env);
+      const apiResponse = await handleApiRequest(request, effectiveEnv);
       if (apiResponse) return apiResponse;
 
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, effectiveEnv, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

@@ -101,7 +101,14 @@ export async function handleApiRequest(
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null;
 
-  const db = (env as { DB?: D1Database })?.DB;
+  const resolvedEnv =
+    (env as { DB?: D1Database } | undefined)?.DB
+      ? (env as { DB?: D1Database })
+      : ((globalThis as unknown as { __env__?: { DB?: D1Database } })?.__env__ ||
+        (request as unknown as { runtime?: { cloudflare?: { env?: { DB?: D1Database } } } })?.runtime?.cloudflare?.env ||
+        (env as { DB?: D1Database }));
+
+  const db = resolvedEnv?.DB;
   const isD1 = Boolean(db);
 
   // 1. GET /api/health
