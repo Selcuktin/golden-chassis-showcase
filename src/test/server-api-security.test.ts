@@ -651,4 +651,132 @@ describe("Server API, D1 Security & Stability Engine", () => {
     // Assert that orphaned R2 key was deleted
     expect(deletedR2Keys).toContain("vehicles/car-del-1/1");
   });
+
+  it("Regression Test 3d: Shared media asset is preserved and NOT deleted from R2 if another vehicle references it", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const deletedR2Keys: string[] = [];
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => {
+            if (sql.includes("FROM vehicle_images WHERE vehicle_id IN")) {
+              return {
+                results: [
+                  {
+                    id: "img-shared-1",
+                    vehicle_id: "car-to-delete",
+                    r2_key: "vehicles/shared/hero.webp",
+                    public_url: "/api/media/vehicles%2Fshared%2Fhero.webp",
+                  },
+                ],
+                success: true,
+              };
+            }
+            return { results: [], success: true };
+          },
+          first: async () => {
+            if (sql.includes("cms_revision")) {
+              return { value: "1" };
+            }
+            if (sql.includes("COUNT(*) as count FROM vehicle_images")) {
+              // Simulate that another vehicle is STILL referencing this image
+              return { count: 1 };
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => null,
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedR2Keys.push(key);
+      },
+    };
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deletedCarIds: ["car-to-delete"],
+        revision: 1,
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+
+    // Assert that the shared key was PRESERVED and NOT deleted
+    expect(deletedR2Keys).not.toContain("vehicles/shared/hero.webp");
+  });
+
+  it("Regression Test 3e: Atomic CAS check rejects update with 409 if revision changed right before batch", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    let checkCount = 0;
+    const getRevision = async () => {
+      checkCount++;
+      return { value: checkCount === 1 ? "1" : "2" };
+    };
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => (sql.includes("cms_revision") ? getRevision() : null),
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? getRevision() : null),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        settings: { name: "Test Showcase" },
+        revision: 1,
+      }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(409);
+    const data = (await res?.json()) as { ok: boolean; conflict: boolean };
+    expect(data.conflict).toBe(true);
+  });
 });

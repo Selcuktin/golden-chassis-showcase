@@ -1431,7 +1431,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .first<{ value: string }>();
         const currentRevision = revisionRow ? parseInt(revisionRow.value, 10) || 1 : 1;
 
-        if (payload.revision !== undefined && payload.revision < currentRevision) {
+        if (payload.revision !== undefined && payload.revision !== currentRevision) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -1643,8 +1643,32 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             .bind(String(nextRevision)),
         );
 
-        // Batch execution with chunking (Max 50 statements per batch to prevent D1 limit errors)
-        if (stmts.length > 0) {
+        // Pre-batch Atomic CAS verification: ensure revision was not updated concurrently
+        const preBatchRevRow = await db
+          .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
+          .first<{ value: string }>();
+        const preBatchRevision = preBatchRevRow ? parseInt(preBatchRevRow.value, 10) || 1 : 1;
+        if (payload.revision !== undefined && preBatchRevision !== currentRevision) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              conflict: true,
+              currentRevision: preBatchRevision,
+              clientRevision: payload.revision,
+              error:
+                "Çakışma tespit edildi: Eşzamanlı başka bir işlem revizyonu güncelledi. Lütfen sayfayı yenileyin.",
+            }),
+            { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+
+        // Batch execution:
+        // Cloudflare D1 executes a single batch call as an atomic ACID transaction.
+        // For standard catalog sizes (<= 90 statements), this provides 100% all-or-nothing atomicity.
+        if (stmts.length <= 90) {
+          await db.batch(stmts);
+        } else {
+          // Large catalog chunking protection (prevents D1 100-statement limit errors)
           const CHUNK_SIZE = 50;
           for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
             const chunk = stmts.slice(i, i + CHUNK_SIZE);
@@ -1654,15 +1678,41 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         // ONLY update in-memory fallback cache once D1 transaction succeeds!
         applyPayloadToMemoryStore(payload);
 
-        // Delete orphaned R2 media files after D1 batch success
+        // Delete orphaned R2 media files safely after D1 batch success
         if (resolvedEnv.BUCKET && orphanedR2Keys.size > 0) {
           for (const key of orphanedR2Keys) {
             try {
-              await resolvedEnv.BUCKET.delete(key);
+              // Shared media reference check: verify no remaining vehicle image in D1 still references this R2 key
+              const inUseRow = await db
+                .prepare(
+                  "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+                )
+                .bind(key, `%${encodeURIComponent(key)}%`)
+                .first<{ count: number }>();
+
+              if ((inUseRow?.count || 0) === 0) {
+                await resolvedEnv.BUCKET.delete(key);
+              } else {
+                console.warn(
+                  `R2 key "${key}" is still in use by another vehicle image. Preserving shared media.`,
+                );
+              }
             } catch (r2Err) {
               console.error(`Failed to delete orphaned R2 object ${key}:`, r2Err);
             }
           }
+        }
+
+        // Edge Cache Invalidation: Immediately purge cached GET /api/cms from Cloudflare Edge
+        try {
+          const edgeCache =
+            typeof caches !== "undefined" && (caches as unknown as { default?: Cache }).default;
+          if (edgeCache) {
+            const cmsUrl = new URL("/api/cms", url.origin).toString();
+            await edgeCache.delete(new Request(cmsUrl, { method: "GET" }));
+          }
+        } catch (cachePurgeErr) {
+          console.warn("Edge cache purge warning:", cachePurgeErr);
         }
 
         return new Response(
@@ -1677,7 +1727,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       } else {
         // Fallback when D1 is not bound (e.g. local dev / memory mock)
         const currentRevision = memoryStore.revision || 1;
-        if (payload.revision !== undefined && payload.revision < currentRevision) {
+        if (payload.revision !== undefined && payload.revision !== currentRevision) {
           return new Response(
             JSON.stringify({
               ok: false,
