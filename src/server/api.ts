@@ -334,6 +334,16 @@ CREATE TABLE IF NOT EXISTS inquiry_attempts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at);
+
+CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
+  id TEXT PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key);
 `;
 
 let d1Initialized = false;
@@ -346,7 +356,8 @@ async function ensureD1Tables(db: D1Database) {
       `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations)
        VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000)
        ON CONFLICT(username) DO UPDATE SET
-         password_hash = CASE WHEN password_hash IN ('9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068') THEN '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a' ELSE password_hash END;`,
+         password_hash = CASE WHEN password_hash IN ('9a92ec3196ffbdc42cfbe14a9dbc66cb5098f9ab351ae6e1ec70874f3d8878ff', '8a9dd4b8d89a95b5362fe6758b1e531f2ad8b190d832d116f2e98c0329fa1068') THEN '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a' ELSE password_hash END;
+       INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'));`,
     );
     d1Initialized = true;
   } catch (err) {
@@ -1136,6 +1147,100 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
   }
 
+  // 5b. POST /api/admin/media/gc — PROTECTED: Garbage collect orphaned R2 media files from retry queue
+  if (url.pathname === "/api/admin/media/gc" && request.method === "POST") {
+    const isAuthed = await verifyAdminToken(request, db);
+    if (!isAuthed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Yetkisiz erişim: Medya temizliği için yönetici girişi gerekir.",
+        }),
+        { status: 401, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+
+    if (!db) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "D1 veritabanı bağlı değil.",
+        }),
+        { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+
+    try {
+      await ensureD1Tables(db);
+      const queueRows = await db
+        .prepare(
+          "SELECT id, r2_key, attempts FROM r2_cleanup_queue ORDER BY created_at ASC LIMIT 50",
+        )
+        .all<{ id: string; r2_key: string; attempts: number }>();
+
+      const items = queueRows.results || [];
+      let deletedCount = 0;
+      let skippedInUseCount = 0;
+      let failedCount = 0;
+
+      for (const item of items) {
+        // Shared media reference check: verify no vehicle image still references this key
+        const inUseRow = await db
+          .prepare(
+            "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
+          )
+          .bind(item.r2_key, `%${encodeURIComponent(item.r2_key)}%`)
+          .first<{ count: number }>();
+
+        if ((inUseRow?.count || 0) > 0) {
+          // Key is currently in use, remove from cleanup queue
+          await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
+          skippedInUseCount++;
+          continue;
+        }
+
+        if (resolvedEnv.BUCKET) {
+          try {
+            await resolvedEnv.BUCKET.delete(item.r2_key);
+            await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
+            deletedCount++;
+          } catch (delErr) {
+            failedCount++;
+            await db
+              .prepare(
+                "UPDATE r2_cleanup_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+              )
+              .bind(String(delErr), item.id)
+              .run();
+          }
+        } else {
+          failedCount++;
+        }
+      }
+
+      const remainingRow = await db
+        .prepare("SELECT COUNT(*) as count FROM r2_cleanup_queue")
+        .first<{ count: number }>();
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          processed: items.length,
+          deleted: deletedCount,
+          skippedInUse: skippedInUseCount,
+          failed: failedCount,
+          remainingQueue: remainingRow?.count || 0,
+        }),
+        { headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+        status: 500,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+  }
+
   // 6. GET /api/admin/inquiries — PROTECTED: Only authenticated admins can read inquiries
   if (url.pathname === "/api/admin/inquiries" && request.method === "GET") {
     const isAuthed = await verifyAdminToken(request, db);
@@ -1603,25 +1708,30 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             // Refresh images for this vehicle atomically
             stmts.push(db.prepare("DELETE FROM vehicle_images WHERE vehicle_id = ?").bind(c.id));
 
-            c.images.forEach((imgUrl: string, idx: number) => {
-              const effectiveR2Key =
-                extractR2Key(String(imgUrl), `vehicles/${c.id}/${idx + 1}`) ||
-                `vehicles/${c.id}/${idx + 1}`;
-              stmts.push(
-                db
-                  .prepare(
-                    `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-                  )
-                  .bind(
+            if (Array.isArray(c.images) && c.images.length > 0) {
+              const IMAGE_CHUNK = 15;
+              for (let i = 0; i < c.images.length; i += IMAGE_CHUNK) {
+                const chunk = c.images.slice(i, i + IMAGE_CHUNK);
+                const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+                const sql = `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES ${placeholders}`;
+                const params: unknown[] = [];
+                chunk.forEach((imgUrl: string, cIdx: number) => {
+                  const idx = i + cIdx;
+                  const effectiveR2Key =
+                    extractR2Key(String(imgUrl), `vehicles/${c.id}/${idx + 1}`) ||
+                    `vehicles/${c.id}/${idx + 1}`;
+                  params.push(
                     `${c.id}-img-${idx + 1}`,
                     c.id,
                     effectiveR2Key,
                     String(imgUrl),
                     idx === 0 ? 1 : 0,
                     idx,
-                  ),
-              );
-            });
+                  );
+                });
+                stmts.push(db.prepare(sql).bind(...params));
+              }
+            }
           }
         } else if (
           Array.isArray(payload.cars) &&
@@ -1633,22 +1743,49 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           stmts.push(db.prepare("DELETE FROM vehicles"));
         }
 
-        // Increment and store revision
+        // Pre-batch CAS statement preparation:
         const nextRevision = Math.max(currentRevision, payload.revision || 0) + 1;
-        stmts.push(
-          db
-            .prepare(
-              "INSERT INTO site_settings (key, value, updated_at) VALUES ('cms_revision', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            )
-            .bind(String(nextRevision)),
-        );
 
-        // Pre-batch Atomic CAS verification: ensure revision was not updated concurrently
+        if (payload.revision !== undefined) {
+          // SQL-Level In-Batch CAS:
+          // Atomically checks if current revision matches payload.revision inside the D1 transaction.
+          // If revision matches (or no setting row exists yet), key is 'cms_revision'.
+          // If concurrent mismatch, key evaluates to NULL, triggering SQLite's NOT NULL constraint
+          // on primary key site_settings.key. This causes db.batch() to abort and roll back
+          // all other statements in the batch atomically!
+          stmts.push(
+            db
+              .prepare(
+                `INSERT INTO site_settings (key, value, updated_at)
+                 VALUES (
+                   CASE
+                     WHEN (SELECT value FROM site_settings WHERE key = 'cms_revision') = ? THEN 'cms_revision'
+                     WHEN NOT EXISTS (SELECT 1 FROM site_settings WHERE key = 'cms_revision') THEN 'cms_revision'
+                     ELSE NULL
+                   END,
+                   ?,
+                   datetime('now')
+                 )
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;`,
+              )
+              .bind(String(payload.revision), String(nextRevision)),
+          );
+        } else {
+          stmts.push(
+            db
+              .prepare(
+                "INSERT INTO site_settings (key, value, updated_at) VALUES ('cms_revision', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+              )
+              .bind(String(nextRevision)),
+          );
+        }
+
+        // Pre-batch verification: fail fast if already outdated before calling D1 batch
         const preBatchRevRow = await db
           .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
           .first<{ value: string }>();
         const preBatchRevision = preBatchRevRow ? parseInt(preBatchRevRow.value, 10) || 1 : 1;
-        if (payload.revision !== undefined && preBatchRevision !== currentRevision) {
+        if (payload.revision !== undefined && preBatchRevision !== payload.revision) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -1665,21 +1802,47 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         // Batch execution:
         // Cloudflare D1 executes a single batch call as an atomic ACID transaction.
         // For standard catalog sizes (<= 90 statements), this provides 100% all-or-nothing atomicity.
-        if (stmts.length <= 90) {
-          await db.batch(stmts);
-        } else {
-          // Large catalog chunking protection (prevents D1 100-statement limit errors)
-          const CHUNK_SIZE = 50;
-          for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
-            const chunk = stmts.slice(i, i + CHUNK_SIZE);
-            await db.batch(chunk);
+        try {
+          if (stmts.length <= 90) {
+            await db.batch(stmts);
+          } else {
+            // Large catalog chunking protection (prevents D1 100-statement limit errors)
+            const CHUNK_SIZE = 50;
+            for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
+              const chunk = stmts.slice(i, i + CHUNK_SIZE);
+              await db.batch(chunk);
+            }
           }
+        } catch (batchErr: unknown) {
+          const errMsg = String(batchErr);
+          if (
+            errMsg.includes("NOT NULL constraint failed: site_settings.key") ||
+            errMsg.includes("site_settings.key")
+          ) {
+            const conflictRevRow = await db
+              .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
+              .first<{ value: string }>();
+            const conflictRevision = conflictRevRow ? parseInt(conflictRevRow.value, 10) || 1 : 1;
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                conflict: true,
+                currentRevision: conflictRevision,
+                clientRevision: payload.revision,
+                error:
+                  "Çakışma tespit edildi: Eşzamanlı başka bir işlem revizyonu güncelledi. Lütfen sayfayı yenileyin.",
+              }),
+              { status: 409, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+          throw batchErr;
         }
+
         // ONLY update in-memory fallback cache once D1 transaction succeeds!
         applyPayloadToMemoryStore(payload);
 
         // Delete orphaned R2 media files safely after D1 batch success
-        if (resolvedEnv.BUCKET && orphanedR2Keys.size > 0) {
+        if (orphanedR2Keys.size > 0) {
           for (const key of orphanedR2Keys) {
             try {
               // Shared media reference check: verify no remaining vehicle image in D1 still references this R2 key
@@ -1691,7 +1854,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                 .first<{ count: number }>();
 
               if ((inUseRow?.count || 0) === 0) {
-                await resolvedEnv.BUCKET.delete(key);
+                if (resolvedEnv.BUCKET) {
+                  await resolvedEnv.BUCKET.delete(key);
+                }
               } else {
                 console.warn(
                   `R2 key "${key}" is still in use by another vehicle image. Preserving shared media.`,
@@ -1699,6 +1864,27 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
               }
             } catch (r2Err) {
               console.error(`Failed to delete orphaned R2 object ${key}:`, r2Err);
+              // Queue for retry via r2_cleanup_queue table
+              try {
+                await db
+                  .prepare(
+                    `INSERT INTO r2_cleanup_queue (id, r2_key, attempts, last_error, created_at)
+                     VALUES (?, ?, 1, ?, ?)
+                     ON CONFLICT(id) DO UPDATE SET attempts = attempts + 1, last_error = excluded.last_error`,
+                  )
+                  .bind(
+                    `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    key,
+                    String(r2Err),
+                    Date.now(),
+                  )
+                  .run();
+              } catch (queueErr) {
+                console.error(
+                  "Failed to enqueue failed R2 delete into r2_cleanup_queue:",
+                  queueErr,
+                );
+              }
             }
           }
         }

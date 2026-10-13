@@ -596,8 +596,8 @@ describe("Server API, D1 Security & Stability Engine", () => {
       },
     };
 
-    // Construct 20 cars with 3 images each = >100 statements
-    const cars = Array.from({ length: 20 }, (_, i) => ({
+    // Construct 35 cars with 3 images each = 107 statements (>90 statements trigger chunking)
+    const cars = Array.from({ length: 35 }, (_, i) => ({
       id: `car-chunk-${i}`,
       brand: "BMW",
       title: `BMW M4 #${i}`,
@@ -778,5 +778,227 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(res?.status).toBe(409);
     const data = (await res?.json()) as { ok: boolean; conflict: boolean };
     expect(data.conflict).toBe(true);
+  });
+
+  it("Regression Test 3f: Multi-row image insert keeps a 15-car catalog in a single atomic batch transaction", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const batchCalls: unknown[][] = [];
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+      }),
+      batch: async (stmts: unknown[]) => {
+        batchCalls.push(stmts);
+        return stmts.map(() => ({ success: true }));
+      },
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const cars = Array.from({ length: 15 }, (_, i) => ({
+      id: `car-atomic-${i}`,
+      brand: "Porsche",
+      title: `911 GT3 #${i}`,
+      year: 2024,
+      km: 500,
+      fuel: "Benzin",
+      gear: "PDK",
+      body: "Coupe",
+      status: "active" as const,
+      featured: true,
+      imageFit: "cover" as const,
+      images: [
+        `/api/media/vehicles%2Fcar-atomic-${i}%2F1`,
+        `/api/media/vehicles%2Fcar-atomic-${i}%2F2`,
+        `/api/media/vehicles%2Fcar-atomic-${i}%2F3`,
+        `/api/media/vehicles%2Fcar-atomic-${i}%2F4`,
+      ],
+      specs: {
+        power: "510 HP",
+        color: "Gri",
+        package: "ClubSport",
+        expertise: "Orijinal",
+        tramer: "Yok",
+      },
+      extras: [],
+      extrasEn: [],
+      description: { tr: "", en: "" },
+    }));
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cars, revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(200);
+
+    // Multi-row compaction ensures 15 vehicles with 4 images each fit in exactly 1 atomic batch!
+    expect(batchCalls.length).toBe(1);
+    expect(batchCalls[0]?.length).toBeLessThanOrEqual(50);
+  });
+
+  it("Regression Test 3g: SQL-level atomic CAS batch rollback intercepts NOT NULL constraint on site_settings.key", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: async () => ({ success: true }),
+          all: async () => ({ results: [], success: true }),
+          first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+        }),
+        run: async () => ({ success: true }),
+        all: async () => ({ results: [], success: true }),
+        first: async () => (sql.includes("cms_revision") ? { value: "1" } : null),
+      }),
+      batch: async () => {
+        // Simulate SQLite transaction failure due to in-batch CAS evaluation producing NULL for primary key
+        throw new Error("D1_ERROR: NOT NULL constraint failed: site_settings.key");
+      },
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const req = new Request("https://bycarglobal.com/api/cms", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${loginData.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ settings: { title: "Conflict Test" }, revision: 1 }),
+    });
+
+    const res = await handleApiRequest(req, { DB: mockDb });
+    expect(res?.status).toBe(409);
+    const data = (await res?.json()) as { ok: boolean; conflict: boolean; error: string };
+    expect(data.conflict).toBe(true);
+    expect(data.error).toContain("Çakışma tespit edildi");
+  });
+
+  it("Regression Test 3h: POST /api/admin/media/gc retries queued orphan deletes and protects shared media", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "bybycar1453" }),
+      }),
+      {},
+    );
+    const loginData = (await loginRes?.json()) as { token: string };
+
+    const deletedFromBucket: string[] = [];
+    const queueDeletedIds: string[] = [];
+
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => ({
+          run: async () => {
+            if (sql.includes("DELETE FROM r2_cleanup_queue WHERE id = ?")) {
+              queueDeletedIds.push(String(args[0]));
+            }
+            return { success: true };
+          },
+          all: async () => ({ results: [], success: true }),
+          first: async () => {
+            if (sql.includes("COUNT(*) as count FROM vehicle_images")) {
+              // args[0] is the r2_key
+              if (args[0] === "vehicles/in-use/pic.webp") {
+                return { count: 1 }; // Still in use!
+              }
+              return { count: 0 }; // Orphaned!
+            }
+            if (sql.includes("COUNT(*) as count FROM r2_cleanup_queue")) {
+              return { count: 0 };
+            }
+            return null;
+          },
+        }),
+        run: async () => ({ success: true }),
+        all: async () => {
+          if (sql.includes("FROM r2_cleanup_queue ORDER BY created_at ASC")) {
+            return {
+              results: [
+                { id: "queue-1", r2_key: "vehicles/orphan-1/pic.webp", attempts: 1 },
+                { id: "queue-2", r2_key: "vehicles/in-use/pic.webp", attempts: 1 },
+              ],
+              success: true,
+            };
+          }
+          return { results: [], success: true };
+        },
+        first: async () => ({ count: 0 }),
+      }),
+      batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
+      exec: async () => ({ count: 0, duration: 0 }),
+    };
+
+    const mockBucket = {
+      put: async () => ({}),
+      get: async () => null,
+      delete: async (key: string) => {
+        deletedFromBucket.push(key);
+      },
+    };
+
+    // 1. Unauthorized call returns 401
+    const unauthedReq = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+    });
+    const unauthedRes = await handleApiRequest(unauthedReq, { DB: mockDb, BUCKET: mockBucket });
+    expect(unauthedRes?.status).toBe(401);
+
+    // 2. Authorized call processes cleanup queue
+    const authedReq = new Request("https://bycarglobal.com/api/admin/media/gc", {
+      method: "POST",
+      headers: { authorization: `Bearer ${loginData.token}` },
+    });
+    const res = await handleApiRequest(authedReq, { DB: mockDb, BUCKET: mockBucket });
+    expect(res?.status).toBe(200);
+
+    const body = (await res?.json()) as {
+      ok: boolean;
+      processed: number;
+      deleted: number;
+      skippedInUse: number;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.processed).toBe(2);
+    expect(body.deleted).toBe(1);
+    expect(body.skippedInUse).toBe(1);
+
+    // Assert that orphan was deleted from bucket, but in-use media was preserved
+    expect(deletedFromBucket).toContain("vehicles/orphan-1/pic.webp");
+    expect(deletedFromBucket).not.toContain("vehicles/in-use/pic.webp");
+
+    // Both queue items should be cleared (orphan because deleted, in-use because preserved)
+    expect(queueDeletedIds).toContain("queue-1");
+    expect(queueDeletedIds).toContain("queue-2");
   });
 });

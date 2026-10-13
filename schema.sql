@@ -106,7 +106,21 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 8. R2 Medya Çöp Toplama (Garbage Collection) ve Silme Yeniden Deneme Kuyruğu
+CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
+  id TEXT PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key);
+
 -- Seed: Varsayılan VIP Admin Kullanıcısı (PBKDF2 Hashli, Salt: bycar-global-vip-salt-2026, 100k İterasyon)
 INSERT OR IGNORE INTO admin_users (id, username, password_hash, password_salt, iterations)
 VALUES ('admin-master', 'admin', '681f0b5bd12efba5f9bff84da308f35360c50723c1ff68310d564c11f7d5440a', 'bycar-global-vip-salt-2026', 100000);
+
+INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'));
+
 
