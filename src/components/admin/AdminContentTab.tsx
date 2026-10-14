@@ -13,6 +13,8 @@ import {
   Compass,
   Edit3,
   X,
+  UploadCloud,
+  Image,
 } from "lucide-react";
 import { type SiteCMSConfig, translateTerm, ADMIN_PRESETS } from "@/lib/bycar";
 
@@ -56,6 +58,85 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       const url = new URL(window.location.href);
       url.searchParams.set("section", sec);
       window.history.replaceState(null, "", url.toString());
+    }
+  };
+
+  // Hero Image Upload States
+  const [uploadingHeroDesktop, setUploadingHeroDesktop] = useState(false);
+  const [uploadingHeroMobile, setUploadingHeroMobile] = useState(false);
+  const [heroUploadMsg, setHeroUploadMsg] = useState("");
+
+  const handleUploadHeroImage = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "desktop" | "mobile",
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const token =
+      typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+    if (!token) {
+      alert("Görsel yüklemek için VIP Yönetici girişi yapmalısınız.");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Hero görseli 15 MB'tan büyük olamaz.");
+      return;
+    }
+
+    if (target === "desktop") setUploadingHeroDesktop(true);
+    else setUploadingHeroMobile(true);
+    setHeroUploadMsg(
+      `${target === "desktop" ? "Masaüstü" : "Mobil"} hero görseli Cloudflare R2'ye yükleniyor...`,
+    );
+
+    try {
+      const uploadRes = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": file.type || "image/webp",
+          "x-vehicle-id": "hero",
+          "x-file-name": file.name.replace(/[^a-zA-Z0-9._-]/g, "_"),
+        },
+        body: file,
+      });
+
+      if (uploadRes.ok) {
+        const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
+        if (resJson.ok && resJson.url) {
+          if (target === "desktop") {
+            setForm((prev) => ({
+              ...prev,
+              hero: { ...prev.hero, bgImage: resJson.url! },
+            }));
+          } else {
+            setForm((prev) => ({
+              ...prev,
+              hero: { ...prev.hero, bgImageMobile: resJson.url! },
+            }));
+          }
+          setHeroUploadMsg(
+            `✓ ${target === "desktop" ? "Masaüstü" : "Mobil"} hero görseli başarıyla yüklendi!`,
+          );
+          setTimeout(() => setHeroUploadMsg(""), 4500);
+        } else {
+          alert("Görsel sunucuya yüklenemedi.");
+          setHeroUploadMsg("");
+        }
+      } else {
+        const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+        alert(errData.error || `Yükleme başarısız (HTTP ${uploadRes.status}).`);
+        setHeroUploadMsg("");
+      }
+    } catch (err) {
+      console.error("Hero upload error:", err);
+      alert("Görsel yüklenirken bir ağ hatası oluştu.");
+      setHeroUploadMsg("");
+    } finally {
+      if (target === "desktop") setUploadingHeroDesktop(false);
+      else setUploadingHeroMobile(false);
+      e.target.value = "";
     }
   };
 
@@ -291,196 +372,316 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </h3>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Arka Plan Görseli / Video URL (Örn: /hero.jpg veya https://...)
+          {/* Dual Hero Upload: Desktop (Wide) + Mobile (Car Focused) */}
+          <div className="grid gap-6 md:grid-cols-2 border border-border bg-background/50 p-4">
+            {/* Desktop Hero Image */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <Image className="h-4 w-4" /> Masaüstü & Tablet Hero Görseli
+                </label>
+                {form.hero.bgImage && form.hero.bgImage !== "/hero.png" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({ ...form, hero: { ...form.hero, bgImage: "/hero.png" } })
+                    }
+                    className="text-[10px] text-destructive hover:underline cursor-pointer"
+                  >
+                    Varsayılana Sıfırla
+                  </button>
+                )}
+              </div>
+
+              {/* Direct PC File Upload Button */}
+              <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-background px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground disabled:opacity-50">
+                <UploadCloud className="h-4 w-4 shrink-0" />
+                <span>
+                  {uploadingHeroDesktop
+                    ? "Görsel Yükleniyor..."
+                    : "Bilgisayardan Masaüstü Görseli Seç (PNG / JPG / WEBP)"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={uploadingHeroDesktop}
+                  onChange={(e) => handleUploadHeroImage(e, "desktop")}
+                  className="hidden"
+                />
               </label>
-              <input
-                value={form.hero.bgImage}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    hero: { ...form.hero, bgImage: e.target.value },
-                  })
-                }
-                className={input}
-                placeholder="/hero.jpg"
-              />
+
+              {/* Preview Thumbnail */}
               {form.hero.bgImage && (
-                <div className="mt-2 aspect-video w-48 overflow-hidden border border-border bg-black">
+                <div className="relative aspect-video w-full max-w-xs overflow-hidden border border-border bg-black">
                   <img
                     src={form.hero.bgImage}
-                    alt="Hero Önizleme"
+                    alt="Masaüstü Hero Önizleme"
                     className="h-full w-full object-cover"
                   />
+                  <div className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 text-[9px] text-zinc-300">
+                    Masaüstü (16:9 / 21:9)
+                  </div>
                 </div>
               )}
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  Üst Rozet (Türkçe)
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Veya Doğrudan Görsel URL
                 </label>
                 <input
-                  value={form.hero.badgeTr}
+                  value={form.hero.bgImage}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      hero: { ...form.hero, badgeTr: e.target.value },
+                      hero: { ...form.hero, bgImage: e.target.value },
                     })
                   }
                   className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  Badge (İngilizce)
-                </label>
-                <input
-                  value={form.hero.badgeEn}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hero: { ...form.hero, badgeEn: e.target.value },
-                    })
-                  }
-                  className={input}
+                  placeholder="/hero.png"
                 />
               </div>
             </div>
 
+            {/* Mobile Hero Image (Car Focused) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <Image className="h-4 w-4" /> Mobil Hero Görseli (Araba Odaklı)
+                </label>
+                {form.hero.bgImageMobile && form.hero.bgImageMobile !== "/hero-mobile.png" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        hero: { ...form.hero, bgImageMobile: "/hero-mobile.png" },
+                      })
+                    }
+                    className="text-[10px] text-destructive hover:underline cursor-pointer"
+                  >
+                    Varsayılana Sıfırla
+                  </button>
+                )}
+              </div>
+
+              {/* Direct PC File Upload Button */}
+              <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-background px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground disabled:opacity-50">
+                <UploadCloud className="h-4 w-4 shrink-0" />
+                <span>
+                  {uploadingHeroMobile
+                    ? "Görsel Yükleniyor..."
+                    : "Bilgisayardan Mobil Görseli Seç (PNG / JPG / WEBP)"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={uploadingHeroMobile}
+                  onChange={(e) => handleUploadHeroImage(e, "mobile")}
+                  className="hidden"
+                />
+              </label>
+
+              {/* Preview Thumbnail */}
+              {form.hero.bgImageMobile && (
+                <div className="relative aspect-[4/3] w-48 overflow-hidden border border-border bg-black">
+                  <img
+                    src={form.hero.bgImageMobile}
+                    alt="Mobil Hero Önizleme"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 text-[9px] text-zinc-300">
+                    Mobil (4:3)
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Veya Doğrudan Mobil Görsel URL
+                </label>
+                <input
+                  value={form.hero.bgImageMobile || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      hero: { ...form.hero, bgImageMobile: e.target.value },
+                    })
+                  }
+                  className={input}
+                  placeholder="/hero-mobile.png"
+                />
+              </div>
+            </div>
+          </div>
+
+          {heroUploadMsg && (
+            <div className="rounded border border-primary/40 bg-primary/10 p-2.5 text-xs font-semibold text-primary">
+              {heroUploadMsg}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Ana Başlık (Türkçe)
+                Üst Rozet (Türkçe)
               </label>
               <input
-                value={form.hero.titleTr}
+                value={form.hero.badgeTr}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    hero: { ...form.hero, titleTr: e.target.value },
+                    hero: { ...form.hero, badgeTr: e.target.value },
                   })
                 }
                 className={input}
               />
             </div>
-
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Main Headline (İngilizce)
+                Badge (İngilizce)
               </label>
               <input
-                value={form.hero.titleEn}
+                value={form.hero.badgeEn}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    hero: { ...form.hero, titleEn: e.target.value },
+                    hero: { ...form.hero, badgeEn: e.target.value },
                   })
                 }
                 className={input}
               />
             </div>
+          </div>
 
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+              Ana Başlık (Türkçe)
+            </label>
+            <input
+              value={form.hero.titleTr}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hero: { ...form.hero, titleTr: e.target.value },
+                })
+              }
+              className={input}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+              Main Headline (İngilizce)
+            </label>
+            <input
+              value={form.hero.titleEn}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hero: { ...form.hero, titleEn: e.target.value },
+                })
+              }
+              className={input}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+              Alt Açıklama (Türkçe)
+            </label>
+            <textarea
+              value={form.hero.subtitleTr}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hero: { ...form.hero, subtitleTr: e.target.value },
+                })
+              }
+              rows={3}
+              className={input}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+              Subtitle Description (İngilizce)
+            </label>
+            <textarea
+              value={form.hero.subtitleEn}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hero: { ...form.hero, subtitleEn: e.target.value },
+                })
+              }
+              rows={3}
+              className={input}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Alt Açıklama (Türkçe)
+                1. CTA Butonu (TR)
               </label>
-              <textarea
-                value={form.hero.subtitleTr}
+              <input
+                value={form.hero.primaryBtnTextTr}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    hero: { ...form.hero, subtitleTr: e.target.value },
+                    hero: { ...form.hero, primaryBtnTextTr: e.target.value },
                   })
                 }
-                rows={3}
                 className={input}
               />
             </div>
-
             <div>
               <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Subtitle Description (İngilizce)
+                1. CTA Butonu (EN)
               </label>
-              <textarea
-                value={form.hero.subtitleEn}
+              <input
+                value={form.hero.primaryBtnTextEn}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    hero: { ...form.hero, subtitleEn: e.target.value },
+                    hero: { ...form.hero, primaryBtnTextEn: e.target.value },
                   })
                 }
-                rows={3}
                 className={input}
               />
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  1. CTA Butonu (TR)
-                </label>
-                <input
-                  value={form.hero.primaryBtnTextTr}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hero: { ...form.hero, primaryBtnTextTr: e.target.value },
-                    })
-                  }
-                  className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  1. CTA Butonu (EN)
-                </label>
-                <input
-                  value={form.hero.primaryBtnTextEn}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hero: { ...form.hero, primaryBtnTextEn: e.target.value },
-                    })
-                  }
-                  className={input}
-                />
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+                2. CTA Butonu (TR)
+              </label>
+              <input
+                value={form.hero.secondaryBtnTextTr}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    hero: { ...form.hero, secondaryBtnTextTr: e.target.value },
+                  })
+                }
+                className={input}
+              />
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  2. CTA Butonu (TR)
-                </label>
-                <input
-                  value={form.hero.secondaryBtnTextTr}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hero: { ...form.hero, secondaryBtnTextTr: e.target.value },
-                    })
-                  }
-                  className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                  2. CTA Butonu (EN)
-                </label>
-                <input
-                  value={form.hero.secondaryBtnTextEn}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hero: { ...form.hero, secondaryBtnTextEn: e.target.value },
-                    })
-                  }
-                  className={input}
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+                2. CTA Butonu (EN)
+              </label>
+              <input
+                value={form.hero.secondaryBtnTextEn}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    hero: { ...form.hero, secondaryBtnTextEn: e.target.value },
+                  })
+                }
+                className={input}
+              />
             </div>
           </div>
         </div>

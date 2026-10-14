@@ -69,6 +69,7 @@ export const CmsConfigSchema = z
           "secondaryBtnTextEn",
         ]),
         bgImage: mediaUrl,
+        bgImageMobile: mediaUrl.optional(),
       })
       .partial(),
     stats: z.array(z.object({ value: short, labelTr: short, labelEn: short })).max(30),
