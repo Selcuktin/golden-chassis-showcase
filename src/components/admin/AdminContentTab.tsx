@@ -8,10 +8,11 @@ import {
   CheckCircle2,
   Layers,
   HelpCircle,
-  MessageSquareQuote,
   Sliders,
   Award,
   Compass,
+  Edit3,
+  X,
 } from "lucide-react";
 import { type SiteCMSConfig, translateTerm, ADMIN_PRESETS } from "@/lib/bycar";
 
@@ -30,21 +31,33 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
   const [form, setForm] = useState<SiteCMSConfig>(cmsConfig);
   const [msg, setMsg] = useState("");
 
-  // Sub-accordions in Content tab
+  // Sub-accordions in Content tab with reload/F5 persistence
   const [activeSection, setActiveSection] = useState<
-    "hero" | "stats" | "about" | "services" | "concierge" | "testimonials" | "faqs" | "presets"
-  >("hero");
-
-  // Local state for adding new testimonial
-  const [newTestimonial, setNewTestimonial] = useState({
-    name: "",
-    roleTr: "Koleksiyon Sahibi",
-    roleEn: "Automotive Collector",
-    car: "Porsche 911 GT3 RS",
-    rating: 5,
-    commentTr: "",
-    commentEn: "",
+    "hero" | "stats" | "about" | "services" | "concierge" | "faqs" | "presets"
+  >(() => {
+    if (typeof window === "undefined") return "hero";
+    const validSections = ["hero", "stats", "about", "services", "concierge", "faqs", "presets"];
+    const params = new URLSearchParams(window.location.search);
+    const sec = params.get("section");
+    if (sec && validSections.includes(sec))
+      return sec as "hero" | "stats" | "about" | "services" | "concierge" | "faqs" | "presets";
+    const stored = window.sessionStorage.getItem("bycar_admin_content_section");
+    if (stored && validSections.includes(stored))
+      return stored as "hero" | "stats" | "about" | "services" | "concierge" | "faqs" | "presets";
+    return "hero";
   });
+
+  const handleSelectSection = (
+    sec: "hero" | "stats" | "about" | "services" | "concierge" | "faqs" | "presets",
+  ) => {
+    setActiveSection(sec);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("bycar_admin_content_section", sec);
+      const url = new URL(window.location.href);
+      url.searchParams.set("section", sec);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
 
   // Local state for adding new FAQ
   const [newFaq, setNewFaq] = useState({
@@ -53,6 +66,52 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
     aTr: "",
     aEn: "",
   });
+
+  // Local state for editing existing FAQ
+  const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
+  const [editingFaq, setEditingFaq] = useState<{
+    qTr: string;
+    qEn: string;
+    aTr: string;
+    aEn: string;
+  }>({ qTr: "", qEn: "", aTr: "", aEn: "" });
+
+  const startEditFaq = (f: { id: string; qTr: string; qEn: string; aTr: string; aEn: string }) => {
+    setEditingFaqId(f.id);
+    setEditingFaq({
+      qTr: f.qTr,
+      qEn: f.qEn,
+      aTr: f.aTr,
+      aEn: f.aEn,
+    });
+  };
+
+  const handleUpdateFaq = () => {
+    if (!editingFaqId || !editingFaq.qTr.trim() || !editingFaq.aTr.trim()) return;
+    const nextFaqs = form.faqs.map((f) => {
+      if (f.id === editingFaqId) {
+        return {
+          ...f,
+          qTr: editingFaq.qTr.trim(),
+          qEn: editingFaq.qEn.trim() || editingFaq.qTr.trim(),
+          aTr: editingFaq.aTr.trim(),
+          aEn: editingFaq.aEn.trim() || editingFaq.aTr.trim(),
+        };
+      }
+      return f;
+    });
+    const next = { ...form, faqs: nextFaqs };
+    setForm(next);
+    onSave(next, `SSS sorusu güncellendi: ${editingFaq.qTr.slice(0, 30)}...`);
+    setEditingFaqId(null);
+    setMsg("✓ Sıkça Sorulan Soru güncellendi ve taslağa kaydedildi.");
+    setTimeout(() => setMsg(""), 3500);
+  };
+
+  const cancelEditFaq = () => {
+    setEditingFaqId(null);
+    setEditingFaq({ qTr: "", qEn: "", aTr: "", aEn: "" });
+  };
 
   // Local state for adding preset chip
   const [presetCategory, setPresetCategory] =
@@ -65,49 +124,6 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       "✓ Tüm içerik ve kurumsal CMS ayarları yerel taslak olarak kaydedildi; canlı kayıt durumunu üst çubuktan kontrol edin.",
     );
     setTimeout(() => setMsg(""), 4000);
-  };
-
-  const handleAddTestimonial = () => {
-    if (!newTestimonial.name.trim() || !newTestimonial.commentTr.trim()) return;
-    const item = {
-      id: `test-${Date.now()}`,
-      name: newTestimonial.name.trim(),
-      roleTr: newTestimonial.roleTr.trim() || "VIP Müşteri",
-      roleEn: newTestimonial.roleEn.trim() || "VIP Client",
-      car: newTestimonial.car.trim() || "ByCar Collection",
-      rating: Number(newTestimonial.rating) || 5,
-      commentTr: newTestimonial.commentTr.trim(),
-      commentEn: newTestimonial.commentEn.trim() || newTestimonial.commentTr.trim(),
-    };
-    const next = {
-      ...form,
-      testimonials: [...(form.testimonials || []), item],
-    };
-    setForm(next);
-    onSave(next, `Yeni yorum eklendi: ${item.name}`);
-    setNewTestimonial({
-      name: "",
-      roleTr: "Koleksiyon Sahibi",
-      roleEn: "Automotive Collector",
-      car: "Porsche 911 GT3 RS",
-      rating: 5,
-      commentTr: "",
-      commentEn: "",
-    });
-    setMsg(
-      "✓ Yeni müşteri yorumu taslağa eklendi; canlı kayıt durumunu üst çubuktan kontrol edin.",
-    );
-    setTimeout(() => setMsg(""), 3500);
-  };
-
-  const handleDeleteTestimonial = (id: string) => {
-    if (!window.confirm("Bu müşteri yorumu silinsin mi?")) return;
-    const next = {
-      ...form,
-      testimonials: form.testimonials.filter((t) => t.id !== id),
-    };
-    setForm(next);
-    onSave(next, "Müşteri yorumu silindi");
   };
 
   const handleAddFaq = () => {
@@ -134,6 +150,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
 
   const handleDeleteFaq = (id: string) => {
     if (!window.confirm("Bu sıkça sorulan soru silinsin mi?")) return;
+    if (editingFaqId === id) {
+      setEditingFaqId(null);
+    }
     const next = {
       ...form,
       faqs: form.faqs.filter((f) => f.id !== id),
@@ -217,8 +236,8 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Hero banner, sayaçlar, hakkımızda, 4 hizmet kartı, concierge adımları, müşteri yorumları
-            ve SSS'yi tek satır kod yazmadan yönetin.
+            Hero banner, sayaçlar, hakkımızda, 4 hizmet kartı, concierge adımları ve SSS'yi tek
+            satır kod yazmadan yönetin.
           </p>
         </div>
 
@@ -235,7 +254,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="grid grid-cols-2 gap-1 border border-border bg-background/50 p-1 sm:grid-cols-4 lg:grid-cols-8 text-xs font-semibold uppercase tracking-wider">
+      <div className="grid grid-cols-2 gap-1 border border-border bg-background/50 p-1 sm:grid-cols-4 lg:grid-cols-7 text-xs font-semibold uppercase tracking-wider">
         {(
           [
             ["hero", "Hero Banner"],
@@ -243,7 +262,6 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
             ["about", "Hakkımızda"],
             ["services", "Hizmetler"],
             ["concierge", "Concierge"],
-            ["testimonials", "Yorumlar"],
             ["faqs", "SSS"],
             ["presets", "Çip Yöneticisi"],
           ] as const
@@ -251,7 +269,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
           <button
             key={key}
             type="button"
-            onClick={() => setActiveSection(key)}
+            onClick={() => handleSelectSection(key)}
             className={`cursor-pointer px-3 py-2 text-center transition ${
               activeSection === key
                 ? "bg-primary text-primary-foreground font-bold shadow"
@@ -840,133 +858,13 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
         </div>
       )}
 
-      {/* 6. TESTIMONIALS CRUD */}
-      {activeSection === "testimonials" && (
-        <div className="border border-border bg-card p-6 space-y-6">
-          <div className="flex items-center gap-2 border-b border-border pb-3">
-            <MessageSquareQuote className="h-5 w-5 text-primary" />
-            <h3 className="font-display text-xl font-semibold">
-              6. Müşteri Yorumları & Referanslar (CRUD)
-            </h3>
-          </div>
-
-          {/* Add New Testimonial Form */}
-          <div className="border border-primary/40 bg-background/60 p-4 space-y-3">
-            <span className="text-xs uppercase font-bold tracking-wider text-primary">
-              + Yeni Müşteri Yorumu Ekle
-            </span>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">
-                  Müşteri Adı Soyadı
-                </label>
-                <input
-                  value={newTestimonial.name}
-                  onChange={(e) => setNewTestimonial({ ...newTestimonial, name: e.target.value })}
-                  placeholder="Örn: Emirhan K."
-                  className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">
-                  Rol / Unvan (TR)
-                </label>
-                <input
-                  value={newTestimonial.roleTr}
-                  onChange={(e) => setNewTestimonial({ ...newTestimonial, roleTr: e.target.value })}
-                  placeholder="Örn: Koleksiyon Sahibi"
-                  className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">
-                  Satın Alınan Araç
-                </label>
-                <input
-                  value={newTestimonial.car}
-                  onChange={(e) => setNewTestimonial({ ...newTestimonial, car: e.target.value })}
-                  placeholder="Örn: Porsche 911 GT3 RS"
-                  className={input}
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">
-                  Yorum (Türkçe)
-                </label>
-                <textarea
-                  value={newTestimonial.commentTr}
-                  onChange={(e) =>
-                    setNewTestimonial({ ...newTestimonial, commentTr: e.target.value })
-                  }
-                  rows={2}
-                  placeholder="Müşterinin deneyimi..."
-                  className={input}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] text-muted-foreground">
-                  Review (English)
-                </label>
-                <textarea
-                  value={newTestimonial.commentEn}
-                  onChange={(e) =>
-                    setNewTestimonial({ ...newTestimonial, commentEn: e.target.value })
-                  }
-                  rows={2}
-                  placeholder="Leave blank to use Turkish auto-translation..."
-                  className={input}
-                />
-              </div>
-            </div>
-            <button type="button" onClick={handleAddTestimonial} className={`${goldBtn} !py-2`}>
-              <Plus className="h-3.5 w-3.5" /> Yorumu Listeye Ekle
-            </button>
-          </div>
-
-          {/* Existing Testimonials List */}
-          <div className="space-y-3">
-            <span className="text-xs uppercase font-bold tracking-wider text-muted-foreground">
-              Yayındaki Yorumlar ({form.testimonials.length})
-            </span>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {form.testimonials.map((t) => (
-                <div
-                  key={t.id}
-                  className="relative border border-border bg-background/50 p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-foreground text-sm">{t.name}</div>
-                      <div className="text-[11px] text-primary">
-                        {t.roleTr} · {t.car}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteTestimonial(t.id)}
-                      className="cursor-pointer text-muted-foreground hover:text-destructive"
-                      title="Yorumu Sil"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <p className="text-xs italic text-muted-foreground">"{t.commentTr}"</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7. FAQS CRUD */}
+      {/* 6. FAQS CRUD */}
       {activeSection === "faqs" && (
         <div className="border border-border bg-card p-6 space-y-6">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <HelpCircle className="h-5 w-5 text-primary" />
             <h3 className="font-display text-xl font-semibold">
-              7. Sıkça Sorulan Sorular (SSS) Yönetimi (CRUD)
+              6. Sıkça Sorulan Sorular (SSS) Yönetimi (CRUD)
             </h3>
           </div>
 
@@ -1036,42 +934,135 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               Yayındaki Sorular ({form.faqs.length})
             </span>
             <div className="space-y-2">
-              {form.faqs.map((f, idx) => (
-                <div
-                  key={f.id || idx}
-                  className="border border-border bg-background/50 p-4 space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="font-semibold text-sm text-foreground">
-                        {idx + 1}. {f.qTr}
-                      </div>
-                      <div className="text-[11px] text-primary">{f.qEn}</div>
+              {form.faqs.map((f, idx) =>
+                editingFaqId === f.id ? (
+                  <div
+                    key={f.id || idx}
+                    className="border-2 border-primary bg-background/80 p-4 space-y-3 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between border-b border-primary/30 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                        Soruyu Düzenle (#{idx + 1})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={cancelEditFaq}
+                        className="cursor-pointer text-muted-foreground hover:text-foreground"
+                        title="Vazgeç"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteFaq(f.id)}
-                      className="cursor-pointer text-muted-foreground hover:text-destructive shrink-0"
-                      title="Soruyu Sil"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">
+                          Soru (Türkçe)
+                        </label>
+                        <input
+                          value={editingFaq.qTr}
+                          onChange={(e) => setEditingFaq({ ...editingFaq, qTr: e.target.value })}
+                          className={input}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">
+                          Question (English)
+                        </label>
+                        <input
+                          value={editingFaq.qEn}
+                          onChange={(e) => setEditingFaq({ ...editingFaq, qEn: e.target.value })}
+                          className={input}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">
+                          Cevap (Türkçe)
+                        </label>
+                        <textarea
+                          value={editingFaq.aTr}
+                          onChange={(e) => setEditingFaq({ ...editingFaq, aTr: e.target.value })}
+                          rows={3}
+                          className={input}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">
+                          Answer (English)
+                        </label>
+                        <textarea
+                          value={editingFaq.aEn}
+                          onChange={(e) => setEditingFaq({ ...editingFaq, aEn: e.target.value })}
+                          rows={3}
+                          className={input}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleUpdateFaq}
+                        className={`${goldBtn} !py-1.5`}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Değişiklikleri Kaydet
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditFaq}
+                        className="cursor-pointer border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Vazgeç
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{f.aTr}</p>
-                </div>
-              ))}
+                ) : (
+                  <div
+                    key={f.id || idx}
+                    className="border border-border bg-background/50 p-4 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="font-semibold text-sm text-foreground">
+                          {idx + 1}. {f.qTr}
+                        </div>
+                        <div className="text-[11px] text-primary">{f.qEn}</div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => startEditFaq(f)}
+                          className="inline-flex cursor-pointer items-center gap-1 border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                          title="Soruyu Düzenle"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" /> Düzenle
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFaq(f.id)}
+                          className="cursor-pointer p-1 text-muted-foreground hover:text-destructive"
+                          title="Soruyu Sil"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{f.aTr}</p>
+                  </div>
+                ),
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* 8. PRESET CHIPS MANAGER */}
+      {/* 7. PRESET CHIPS MANAGER */}
       {activeSection === "presets" && (
         <div className="border border-border bg-card p-6 space-y-6">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <Sliders className="h-5 w-5 text-primary" />
             <h3 className="font-display text-xl font-semibold">
-              8. Kalıcı Hazır Çip (Preset) Yöneticisi
+              7. Kalıcı Hazır Çip (Preset) Yöneticisi
             </h3>
           </div>
           <p className="text-xs text-muted-foreground">

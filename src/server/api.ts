@@ -32,9 +32,14 @@ export type R2Bucket = {
     value: unknown,
     options?: { httpMetadata?: { contentType?: string; cacheControl?: string } },
   ) => Promise<unknown>;
-  get: (key: string) => Promise<{
+  get: (
+    key: string,
+    options?: { range?: Headers | { offset?: number; length?: number } },
+  ) => Promise<{
     body: ReadableStream;
     httpMetadata?: { contentType?: string; cacheControl?: string };
+    size?: number;
+    range?: { offset: number; length: number };
   } | null>;
   delete: (key: string) => Promise<void>;
   list?: (options?: {
@@ -629,7 +634,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     return handleSitemap(request, env);
   }
 
-  // R2 Media Streaming Handler
+  // R2 Media Streaming Handler (supports images and video streaming with range headers)
   if (
     url.pathname.startsWith("/api/media/") &&
     (request.method === "GET" || request.method === "HEAD")
@@ -643,15 +648,40 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     const resolvedEnv = resolveEnv(env, request);
     if (resolvedEnv.BUCKET && key) {
       try {
-        const object = await resolvedEnv.BUCKET.get(key);
+        const rangeHeader = request.headers.get("range");
+        const object = await resolvedEnv.BUCKET.get(
+          key,
+          rangeHeader ? { range: request.headers } : undefined,
+        );
         if (object) {
           const contentType = object.httpMetadata?.contentType || "image/webp";
+          const headers = new Headers({
+            "content-type": contentType,
+            "cache-control": "public, max-age=31536000, immutable",
+            "x-content-type-options": "nosniff",
+            "accept-ranges": "bytes",
+          });
+          if (object.size !== undefined) {
+            headers.set("content-length", String(object.size));
+          }
+          if (
+            rangeHeader &&
+            "range" in object &&
+            (object as { range?: { offset: number; length: number } }).range
+          ) {
+            const r = (object as { range: { offset: number; length: number } }).range;
+            headers.set(
+              "content-range",
+              `bytes ${r.offset}-${r.offset + r.length - 1}/${object.size}`,
+            );
+            return new Response(request.method === "HEAD" ? null : object.body, {
+              status: 206,
+              headers,
+            });
+          }
           return new Response(request.method === "HEAD" ? null : object.body, {
-            headers: {
-              "content-type": contentType,
-              "cache-control": "public, max-age=31536000, immutable",
-              "x-content-type-options": "nosniff",
-            },
+            status: 200,
+            headers,
           });
         }
       } catch (err) {
@@ -1114,7 +1144,8 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .slice(0, 100) || "image.webp";
       const r2Key = `vehicles/${vehicleId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
 
-      const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
+      const isVideo = contentType.startsWith("video/");
+      const MAX_UPLOAD_BYTES = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024; // 50 MB for video, 5 MB for image
       const ALLOWED_MIME_TYPES = new Set([
         "image/jpeg",
         "image/jpg",
@@ -1122,6 +1153,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         "image/webp",
         "image/avif",
         "image/gif",
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
       ]);
 
       if (!ALLOWED_MIME_TYPES.has(contentType)) {
@@ -1129,7 +1163,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           {
             ok: false,
             error:
-              "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG, WebP, AVIF veya GIF formatları yüklenebilir.",
+              "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG, WebP, AVIF, GIF veya MP4/WebM video formatları yüklenebilir.",
           },
           { status: 400 },
         );
@@ -1143,7 +1177,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           return jsonResponse(
             {
               ok: false,
-              error: "Dosya boyutu çok büyük (Maksimum 5 MB izin verilir).",
+              error: `Dosya boyutu çok büyük (Maksimum ${isVideo ? "50 MB" : "5 MB"} izin verilir).`,
             },
             { status: 413 },
           );
@@ -1159,13 +1193,13 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         return jsonResponse(
           {
             ok: false,
-            error: "Dosya boyutu çok büyük (Maksimum 5 MB izin verilir).",
+            error: `Dosya boyutu çok büyük (Maksimum ${isVideo ? "50 MB" : "5 MB"} izin verilir).`,
           },
           { status: 400 },
         );
       }
 
-      // Sniff binary magic bytes for image authenticity
+      // Sniff binary magic bytes for image and video authenticity
       const bytes = new Uint8Array(arrayBuffer.slice(0, 16));
       const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
       const isPng =
@@ -1190,6 +1224,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         bytes[9] === 0x76 &&
         bytes[10] === 0x69 && // 'avi'
         (bytes[11] === 0x66 || bytes[11] === 0x73); // 'f' or 's' (avif or avis)
+      const isMp4 =
+        bytes[4] === 0x66 &&
+        bytes[5] === 0x74 &&
+        bytes[6] === 0x79 &&
+        bytes[7] === 0x70 && // 'ftyp'
+        !isAvif;
+      const isWebm =
+        bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3; // Matroska/WebM EBML header
 
       let detectedMime = "";
       if (isJpeg) detectedMime = "image/jpeg";
@@ -1197,12 +1239,16 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       else if (isGif) detectedMime = "image/gif";
       else if (isWebp) detectedMime = "image/webp";
       else if (isAvif) detectedMime = "image/avif";
+      else if (isMp4)
+        detectedMime = contentType === "video/quicktime" ? "video/quicktime" : "video/mp4";
+      else if (isWebm) detectedMime = "video/webm";
 
       if (!detectedMime) {
         return jsonResponse(
           {
             ok: false,
-            error: "Geçersiz dosya içeriği: Dosya imzası geçerli bir resim formatı ile eşleşmiyor.",
+            error:
+              "Geçersiz dosya içeriği: Dosya imzası geçerli bir medya formatı (resim veya video) ile eşleşmiyor.",
           },
           { status: 400 },
         );
@@ -1214,7 +1260,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         return jsonResponse(
           {
             ok: false,
-            error: "Dosya MIME türü tespit edilen ikili resim formatı ile eşleşmiyor.",
+            error: "Dosya MIME türü tespit edilen ikili medya formatı ile eşleşmiyor.",
           },
           { status: 400 },
         );
@@ -1232,7 +1278,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       await resolvedEnv.BUCKET.put(r2Key, arrayBuffer, {
         httpMetadata: {
-          contentType: contentType || "image/webp",
+          contentType: contentType || (isVideo ? "video/mp4" : "image/webp"),
           cacheControl: "public, max-age=31536000, immutable",
         },
       });

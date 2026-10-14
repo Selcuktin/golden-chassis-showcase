@@ -10,28 +10,15 @@ import {
   Lock,
   Database,
   Cloud,
-  Download,
-  Upload,
-  RotateCcw,
   Save,
   CheckCircle2,
   AlertTriangle,
   KeyRound,
   Shield,
   Radio,
-  FileCode2,
   Trash2,
 } from "lucide-react";
-import {
-  type SiteCMSConfig,
-  type UndoSnapshot,
-  setCustomAdminPassword,
-  exportD1SqlDump,
-  exportDatabaseJSON,
-  importDatabaseJSON,
-  clearAllBrowserStorage,
-  syncFromServer,
-} from "@/lib/bycar";
+import { type SiteCMSConfig, type UndoSnapshot, setCustomAdminPassword } from "@/lib/bycar";
 
 const input =
   "w-full bg-background border border-input px-3.5 py-2 text-xs outline-none focus:border-primary placeholder:text-muted-foreground";
@@ -194,45 +181,6 @@ export function AdminSystemTab({
     } finally {
       setGcRunning(false);
     }
-  };
-
-  const downloadFile = (content: string, filename: string, type: string) => {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result;
-      if (typeof text === "string") {
-        if (
-          !window.confirm(
-            "Bu yedekteki katalog ve ayarlar yüklensin mi? Yerel taslak değişecek ve sunucuya kaydedilmeye çalışılacak.",
-          )
-        )
-          return;
-        const res = importDatabaseJSON(text);
-        if (res.ok) {
-          setMsg(res.message);
-          setTimeout(() => setMsg(""), 4500);
-        } else {
-          setMsg(`Hata: ${res.message}`);
-          setTimeout(() => setMsg(""), 4500);
-        }
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
   };
 
   return (
@@ -478,7 +426,6 @@ export function AdminSystemTab({
                   ["showAbout", "Kurucumuzun Vizyonu & Hakkımızda"],
                   ["showServices", "4 VIP Hizmet Kartı"],
                   ["showConcierge", "4 Adımlı Concierge & İthalat Süreci"],
-                  ["showTestimonials", "Müşteri Yorumları & Referanslar"],
                   ["showFaq", "Sıkça Sorulan Sorular (SSS)"],
                   ["showFloatingWhatsapp", "Kayan VIP WhatsApp Danışman Butonu"],
                 ] as const
@@ -655,55 +602,6 @@ export function AdminSystemTab({
           >
             <Trash2 className="h-4 w-4" />{" "}
             {gcRunning ? "Medya Temizleniyor..." : "R2 Medya Temizliği (GC)"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              downloadFile(exportD1SqlDump(), "bycar-cloudflare-d1-dump.sql", "text/sql")
-            }
-            className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary"
-          >
-            <FileCode2 className="h-4 w-4" /> Cloudflare D1 (.sql) Dökümü İndir
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              downloadFile(exportDatabaseJSON(), "bycar-veritabani-yedek.json", "application/json")
-            }
-            className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary"
-          >
-            <Download className="h-4 w-4" /> JSON Tam Yedek İndir
-          </button>
-
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-foreground transition hover:border-primary hover:text-primary">
-            <Upload className="h-4 w-4" /> JSON Yedekten Yükle
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={handleImportJson}
-              className="hidden"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                confirm(
-                  "Yerel taslak silinip güncel katalog sunucudan yüklenecek. Onaylıyor musunuz?",
-                )
-              ) {
-                clearAllBrowserStorage();
-                void syncFromServer(true);
-                setMsg("Yerel taslak temizlendi; güncel katalog sunucudan yükleniyor.");
-                setTimeout(() => setMsg(""), 4000);
-              }
-            }}
-            className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:border-destructive hover:text-destructive"
-          >
-            <RotateCcw className="h-4 w-4" /> Yerel Taslağı Temizle & Kataloğu Yenile
           </button>
         </div>
       </div>

@@ -2284,4 +2284,105 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(res?.status).toBe(200);
     expect(uploadedKey).not.toContain("..");
   });
+
+  it("Regression Test 21: POST /api/admin/upload accepts valid MP4 and WebM video files and sets R2 content-type", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "SecrEtPassword!2026" }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const { token } = (await loginRes?.json()) as { token: string };
+
+    let uploadedKey = "";
+    let uploadedMeta: { contentType?: string } | undefined;
+    const mockBucket = {
+      put: async (
+        key: string,
+        _body: unknown,
+        options?: { httpMetadata?: { contentType?: string } },
+      ) => {
+        uploadedKey = key;
+        uploadedMeta = options?.httpMetadata;
+        return {};
+      },
+    };
+
+    // Valid MP4 magic bytes: 00 00 00 20 'ftyp' 'isom'
+    const validMp4 = new Uint8Array([
+      0x00,
+      0x00,
+      0x00,
+      0x20,
+      0x66,
+      0x74,
+      0x79,
+      0x70, // 'ftyp'
+      0x69,
+      0x73,
+      0x6f,
+      0x6d, // 'isom'
+      0x00,
+      0x00,
+      0x02,
+      0x00,
+    ]);
+
+    const res = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "video/mp4",
+          "x-file-name": "porsche-promo.mp4",
+          "x-vehicle-id": "car-911",
+        },
+        body: validMp4.buffer,
+      }),
+      { BUCKET: mockBucket },
+    );
+
+    expect(res?.status).toBe(200);
+    const data = (await res?.json()) as { ok: boolean; url: string };
+    expect(data.ok).toBe(true);
+    expect(data.url).toContain("/api/media/vehicles%2Fcar-911%2F");
+    expect(uploadedKey).toContain("porsche-promo.mp4");
+    expect(uploadedMeta?.contentType).toBe("video/mp4");
+  });
+
+  it("Regression Test 22: GET /api/media supports video range streaming with 206 Partial Content", async () => {
+    const mockBucket = {
+      get: async (
+        _key: string,
+        options?: { range?: Headers | { offset?: number; length?: number } },
+      ) => {
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+            controller.close();
+          },
+        });
+        const hasRange = Boolean(options?.range);
+        return {
+          body: stream,
+          httpMetadata: { contentType: "video/mp4" },
+          size: 1000,
+          range: hasRange ? { offset: 0, length: 500 } : undefined,
+        };
+      },
+    };
+
+    const req = new Request("https://bycarglobal.com/api/media/vehicles%2Fcar-911%2Fvideo.mp4", {
+      method: "GET",
+      headers: { range: "bytes=0-499" },
+    });
+
+    const res = await handleApiRequest(req, { BUCKET: mockBucket });
+    expect(res?.status).toBe(206);
+    expect(res?.headers.get("content-type")).toBe("video/mp4");
+    expect(res?.headers.get("accept-ranges")).toBe("bytes");
+    expect(res?.headers.get("content-range")).toBe("bytes 0-499/1000");
+  });
 });
