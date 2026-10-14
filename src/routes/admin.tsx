@@ -624,13 +624,20 @@ function Admin() {
           try {
             const blobRes = await fetch(webpDataUrl);
             const blob = await blobRes.blob();
+            const uploadContentType = blob.type.startsWith("image/") ? blob.type : "image/webp";
+            const uploadExtension =
+              uploadContentType === "image/jpeg"
+                ? ".jpg"
+                : uploadContentType === "image/png"
+                  ? ".png"
+                  : ".webp";
             const uploadRes = await fetch("/api/admin/upload", {
               method: "POST",
               headers: {
                 authorization: `Bearer ${token}`,
-                "content-type": "image/webp",
+                "content-type": uploadContentType,
                 "x-vehicle-id": editingId || "fleet",
-                "x-file-name": file.name.replace(/\.[^/.]+$/, "") + ".webp",
+                "x-file-name": file.name.replace(/\.[^/.]+$/, "") + uploadExtension,
               },
               body: blob,
             });
