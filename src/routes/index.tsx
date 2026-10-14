@@ -989,7 +989,7 @@ function Index() {
                   width={720}
                   height={208}
                   loading="lazy"
-                  className="h-56 w-56 rounded-full bg-black object-contain p-6 md:h-64 md:w-64"
+                  className="h-56 w-56 scale-110 rounded-full bg-black object-contain p-2 md:h-64 md:w-64"
                 />
               </div>
               <div className="mt-6 text-center">
