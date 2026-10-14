@@ -484,9 +484,12 @@ function Index() {
             </a>
           </div>
 
-          {/* Framed Vehicle Spotlight Card - Enlarged & Focused on Hypercar */}
-          <div className="relative -mx-3 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-            <div className="relative aspect-[4/3] sm:aspect-[16/10] w-full min-h-[270px] sm:min-h-[320px] overflow-hidden rounded-xl bg-black">
+          {/* Framed Vehicle Spotlight Card - Hypercar Fits 100% Without Cropping */}
+          <div className="relative -mx-2 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+            <div
+              className="relative w-full overflow-hidden rounded-xl bg-black"
+              style={{ aspectRatio: "1832 / 858" }}
+            >
               <img
                 src={
                   cmsConfig.hero.bgImageMobile && !cmsConfig.hero.bgImageMobile.includes("hero")
@@ -496,9 +499,9 @@ function Index() {
                 alt="ByCar Exclusive hypercar"
                 width={1832}
                 height={858}
-                className="h-full w-full object-cover object-center"
+                className="h-full w-full object-contain sm:object-cover object-center"
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
             </div>
           </div>
         </div>
