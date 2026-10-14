@@ -236,6 +236,8 @@ function VehicleDetailPage() {
                       <img
                         src={car.images[img]}
                         alt={`${car.title} - ${img + 1}`}
+                        fetchPriority="high"
+                        decoding="async"
                         className="relative z-10 h-full w-full object-contain p-1"
                       />
                     </>
@@ -243,6 +245,8 @@ function VehicleDetailPage() {
                     <img
                       src={car.images[img]}
                       alt={`${car.title} - ${img + 1}`}
+                      fetchPriority="high"
+                      decoding="async"
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
                   )}

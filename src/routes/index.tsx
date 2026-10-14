@@ -23,8 +23,8 @@ import {
   Star,
   ZoomIn,
 } from "lucide-react";
-import hero from "@/assets/hero.png";
-import heroMobile from "@/assets/hero-mobile.png";
+import hero from "@/assets/hero.webp";
+import heroMobile from "@/assets/hero-mobile.webp";
 import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   BRANDS,
@@ -53,7 +53,23 @@ export const Route = createFileRoute("/")({
     };
   },
   head: ({ loaderData }) => ({
-    links: [{ rel: "canonical", href: loaderData?.siteUrl || "/" }],
+    links: [
+      { rel: "canonical", href: loaderData?.siteUrl || "/" },
+      {
+        rel: "preload",
+        as: "image",
+        href: heroMobile,
+        media: "(max-width: 767px)",
+        type: "image/webp",
+      },
+      {
+        rel: "preload",
+        as: "image",
+        href: hero,
+        media: "(min-width: 768px)",
+        type: "image/webp",
+      },
+    ],
     meta: [
       {
         title:
@@ -315,8 +331,11 @@ function Index() {
             className="flex items-center gap-3 leading-none transition-opacity hover:opacity-90"
           >
             <img
-              src="/bycar-logo-dark.png"
+              src="/bycar-logo-dark.webp"
               alt="ByCar Exclusive Automotive"
+              width={160}
+              height={36}
+              decoding="async"
               className="h-8 sm:h-9 w-auto object-contain"
             />
             <div className="hidden sm:block border-l border-white/20 pl-3">
@@ -499,6 +518,8 @@ function Index() {
                 alt="ByCar Exclusive hypercar"
                 width={1832}
                 height={1280}
+                fetchPriority="high"
+                decoding="async"
                 className="h-full w-full object-cover object-center"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
@@ -518,6 +539,8 @@ function Index() {
           alt="ByCar Exclusive hypercar"
           width={1832}
           height={858}
+          fetchPriority="high"
+          decoding="async"
           className="absolute inset-0 h-full w-full object-cover object-[70%_center] md:object-[78%_center] lg:object-[82%_center]"
         />
         {/* Left ambient gradient to guarantee high contrast and luxury framing for text without covering the car */}
@@ -1033,8 +1056,12 @@ function Index() {
           <div>
             <div className="flex items-center gap-3">
               <img
-                src="/bycar-logo-dark.png"
+                src="/bycar-logo-dark.webp"
                 alt="ByCar Exclusive Automotive"
+                width={160}
+                height={36}
+                loading="lazy"
+                decoding="async"
                 className="h-9 w-auto object-contain"
               />
               <div className="border-l border-white/20 pl-3">
