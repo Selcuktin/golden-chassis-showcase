@@ -47,6 +47,7 @@ interface AdminSystemTabProps {
   onRestoreUndo: () => void;
   onSyncServer: () => Promise<void>;
   isSyncing: boolean;
+  onPasswordChanged: () => void;
 }
 
 export function AdminSystemTab({
@@ -59,6 +60,7 @@ export function AdminSystemTab({
   onRestoreUndo,
   onSyncServer,
   isSyncing,
+  onPasswordChanged,
 }: AdminSystemTabProps) {
   const [form, setForm] = useState<SiteCMSConfig>(cmsConfig);
   const [msg, setMsg] = useState("");
@@ -100,9 +102,12 @@ export function AdminSystemTab({
       });
       setNewPw("");
       setNewPwConfirm("");
-      setTimeout(() => setPwMsg(null), 5000);
-    } catch {
-      setPwMsg({ text: "Şifre güncellenirken bir hata oluştu.", error: true });
+      onPasswordChanged();
+    } catch (error) {
+      setPwMsg({
+        text: error instanceof Error ? error.message : "Şifre güncellenirken bir hata oluştu.",
+        error: true,
+      });
     }
   };
 

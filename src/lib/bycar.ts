@@ -1694,24 +1694,42 @@ export async function derivePBKDF2Hex(
 }
 
 export async function setCustomAdminPassword(newPassword: string): Promise<boolean> {
-  if (typeof window !== "undefined") {
-    const token = window.sessionStorage.getItem("bycar_admin_token");
-    if (token) {
-      const res = await fetch("/api/admin/change-password", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ newPassword: newPassword.trim() }),
-      });
-      if (!res.ok) {
-        const errData = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(errData.error || "Şifre sunucuda güncellenemedi.");
-      }
+  const token =
+    typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+  if (!token) throw new Error("Şifre değiştirmek için yeniden giriş yapın.");
+  const res = await fetch("/api/admin/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify({ newPassword: newPassword.trim() }),
+  });
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (!res.ok || data?.ok !== true) {
+    throw new Error(data?.error || "Şifre sunucuda güncellenemedi. Yeniden giriş yapıp deneyin.");
+  }
+  clearStoredAdminSession();
+  return true;
+}
+
+function clearStoredAdminSession() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem("bycar_admin_token");
+  window.sessionStorage.removeItem("bycar_admin_auth");
+}
+
+export async function logoutAdmin(): Promise<void> {
+  const token =
+    typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+  if (token) {
+    const res = await fetch("/api/admin/logout", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (!res.ok || data?.ok !== true) {
+      throw new Error(data?.error || "Çıkış sunucuda tamamlanamadı. Yeniden deneyin.");
     }
   }
-  return true;
+  clearStoredAdminSession();
 }
 
 export type LockoutState = {

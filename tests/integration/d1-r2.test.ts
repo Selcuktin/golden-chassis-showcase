@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getPlatformProxy, type PlatformProxy } from "wrangler";
 import {
   deriveServerPBKDF2HexWithParams,
@@ -391,6 +391,141 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
         "SELECT value FROM site_settings WHERE key = 'replay_setting'",
       ).first("value"),
     ).toBe("preserved");
+  });
+});
+
+describe("Persistent session mutation failures and atomic password replacement", () => {
+  let local: Awaited<ReturnType<typeof createLocalDatabase>>;
+  beforeEach(async () => {
+    local = await createLocalDatabase();
+  });
+  afterEach(async () => local?.dispose());
+  const login = (password = secret) =>
+    handleApiRequest(post("/api/admin/login", { password }), {
+      ...local.env,
+      ADMIN_PASSWORD: secret,
+    });
+  const me = (token: string) =>
+    handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/me", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      local.env,
+    );
+  async function newToken(password = secret) {
+    const response = await login(password);
+    expect(response?.status).toBe(200);
+    return ((await response!.json()) as { token: string }).token;
+  }
+
+  it("returns a retryable error on real D1 logout failure, then revokes successfully on retry", async () => {
+    const token = await newToken();
+    const db = local.env.DB;
+    const failingDb: ApiDatabase = {
+      prepare(query) {
+        return db.prepare(
+          query.includes("DELETE FROM admin_sessions WHERE token_hash")
+            ? "DELETE FROM admin_sessions WHERE token_hash = ? AND (SELECT value FROM synthetic_missing_fault_table) IS NULL"
+            : query,
+        );
+      },
+      batch: (statements) => db.batch(statements as Parameters<D1Database["batch"]>[0]),
+      exec: db.exec.bind(db),
+    };
+    const failed = await handleApiRequest(post("/api/admin/logout", {}, token), {
+      ...local.env,
+      DB: failingDb,
+    });
+    expect(failed?.status).toBe(503);
+    expect(await failed!.text()).not.toContain("synthetic_missing_fault_table");
+    expect((await me(token))?.status).toBe(200);
+    expect((await handleApiRequest(post("/api/admin/logout", {}, token), local.env))?.status).toBe(
+      200,
+    );
+    expect((await me(token))?.status).toBe(401);
+  });
+
+  it("rolls back both the password and session deletions if any statement in the D1 batch fails", async () => {
+    const token = await newToken();
+    const secondToken = await newToken();
+    const db = local.env.DB;
+    const before = await db
+      .prepare("SELECT password_hash, password_salt FROM admin_users WHERE username = 'admin'")
+      .first();
+    const failingDb: ApiDatabase = {
+      prepare: db.prepare.bind(db),
+      exec: db.exec.bind(db),
+      batch: (statements) =>
+        db.batch([
+          ...(statements as Parameters<D1Database["batch"]>[0]),
+          db.prepare(
+            "INSERT INTO site_settings (key, value) VALUES (NULL, 'synthetic transaction failure')",
+          ),
+        ]),
+    };
+    const failed = await handleApiRequest(
+      post("/api/admin/change-password", { newPassword: "ReplacementPassword!2026" }, token),
+      { ...local.env, DB: failingDb },
+    );
+    expect(failed?.status).toBe(500);
+    expect(
+      await db
+        .prepare("SELECT password_hash, password_salt FROM admin_users WHERE username = 'admin'")
+        .first(),
+    ).toEqual(before);
+    expect((await me(token))?.status).toBe(200);
+    expect((await me(secondToken))?.status).toBe(200);
+    expect(
+      (await handleApiRequest(post("/api/admin/login", { password: secret }), local.env))?.status,
+    ).toBe(200);
+    expect(
+      (
+        await handleApiRequest(
+          post("/api/admin/login", { password: "ReplacementPassword!2026" }),
+          local.env,
+        )
+      )?.status,
+    ).toBe(401);
+  });
+
+  it("revokes all sessions for a historical non-master admin ID on successful password replacement", async () => {
+    const oldPassword = "HistoricalAdminPassword!2026";
+    const salt = "a1d9c587b0ef46dcac894c711f1bdcb9";
+    const hash = await deriveServerPBKDF2HexWithParams(oldPassword, salt, 100000);
+    await local.env.DB.prepare(
+      "INSERT INTO admin_users (id, username, password_hash, password_salt) VALUES ('historical-admin-id', 'admin', ?, ?)",
+    )
+      .bind(hash, salt)
+      .run();
+    const token = await newToken(oldPassword);
+    const secondToken = await newToken(oldPassword);
+    const response = await handleApiRequest(
+      post("/api/admin/change-password", { newPassword: "NewHistoricalPassword!2026" }, token),
+      local.env,
+    );
+    expect(response?.status).toBe(200);
+    expect(
+      await local.env.DB.prepare("SELECT id FROM admin_users WHERE username = 'admin'").first("id"),
+    ).toBe("historical-admin-id");
+    expect(
+      await local.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM admin_sessions WHERE admin_id = 'historical-admin-id'",
+      ).first("count"),
+    ).toBe(0);
+    expect((await me(token))?.status).toBe(401);
+    expect((await me(secondToken))?.status).toBe(401);
+    expect(
+      (
+        await handleApiRequest(
+          post("/api/admin/login", { password: "NewHistoricalPassword!2026" }),
+          local.env,
+        )
+      )?.status,
+    ).toBe(200);
+    expect(
+      (await handleApiRequest(post("/api/admin/login", { password: oldPassword }), local.env))
+        ?.status,
+    ).toBe(401);
   });
 });
 

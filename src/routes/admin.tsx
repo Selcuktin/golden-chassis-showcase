@@ -42,6 +42,7 @@ import {
   exportDatabaseJSON,
   getEffectivePresets,
   getLoginLockoutState,
+  logoutAdmin,
   importDatabaseJSON,
   recordLoginAttempt,
   syncFromServer,
@@ -219,6 +220,7 @@ function Admin() {
   const [authed, setAuthed] = useState(false);
   const [pw, setPw] = useState("");
   const [pwErr, setPwErr] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [lockout, setLockout] = useState<{ attempts: number; lockedUntil: number | null }>({
     attempts: 0,
     lockedUntil: null,
@@ -232,8 +234,12 @@ function Admin() {
         fetch("/api/admin/me", {
           headers: { authorization: `Bearer ${token}` },
         })
-          .then((res) => {
-            if (res.ok) {
+          .then(async (res) => {
+            const data = (await res.json().catch(() => null)) as {
+              ok?: boolean;
+              authenticated?: boolean;
+            } | null;
+            if (res.ok && data?.ok === true && data.authenticated === true) {
               setAuthed(true);
               void syncInquiriesFromServer(token);
             } else {
@@ -785,6 +791,7 @@ function Admin() {
                 void syncFromServer();
                 setAuthed(true);
                 setPwErr("");
+                setAuthNotice("");
               } else {
                 const nextLock = recordLoginAttempt(false);
                 setLockout(nextLock);
@@ -816,6 +823,11 @@ function Admin() {
                 </p>
               )}
               {pwErr && !isLocked && <p className="mt-1 text-xs text-destructive">{pwErr}</p>}
+              {authNotice && (
+                <p role="status" className="mt-2 text-xs text-primary">
+                  {authNotice}
+                </p>
+              )}
             </div>
             <button type="submit" disabled={isLocked} className={`${goldBtn} w-full`}>
               <Lock className="h-4 w-4" /> Panele Giriş Yap
@@ -955,20 +967,17 @@ function Admin() {
               </Link>
               <button
                 onClick={async () => {
-                  const token = window.sessionStorage.getItem("bycar_admin_token");
-                  if (token) {
-                    try {
-                      await fetch("/api/admin/logout", {
-                        method: "POST",
-                        headers: { authorization: `Bearer ${token}` },
-                      });
-                    } catch {
-                      // Ignore offline
-                    }
+                  try {
+                    await logoutAdmin();
+                    setAuthed(false);
+                    setAuthNotice("");
+                  } catch (error) {
+                    flashNotice(
+                      error instanceof Error
+                        ? error.message
+                        : "Çıkış tamamlanamadı. Yeniden deneyin.",
+                    );
                   }
-                  window.sessionStorage.removeItem("bycar_admin_token");
-                  window.sessionStorage.removeItem("bycar_admin_auth");
-                  setAuthed(false);
                 }}
                 className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
               >
@@ -2728,6 +2737,12 @@ function Admin() {
           {/* TAB 6: CONTACT, TOGGLES, PASSWORDS & D1 SYNC */}
           {tab === "system" && (
             <AdminSystemTab
+              onPasswordChanged={() => {
+                setAuthed(false);
+                setPw("");
+                setPwErr("");
+                setAuthNotice("Şifreniz güncellendi. Yeni şifrenizle yeniden giriş yapın.");
+              }}
               cmsConfig={cmsConfig}
               onSave={updateCmsConfig}
               onReset={resetCmsConfig}

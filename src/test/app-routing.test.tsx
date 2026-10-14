@@ -156,7 +156,8 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
 
     // 3. Custom Admin Password Change via Server API
     const customPass = "SuperVIP_2026!#";
-    await setCustomAdminPassword(customPass);
+    window.sessionStorage.removeItem("bycar_admin_token");
+    await expect(setCustomAdminPassword(customPass)).rejects.toThrow("yeniden giriş");
     // Verify CMS config NEVER stores password or hash
     const cmsCfg = getStoredCmsConfig();
     expect((cmsCfg as Record<string, unknown>)["customPasswordHash"]).toBeUndefined();
