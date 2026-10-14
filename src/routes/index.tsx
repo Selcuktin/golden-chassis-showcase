@@ -23,7 +23,7 @@ import {
   Star,
   ZoomIn,
 } from "lucide-react";
-import hero from "@/assets/hero.jpg";
+import hero from "@/assets/hero.png";
 import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   BRANDS,
@@ -503,8 +503,8 @@ function Index() {
         </div>
       </section>
 
-      {/* 2) DESKTOP & TABLET HERO (>= md): Original cinematic full-bleed hero.png background */}
-      <section className="relative hidden md:flex min-h-[92svh] lg:min-h-screen items-end overflow-hidden pt-32 lg:pt-36">
+      {/* 2) DESKTOP & TABLET HERO (>= md): Cinematic full-bleed hero image with car aligned right & text framed left */}
+      <section className="relative hidden md:flex min-h-[88svh] lg:min-h-[92vh] items-center overflow-hidden pt-24 pb-16">
         <img
           src={
             cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
@@ -512,33 +512,57 @@ function Index() {
               : hero
           }
           alt="ByCar Exclusive hypercar"
-          width={1920}
-          height={1088}
-          className="absolute inset-0 h-full w-full object-cover"
+          width={1832}
+          height={858}
+          className="absolute inset-0 h-full w-full object-cover object-[70%_center] md:object-[78%_center] lg:object-[82%_center]"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-background/15" />
-        <div className="relative mx-auto w-full max-w-7xl px-6 pb-16 lg:pb-24">
-          <p className="mb-3 text-xs tracking-[0.5em] text-primary">
-            {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
-              "EXCLUSIVE AUTOMOTIVE"}
-          </p>
-          <h1 className="max-w-3xl font-display text-5xl lg:text-7xl xl:text-8xl font-semibold leading-tight tracking-tight">
-            {(lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle}
-          </h1>
-          <p className="mt-4 lg:mt-6 max-w-xl text-base lg:text-lg text-muted-foreground">
-            {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
-          </p>
-          <div className="mt-8 lg:mt-10 flex flex-row flex-wrap gap-4">
-            <a href="#koleksiyon" className={`${goldBtn} text-center justify-center`}>
-              {(lang === "tr"
-                ? cmsConfig.hero.primaryBtnTextTr
-                : cmsConfig.hero.primaryBtnTextEn) || t.explore}
-            </a>
-            <a href="#ithalat" className={`${outlineBtn} text-center justify-center`}>
-              {(lang === "tr"
-                ? cmsConfig.hero.secondaryBtnTextTr
-                : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
-            </a>
+        {/* Left ambient gradient to guarantee high contrast and luxury framing for text without covering the car */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-[65%] lg:w-[50%] bg-gradient-to-r from-background/95 via-background/65 to-transparent" />
+        {/* Subtle bottom fade to seamlessly blend into stats */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background via-background/40 to-transparent" />
+
+        <div className="relative mx-auto w-full max-w-7xl px-6 lg:px-8 py-12">
+          <div className="relative z-10 max-w-md lg:max-w-lg xl:max-w-xl">
+            <p className="mb-3 text-[10px] lg:text-xs font-semibold tracking-[0.35em] uppercase text-primary">
+              {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
+                "BYCAR EXCLUSIVE SHOWROOM"}
+            </p>
+            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-semibold leading-[1.08] tracking-tight">
+              {(() => {
+                const title =
+                  (lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle;
+                if (title.includes("Kusursuzluğun") && title.includes("Yeni Tanımı")) {
+                  return (
+                    <>
+                      <span className="block text-foreground">Kusursuzluğun</span>
+                      <span className="block text-gold">Yeni Tanımı.</span>
+                    </>
+                  );
+                }
+                return <span className="text-foreground">{title}</span>;
+              })()}
+            </h1>
+            <p className="mt-4 lg:mt-6 text-xs sm:text-sm lg:text-[15px] leading-relaxed text-muted-foreground/90 max-w-md">
+              {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
+            </p>
+            <div className="mt-8 flex flex-row flex-wrap items-center gap-4">
+              <a
+                href="#koleksiyon"
+                className={`${goldBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold`}
+              >
+                {(lang === "tr"
+                  ? cmsConfig.hero.primaryBtnTextTr
+                  : cmsConfig.hero.primaryBtnTextEn) || t.explore}
+              </a>
+              <a
+                href="#ithalat"
+                className={`${outlineBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold backdrop-blur-sm`}
+              >
+                {(lang === "tr"
+                  ? cmsConfig.hero.secondaryBtnTextTr
+                  : cmsConfig.hero.secondaryBtnTextEn) || t.importReq}
+              </a>
+            </div>
           </div>
         </div>
       </section>
