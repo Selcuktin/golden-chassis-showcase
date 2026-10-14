@@ -485,7 +485,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
               {form.hero.bgImageMobile && (
                 <div
                   className="relative w-48 overflow-hidden border border-border bg-black"
-                  style={{ aspectRatio: "1832 / 858" }}
+                  style={{ aspectRatio: "1832 / 1280" }}
                 >
                   <img
                     src={form.hero.bgImageMobile}

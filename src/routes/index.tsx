@@ -484,11 +484,11 @@ function Index() {
             </a>
           </div>
 
-          {/* Framed Vehicle Spotlight Card - Hypercar Fits 100% Without Cropping */}
+          {/* Framed Vehicle Spotlight Card - Hypercar Fits 100% with Tall Luxury Presence */}
           <div className="relative -mx-2 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] backdrop-blur-xl">
             <div
               className="relative w-full overflow-hidden rounded-xl bg-black"
-              style={{ aspectRatio: "1832 / 858" }}
+              style={{ aspectRatio: "1832 / 1280" }}
             >
               <img
                 src={
@@ -498,8 +498,8 @@ function Index() {
                 }
                 alt="ByCar Exclusive hypercar"
                 width={1832}
-                height={858}
-                className="h-full w-full object-contain sm:object-cover object-center"
+                height={1280}
+                className="h-full w-full object-cover object-center"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
             </div>
