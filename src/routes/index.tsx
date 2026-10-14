@@ -458,7 +458,7 @@ function Index() {
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-2.5 text-[11px] sm:text-xs leading-relaxed text-muted-foreground/85">
+          <p className="mt-2.5 text-xs sm:text-sm font-medium leading-relaxed text-zinc-100 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
             {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
           </p>
 
@@ -517,38 +517,40 @@ function Index() {
           className="absolute inset-0 h-full w-full object-cover object-[70%_center] md:object-[78%_center] lg:object-[82%_center]"
         />
         {/* Left ambient gradient to guarantee high contrast and luxury framing for text without covering the car */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-[65%] lg:w-[50%] bg-gradient-to-r from-background/95 via-background/65 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-[75%] lg:w-[60%] bg-gradient-to-r from-black/95 via-black/85 md:via-black/75 to-transparent" />
+        {/* Ambient radial blur specifically for text zone */}
+        <div className="pointer-events-none absolute top-1/2 -translate-y-1/2 left-0 w-[550px] h-[550px] bg-black/60 rounded-full blur-3xl" />
         {/* Subtle bottom fade to seamlessly blend into stats */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background via-background/40 to-transparent" />
 
         <div className="relative mx-auto w-full max-w-7xl px-6 lg:px-8 py-12">
           <div className="relative z-10 max-w-md lg:max-w-lg xl:max-w-xl">
-            <p className="mb-3 text-[10px] lg:text-xs font-semibold tracking-[0.35em] uppercase text-primary">
+            <p className="mb-3 text-[10px] lg:text-xs font-semibold tracking-[0.35em] uppercase text-primary drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]">
               {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
                 "BYCAR EXCLUSIVE SHOWROOM"}
             </p>
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-semibold leading-[1.08] tracking-tight">
+            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-semibold leading-[1.08] tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
               {(() => {
                 const title =
                   (lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle;
                 if (title.includes("Kusursuzluğun") && title.includes("Yeni Tanımı")) {
                   return (
                     <>
-                      <span className="block text-foreground">Kusursuzluğun</span>
+                      <span className="block text-white">Kusursuzluğun</span>
                       <span className="block text-gold">Yeni Tanımı.</span>
                     </>
                   );
                 }
-                return <span className="text-foreground">{title}</span>;
+                return <span className="text-white">{title}</span>;
               })()}
             </h1>
-            <p className="mt-4 lg:mt-6 text-xs sm:text-sm lg:text-[15px] leading-relaxed text-muted-foreground/90 max-w-md">
+            <p className="mt-4 lg:mt-6 text-sm sm:text-base lg:text-lg font-medium leading-relaxed text-zinc-100 drop-shadow-[0_2px_12px_rgba(0,0,0,1)] max-w-lg">
               {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
             </p>
             <div className="mt-8 flex flex-row flex-wrap items-center gap-4">
               <a
                 href="#koleksiyon"
-                className={`${goldBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold`}
+                className={`${goldBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold shadow-2xl`}
               >
                 {(lang === "tr"
                   ? cmsConfig.hero.primaryBtnTextTr
@@ -556,7 +558,7 @@ function Index() {
               </a>
               <a
                 href="#ithalat"
-                className={`${outlineBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold backdrop-blur-sm`}
+                className={`${outlineBtn} text-center justify-center !px-6 !py-3.5 !text-xs !font-bold backdrop-blur-md shadow-2xl`}
               >
                 {(lang === "tr"
                   ? cmsConfig.hero.secondaryBtnTextTr
