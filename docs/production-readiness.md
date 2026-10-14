@@ -38,6 +38,10 @@ müşteri verisine test kaydı yapılmaz. Değişiklikler feature branch ve PR i
 Panelde değiştirilen WhatsApp numarası/şablonu ve konum, SSR dahil tüm genel
 bağlantılara açıkça aktarılır; ziyaretçi iletişimi yönetici taslak deposuna bağlı değildir.
 
+Araç, müşteri talebi, fotoğraf, yorum/SSS/etiket silme; medya GC, geri alma,
+yedek yükleme ve varsayılana dönme gibi veri değiştiren toplu işlemler onay
+penceresi gerektirir. İptal, silme isteği göndermeden işlemi durdurur.
+
 ## Doğrulama
 
 - Node 24: TypeScript, ESLint, Vitest, gerçek yerel Wrangler/workerd D1/R2,

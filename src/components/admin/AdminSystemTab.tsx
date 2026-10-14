@@ -127,6 +127,12 @@ export function AdminSystemTab({
   };
 
   const handleRunMediaGc = async () => {
+    if (
+      !window.confirm(
+        "Kullanılmayan ve bekleme süresi dolmuş medya dosyaları kalıcı olarak silinecek. Devam edilsin mi?",
+      )
+    )
+      return;
     const token =
       typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
     if (!token) {
@@ -209,6 +215,12 @@ export function AdminSystemTab({
     reader.onload = (event) => {
       const text = event.target?.result;
       if (typeof text === "string") {
+        if (
+          !window.confirm(
+            "Bu yedekteki katalog ve ayarlar yüklensin mi? Yerel taslak değişecek ve sunucuya kaydedilmeye çalışılacak.",
+          )
+        )
+          return;
         const res = importDatabaseJSON(text);
         if (res.ok) {
           setMsg(res.message);

@@ -327,6 +327,7 @@ function Admin() {
   };
 
   const handleDeletePreset = (category: keyof SiteCMSConfig["customPresets"], item: string) => {
+    if (!window.confirm(`"${item}" hazır etiketi silinsin mi?`)) return;
     if (category === "extras") {
       const next = {
         ...cmsConfig,
@@ -637,6 +638,13 @@ function Admin() {
       : Math.min(previewIdx, Math.max(0, previewImages.length - 1));
 
   const removeImage = (idx: number) => {
+    if (
+      !window.confirm(
+        "Bu fotoğraf araçtan kaldırılsın mı? Değişiklik, aracı kaydettiğinizde vitrine yansır.",
+      )
+    )
+      return;
+    setFormDirty(true);
     setImages((prev) => prev.filter((_, i) => i !== idx));
     setPreviewIdx((prev) => Math.max(0, Math.min(prev, images.length - 2)));
   };
@@ -672,6 +680,11 @@ function Admin() {
 
   const handleDeleteCar = async (id: string) => {
     const target = cars.find((c) => c.id === id);
+    if (
+      !target ||
+      !window.confirm(`"${target.title}" aracı silinsin mi? İlan canlı vitrinden kaldırılacak.`)
+    )
+      return;
     const nextCars = cars.filter((c) => c.id !== id);
     deleteCar(id, target ? `"${target.title}" Silindi` : "Araç Silindi", false);
     if (editingId === id) clearForm();
@@ -732,6 +745,12 @@ function Admin() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      if (
+        !window.confirm(
+          "Bu yedekteki katalog ve ayarlar yüklensin mi? Yerel taslak değişecek ve sunucuya kaydedilmeye çalışılacak.",
+        )
+      )
+        return;
       const res = importDatabaseJSON(String(reader.result || ""));
       setDbMsg(res.message);
       setTimeout(() => setDbMsg(""), 5000);
@@ -1050,6 +1069,12 @@ function Admin() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Son katalog işlemi geri alınsın mı? Önceki veriler canlıya gönderilecek.",
+                      )
+                    )
+                      return;
                     const snap = restoreUndo();
                     if (snap) {
                       setDbMsg(`"${snap.label}" işlemi geri alındı, önceki veriler yüklendi.`);
@@ -2686,7 +2711,14 @@ function Admin() {
 
                     <button
                       type="button"
-                      onClick={() => updateSettings(DEFAULT_SETTINGS)}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Vitrin ve filtre ayarları varsayılan değerlere döndürülsün mü?",
+                          )
+                        )
+                          updateSettings(DEFAULT_SETTINGS);
+                      }}
                       className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-4 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> Ayarları Varsayılana Döndür
@@ -2781,6 +2813,8 @@ function Admin() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!window.confirm("Yerel taslak silinip güncel katalog yüklensin mi?"))
+                        return;
                       clearAllBrowserStorage();
                       void syncFromServer(true);
                       setDbMsg("Yerel taslak temizlendi; katalog sunucudan yükleniyor.");
@@ -2795,6 +2829,12 @@ function Admin() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (
+                          !window.confirm(
+                            "Son katalog işlemi geri alınsın mı? Önceki veriler canlıya gönderilecek.",
+                          )
+                        )
+                          return;
                         const snap = restoreUndo();
                         if (snap) {
                           setDbMsg(`"${snap.label}" işlemi geri alındı.`);
@@ -2816,7 +2856,10 @@ function Admin() {
             <AdminContentTab
               cmsConfig={cmsConfig}
               onSave={updateCmsConfig}
-              onReset={resetCmsConfig}
+              onReset={() => {
+                if (window.confirm("Site içerik ayarları varsayılan değerlere döndürülsün mü?"))
+                  resetCmsConfig();
+              }}
             />
           )}
 
@@ -2831,11 +2874,16 @@ function Admin() {
               }}
               cmsConfig={cmsConfig}
               onSave={updateCmsConfig}
-              onReset={resetCmsConfig}
+              onReset={() => {
+                if (window.confirm("Site içerik ayarları varsayılan değerlere döndürülsün mü?"))
+                  resetCmsConfig();
+              }}
               carsCount={cars.length}
               inquiriesCount={inquiries.length}
               undoSnap={undoSnap}
-              onRestoreUndo={restoreUndo}
+              onRestoreUndo={() => {
+                if (window.confirm("Son katalog işlemi geri alınsın mı?")) restoreUndo();
+              }}
               onSyncServer={syncWithServer}
               isSyncing={isSyncing}
             />

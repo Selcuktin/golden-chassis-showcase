@@ -101,6 +101,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
   };
 
   const handleDeleteTestimonial = (id: string) => {
+    if (!window.confirm("Bu müşteri yorumu silinsin mi?")) return;
     const next = {
       ...form,
       testimonials: form.testimonials.filter((t) => t.id !== id),
@@ -132,6 +133,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
   };
 
   const handleDeleteFaq = (id: string) => {
+    if (!window.confirm("Bu sıkça sorulan soru silinsin mi?")) return;
     const next = {
       ...form,
       faqs: form.faqs.filter((f) => f.id !== id),
@@ -178,6 +180,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
   };
 
   const handleDeletePreset = (cat: keyof SiteCMSConfig["customPresets"], itemText: string) => {
+    if (!window.confirm(`"${itemText}" hazır etiketi silinsin mi?`)) return;
     if (cat === "extras") {
       const next = {
         ...form,
