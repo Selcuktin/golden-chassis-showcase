@@ -152,18 +152,18 @@ it("provides video upload button and file selection for car presentation video",
   ).toBeInTheDocument();
 });
 
-it("provides desktop and mobile hero image file selection buttons in CMS editor", async () => {
+it("locks hero visuals to studio media and focuses CMS on headlines and CTAs", async () => {
   window.sessionStorage.setItem("bycar_admin_active_tab", "content");
   window.sessionStorage.setItem("bycar_admin_content_section", "hero");
 
   const router = adminRouter();
   render(<RouterProvider router={router} />);
 
-  await screen.findByText(/1\. Hero Karşılama Alanı/i);
-  expect(
-    screen.getByText(/Bilgisayardan Masaüstü Görseli Seç \(PNG \/ JPG \/ WEBP\)/i),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText(/Bilgisayardan Mobil Görseli Seç \(PNG \/ JPG \/ WEBP\)/i),
-  ).toBeInTheDocument();
+  await screen.findByText(/1\. Hero Karşılama Alanı \(Başlık, Rozet & CTA Butonları\)/i);
+  // Banner upload buttons are intentionally removed to protect studio visuals
+  expect(screen.queryByText(/Bilgisayardan Masaüstü Görseli Seç/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Bilgisayardan Mobil Görseli Seç/i)).not.toBeInTheDocument();
+  // Hero text fields remain fully editable
+  expect(screen.getByText(/Ana Başlık \(Türkçe\)/i)).toBeInTheDocument();
+  expect(screen.getByText(/Üst Rozet \(Türkçe\)/i)).toBeInTheDocument();
 });
