@@ -43,6 +43,11 @@ testlerin bir bölümü `node:sqlite` kullandığı için Node 22 doğrulaması 
 
 ## Sonraki işler: ayrı ve dar kapsamlı PR'lar
 
+Cloudflare Access ayrı takip PR'ında yönetim paneli/API yollarına eklenmiştir.
+Paylaşılan CMS URL'sindeki yönetici istekleri de `jose` ile doğrulanan Access JWT'si
+gerektirir; herkese açık katalog erişimi korunur. Bu katman, aşağıdaki mevcut
+oturum iptali davranışının düzeltilmesinin yerini almaz.
+
 1. **Oturum sonlandırmanın hata davranışı:** logout ve şifre değişiminde D1 session
    silme hataları yakalanıp başarılı yanıt verilebiliyor. D1 yetkili kaynak olduğundan
    silinemeyen oturum geçerliliğini koruyabilir. D1 hatasında başarılı çıkış bildirmeyen
