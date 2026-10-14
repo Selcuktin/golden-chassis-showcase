@@ -483,14 +483,17 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
 
               {/* Preview Thumbnail */}
               {form.hero.bgImageMobile && (
-                <div className="relative aspect-[4/3] w-48 overflow-hidden border border-border bg-black">
+                <div
+                  className="relative w-48 overflow-hidden border border-border bg-black"
+                  style={{ aspectRatio: "1832 / 858" }}
+                >
                   <img
                     src={form.hero.bgImageMobile}
                     alt="Mobil Hero Önizleme"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                   <div className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 text-[9px] text-zinc-300">
-                    Mobil (4:3)
+                    Mobil Hero
                   </div>
                 </div>
               )}
