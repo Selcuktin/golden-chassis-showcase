@@ -1651,9 +1651,21 @@ export function clearAllBrowserStorage() {
       DELETED_CAR_IDS_KEY,
       REVISION_KEY,
       DIRTY_KEY,
+      "bycar_admin_active_tab",
+      "bycar_admin_content_section",
     ]) {
       window.localStorage.removeItem(k);
       window.sessionStorage.removeItem(k);
+    }
+    if (typeof window !== "undefined" && typeof window.history?.replaceState === "function") {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("tab");
+        url.searchParams.delete("section");
+        window.history.replaceState(null, "", url.toString());
+      } catch {
+        // Ignore URL replace errors
+      }
     }
     window.dispatchEvent(new Event(SYNC_EVENT));
   } catch {

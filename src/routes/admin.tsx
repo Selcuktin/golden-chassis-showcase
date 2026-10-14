@@ -195,6 +195,25 @@ function ChipList({
   );
 }
 
+const VALID_ADMIN_TABS = ["fleet", "add", "inbox", "settings", "content", "system"] as const;
+type AdminTab = (typeof VALID_ADMIN_TABS)[number];
+
+function getInitialAdminTab(): AdminTab {
+  if (typeof window === "undefined") return "fleet";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const qTab = params.get("tab") as AdminTab | null;
+    if (qTab && VALID_ADMIN_TABS.includes(qTab)) return qTab;
+    const hash = window.location.hash.replace("#", "") as AdminTab;
+    if (hash && VALID_ADMIN_TABS.includes(hash)) return hash;
+    const stored = window.sessionStorage.getItem("bycar_admin_active_tab") as AdminTab | null;
+    if (stored && VALID_ADMIN_TABS.includes(stored)) return stored;
+  } catch {
+    // SSR / storage security fallback
+  }
+  return "fleet";
+}
+
 function Admin() {
   const {
     cars,
@@ -290,9 +309,87 @@ function Admin() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isSyncing, syncStatus.status, uploading, savingCar, formDirty]);
 
-  const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings" | "content" | "system">(
-    "fleet",
-  );
+  const [tab, setTabState] = useState<AdminTab>(getInitialAdminTab);
+
+  const setTab = (nextTab: AdminTab) => {
+    setTabState(nextTab);
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem("bycar_admin_active_tab", nextTab);
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", nextTab);
+        window.history.replaceState(null, "", url.toString());
+      } catch {
+        // Safe fallback
+      }
+    }
+  };
+
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadMsg, setVideoUploadMsg] = useState("");
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const allowedTypes = ["video/mp4", "video/webm", "video/quicktime"];
+    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(mp4|webm|mov)$/i)) {
+      alert("Lütfen geçerli bir video dosyası seçin (MP4 veya WebM formatı).");
+      return;
+    }
+
+    const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB
+    if (file.size > MAX_VIDEO_BYTES) {
+      alert("Video boyutu 50 MB'dan küçük olmalıdır.");
+      return;
+    }
+
+    const token =
+      typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
+    if (!token) {
+      alert("Video yüklemek için VIP Yönetici girişi yapmalısınız.");
+      return;
+    }
+
+    setVideoUploading(true);
+    setVideoUploadMsg("Video Cloudflare R2 sunucusuna aktarılıyor...");
+
+    try {
+      const uploadRes = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": file.type || "video/mp4",
+          "x-vehicle-id": editingId || "fleet",
+          "x-file-name": file.name.replace(/[^a-zA-Z0-9._-]/g, "_"),
+        },
+        body: file,
+      });
+
+      if (uploadRes.ok) {
+        const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
+        if (resJson.ok && resJson.url) {
+          setVideo(resJson.url);
+          setVideoUploadMsg("✓ Tanıtım videosu başarıyla yüklendi!");
+          setTimeout(() => setVideoUploadMsg(""), 4000);
+        } else {
+          alert("Video sunucuya yüklenemedi. Lütfen tekrar deneyin.");
+          setVideoUploadMsg("");
+        }
+      } else {
+        const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+        alert(errData.error || `Video yüklenemedi (HTTP ${uploadRes.status}).`);
+        setVideoUploadMsg("");
+      }
+    } catch (err) {
+      console.error("Video upload error:", err);
+      alert("Video yüklenirken bir ağ hatası oluştu.");
+      setVideoUploadMsg("");
+    } finally {
+      setVideoUploading(false);
+    }
+  };
 
   const effectivePresets = getEffectivePresets(cmsConfig.customPresets);
 
@@ -1847,14 +1944,60 @@ function Admin() {
                   </button>
                 </div>
 
-                <div>
-                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-                    <Film className="h-3.5 w-3.5" /> Tanıtım Videosu (MP4 URL)
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                      <Film className="h-3.5 w-3.5" /> Tanıtım Videosu
+                    </label>
+                    {video && (
+                      <button
+                        type="button"
+                        onClick={() => setVideo("")}
+                        className="cursor-pointer text-[10px] text-destructive hover:underline"
+                        title="Videoyu Kaldır"
+                      >
+                        Kaldır
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Direct PC Video File Picker */}
+                  <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-background px-3 py-2 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground disabled:opacity-50">
+                    <UploadCloud className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {videoUploading
+                        ? "Video Yükleniyor..."
+                        : "Bilgisayardan Video Seç (MP4 / WebM)"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      disabled={videoUploading}
+                      onChange={handleVideoUpload}
+                      className="hidden"
+                    />
                   </label>
+
+                  {videoUploadMsg && (
+                    <div className="text-[11px] font-medium text-emerald-400">{videoUploadMsg}</div>
+                  )}
+
+                  {/* Video Player Preview */}
+                  {video && (
+                    <div className="overflow-hidden border border-border bg-black">
+                      <video
+                        src={video}
+                        controls
+                        className="max-h-32 w-full object-contain"
+                        preload="metadata"
+                      />
+                    </div>
+                  )}
+
                   <input
                     value={video}
                     onChange={(e) => setVideo(e.target.value)}
-                    placeholder="Opsiyonel: /cars/cupra/video.mp4"
+                    placeholder="Veya video URL: /api/media/... ya da https://..."
                     className={input}
                   />
                 </div>
@@ -2029,18 +2172,36 @@ function Admin() {
                     const files = Array.from(e.dataTransfer.files || []);
                     void processFiles(files);
                   }}
-                  className={`grid gap-3 border-2 border-dashed p-4 transition sm:grid-cols-2 ${
+                  className={`grid gap-3 border-2 border-dashed p-4 transition sm:grid-cols-3 ${
                     isDragging ? "border-primary bg-primary/10" : "border-border/80 bg-card/60"
                   }`}
                 >
                   <label className="flex cursor-pointer items-center justify-center gap-2 border border-primary/50 bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground">
-                    <UploadCloud className="h-4 w-4" />
-                    <span>Bilgisayardan Fotoğraf Seçin veya Buraya Bırakın</span>
+                    <UploadCloud className="h-4 w-4 shrink-0" />
+                    <span>Bilgisayardan Fotoğraf Seçin veya Bırakın</span>
                     <input
                       type="file"
                       multiple
                       accept="image/*"
                       onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <label className="flex cursor-pointer items-center justify-center gap-2 border border-border bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary">
+                    <Film className="h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      {videoUploading
+                        ? "Video Yükleniyor..."
+                        : video
+                          ? "Tanıtım Videosunu Güncelle"
+                          : "Bilgisayardan Tanıtım Videosu Seç"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      disabled={videoUploading}
+                      onChange={handleVideoUpload}
                       className="hidden"
                     />
                   </label>
@@ -2055,13 +2216,13 @@ function Admin() {
                           addImageUrl();
                         }
                       }}
-                      placeholder="veya Fotoğraf URL'si yapıştırın (https://...)"
+                      placeholder="veya Fotoğraf URL'si (https://...)"
                       className={input}
                     />
                     <button
                       type="button"
                       onClick={addImageUrl}
-                      className="cursor-pointer border border-primary px-4 text-xs font-semibold uppercase text-primary hover:bg-primary hover:text-primary-foreground"
+                      className="cursor-pointer border border-primary px-3 text-xs font-semibold uppercase text-primary hover:bg-primary hover:text-primary-foreground shrink-0"
                     >
                       Ekle
                     </button>
