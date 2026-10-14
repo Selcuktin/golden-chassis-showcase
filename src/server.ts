@@ -45,9 +45,18 @@ function isH3SwallowedErrorBody(body: string): boolean {
 }
 
 import { handleApiRequest } from "./server/api";
+import { canonicalSiteRedirect } from "./server/site-origin";
 
-function applySecurityHeaders(response: Response): Response {
+function applySecurityHeaders(response: Response, request?: Request): Response {
   const headers = new Headers(response.headers);
+  const path = request ? new URL(request.url).pathname : "";
+  if (
+    path === "/admin" ||
+    path.startsWith("/api/admin/") ||
+    (path.startsWith("/api/") && request?.method !== "GET")
+  ) {
+    headers.set("cache-control", "no-store");
+  }
   if (!headers.has("x-content-type-options")) {
     headers.set("x-content-type-options", "nosniff");
   }
@@ -86,13 +95,18 @@ export default {
     }
 
     try {
+      const redirect = canonicalSiteRedirect(
+        request,
+        (effectiveEnv as { SITE_URL?: string } | undefined)?.SITE_URL,
+      );
+      if (redirect) return applySecurityHeaders(redirect, request);
       const apiResponse = await handleApiRequest(request, effectiveEnv);
-      if (apiResponse) return applySecurityHeaders(apiResponse);
+      if (apiResponse) return applySecurityHeaders(apiResponse, request);
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, effectiveEnv, ctx);
       const normalized = await normalizeCatastrophicSsrResponse(response);
-      return applySecurityHeaders(normalized);
+      return applySecurityHeaders(normalized, request);
     } catch (error) {
       console.error(error);
       return applySecurityHeaders(

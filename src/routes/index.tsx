@@ -27,11 +27,10 @@ import hero from "@/assets/hero.jpg";
 import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   BRANDS,
-  INSTAGRAM,
-  PHONE,
-  PHONE_RAW,
   T,
   waLink,
+  renderContactTemplate,
+  DEFAULT_CMS_CONFIG,
   useByCarStore,
   addStoredInquiry,
   translateTerm,
@@ -44,24 +43,26 @@ import { fetchLiveCmsData } from "@/lib/catalog-service";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    try {
-      const liveData = await fetchLiveCmsData();
-      return {
-        cars: (liveData.cars || []) as unknown as Car[],
-        settings: liveData.settings as unknown as SiteSettings | undefined,
-        cmsConfig: liveData.cmsConfig as unknown as SiteCMSConfig | undefined,
-      };
-    } catch (err) {
-      console.error("SSR index loader error:", err);
-    }
-    return null;
+    const liveData = await fetchLiveCmsData();
+    return {
+      siteUrl: liveData.siteUrl,
+      cars: (liveData.cars || []) as unknown as Car[],
+      settings: liveData.settings as unknown as SiteSettings | undefined,
+      cmsConfig: liveData.cmsConfig as unknown as SiteCMSConfig | undefined,
+    };
   },
-  head: () => ({
+  head: ({ loaderData }) => ({
+    links: [{ rel: "canonical", href: loaderData?.siteUrl || "/" }],
     meta: [
-      { title: "ByCar — Exclusive Automotive | Luxury Without Borders" },
+      {
+        title:
+          loaderData?.cmsConfig?.seo?.metaTitleTr ||
+          "ByCar — Exclusive Automotive | Luxury Without Borders",
+      },
       {
         name: "description",
         content:
+          loaderData?.cmsConfig?.seo?.metaDescTr ||
           "Cupra, Audi, Ferrari, Porsche, Lamborghini, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS ve Bentley. Özel koleksiyon ve VIP araç ithalatı.",
       },
       { property: "og:title", content: "ByCar — Exclusive Automotive" },
@@ -69,10 +70,10 @@ export const Route = createFileRoute("/")({
         property: "og:description",
         content: "Lüksün Yeni Adresi. Dünyanın en seçkin otomobilleri, sizin için.",
       },
-      { property: "og:image", content: "https://bycarglobal.com/hero.png" },
-      { property: "og:url", content: "https://bycarglobal.com" },
+      { property: "og:image", content: `${loaderData?.siteUrl || ""}/hero.png` },
+      { property: "og:url", content: loaderData?.siteUrl || "/" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "https://bycarglobal.com/hero.png" },
+      { name: "twitter:image", content: `${loaderData?.siteUrl || ""}/hero.png` },
     ],
   }),
   component: Index,
@@ -260,9 +261,9 @@ function Index() {
         "@context": "https://schema.org",
         "@type": "AutoDealer",
         name: "ByCar — Exclusive Automotive",
-        url: "https://bycarglobal.com",
-        telephone: PHONE,
-        sameAs: [INSTAGRAM],
+        url: loaderData?.siteUrl,
+        telephone: cmsConfig.contact.phone,
+        sameAs: [cmsConfig.contact.instagramUrl],
         founder: {
           "@type": "Person",
           name: "Burak Yılmaz",
@@ -270,7 +271,7 @@ function Index() {
         },
         makesOffer: visibleCars.map((c) => ({
           "@type": "Offer",
-          url: `https://bycarglobal.com/arac/${c.id}`,
+          url: `${loaderData?.siteUrl || ""}/arac/${encodeURIComponent(c.slug || c.id)}`,
           availability:
             c.sold || c.status === "sold"
               ? "https://schema.org/SoldOut"
@@ -286,7 +287,7 @@ function Index() {
             color: c.specs.color,
             image: c.images[0]?.startsWith("http")
               ? c.images[0]
-              : `https://bycarglobal.com${c.images[0]?.startsWith("/") ? "" : "/"}${c.images[0] || "hero.png"}`,
+              : `${loaderData?.siteUrl || ""}${c.images[0]?.startsWith("/") ? "" : "/"}${c.images[0] || "hero.png"}`,
             mileageFromOdometer: {
               "@type": "QuantitativeValue",
               value: c.km,
@@ -295,7 +296,7 @@ function Index() {
           },
         })),
       }),
-    [visibleCars],
+    [visibleCars, cmsConfig.contact.phone, cmsConfig.contact.instagramUrl, loaderData?.siteUrl],
   );
 
   return (
@@ -353,7 +354,7 @@ function Index() {
               ))}
             </div>
             <a
-              href={waLink()}
+              href={waLink(undefined, undefined, cmsConfig.contact)}
               target="_blank"
               rel="noreferrer"
               className="hidden items-center gap-2 border border-primary px-3 py-2 text-xs font-semibold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground sm:inline-flex"
@@ -395,7 +396,7 @@ function Index() {
             </p>
             <div className="grid grid-cols-2 gap-2.5">
               <a
-                href={waLink()}
+                href={waLink(undefined, undefined, cmsConfig.contact)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center gap-2 bg-gold py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"
@@ -416,7 +417,7 @@ function Index() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 hover:text-primary"
               >
-                <ExternalLink className="h-3.5 w-3.5 text-primary" /> Bursa Nilüfer
+                <ExternalLink className="h-3.5 w-3.5 text-primary" /> {cmsConfig.contact.address}
               </a>
               <Link
                 to="/admin"
@@ -697,7 +698,7 @@ function Index() {
               >
                 <Link
                   to="/arac/$slug"
-                  params={{ slug: c.id }}
+                  params={{ slug: c.slug || c.id }}
                   className="relative block aspect-[16/10] w-full cursor-pointer overflow-hidden bg-black text-left select-none"
                 >
                   {fitMode === "contain" ? (
@@ -781,7 +782,7 @@ function Index() {
                     </div>
                     <Link
                       to="/arac/$slug"
-                      params={{ slug: c.id }}
+                      params={{ slug: c.slug || c.id }}
                       className="mb-2 block cursor-pointer transition hover:text-primary"
                     >
                       <h3 className="text-2xl font-semibold">{c.title}</h3>
@@ -801,7 +802,7 @@ function Index() {
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       <a
-                        href={waLink(c.title)}
+                        href={waLink(c.title, undefined, cmsConfig.contact)}
                         target="_blank"
                         rel="noreferrer"
                         className={`${goldBtn} !px-3 !text-xs min-h-[44px] flex items-center justify-center active:scale-[0.98] transition-transform`}
@@ -810,7 +811,7 @@ function Index() {
                       </a>
                       <Link
                         to="/arac/$slug"
-                        params={{ slug: c.id }}
+                        params={{ slug: c.slug || c.id }}
                         className={`${outlineBtn} !px-3 !text-xs min-h-[44px] flex items-center justify-center active:scale-[0.98] transition-transform`}
                       >
                         {lang === "tr" ? "Detay & Teklif" : "Details & Offer"}
@@ -849,7 +850,12 @@ function Index() {
               </div>
             </div>
           </div>
-          <ImportRequestForm t={t} lang={lang} autoWhatsApp={settings.whatsappAutoOpenOnForm} />
+          <ImportRequestForm
+            contact={cmsConfig.contact}
+            t={t}
+            lang={lang}
+            autoWhatsApp={settings.whatsappAutoOpenOnForm}
+          />
         </div>
       </section>
 
@@ -1030,10 +1036,10 @@ function Index() {
               className="flex items-center gap-2 transition hover:text-primary"
             >
               <Instagram className="h-4 w-4 text-primary" />
-              Instagram @bycarglobal
+              Instagram @{cmsConfig.contact.instagramUrl.replace(/\/$/, "").split("/").pop()}
             </a>
             <a
-              href={waLink()}
+              href={waLink(undefined, undefined, cmsConfig.contact)}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 transition hover:text-primary"
@@ -1103,7 +1109,7 @@ function Index() {
       {/* FLOATING VIP WHATSAPP BUTTON */}
       {cmsConfig.sectionVisibility.showFloatingWhatsapp && (
         <a
-          href={waLink()}
+          href={waLink(undefined, undefined, cmsConfig.contact)}
           target="_blank"
           rel="noreferrer"
           aria-label="VIP WhatsApp İletişim"
@@ -1125,6 +1131,7 @@ function Index() {
           t={t}
           lang={lang}
           settings={settings}
+          contact={cmsConfig.contact}
           onClose={() => setDetail(null)}
           onOffer={() => {
             const title = detail.title;
@@ -1140,6 +1147,7 @@ function Index() {
           <h3 className="mb-1 text-3xl font-semibold">{t.form}</h3>
           <p className="mb-6 text-sm text-primary">{offerFor}</p>
           <QuickOfferForm
+            contact={cmsConfig.contact}
             carTitle={offerFor}
             t={t}
             lang={lang}
@@ -1204,16 +1212,20 @@ function Sel({
   );
 }
 
-function ImportRequestForm({
+export function ImportRequestForm({
+  contact = DEFAULT_CMS_CONFIG.contact,
   t,
   lang,
   autoWhatsApp,
 }: {
+  contact?: SiteCMSConfig["contact"];
   t: (typeof T)["tr"];
   lang: Lang;
   autoWhatsApp: boolean;
 }) {
   const [doneUrl, setDoneUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   if (doneUrl) {
     return (
       <div className="flex flex-col items-start justify-center border border-primary bg-background/60 p-8">
@@ -1241,8 +1253,11 @@ function ImportRequestForm({
   }
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
+        if (submitting) return;
+        setSubmitting(true);
+        setSubmitError("");
         const fd = new FormData(e.currentTarget);
         const model = String(fd.get("model") || "");
         const year = String(fd.get("year") || "");
@@ -1252,21 +1267,28 @@ function ImportRequestForm({
         const name = String(fd.get("name") || "");
         const phone = String(fd.get("phone") || "");
 
-        // 1. Save to Admin Inbox
-        addStoredInquiry({
-          type: "İthalat",
-          name,
-          phone,
-          car: `${model} (${year})`,
-          offerOrBudget: `${budget} ${currency} — ${country}`,
-        });
+        try {
+          await addStoredInquiry({
+            type: "İthalat",
+            name,
+            phone,
+            car: `${model} (${year})`,
+            offerOrBudget: `${budget} ${currency} — ${country}`,
+          });
 
-        // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
-        const waMsg = `Merhaba ByCar Global, web sitenizden Özel İthalat Talebi gönderdim:\n• Araç: ${model} (${year})\n• Bütçe / Ülke: ${budget} ${currency} (${country})\n• Ad Soyad: ${name}\n• Telefon: ${phone}`;
-        const url = waLink(undefined, waMsg);
-        setDoneUrl(url);
-        if (autoWhatsApp && typeof window !== "undefined") {
-          window.open(url, "_blank", "noopener,noreferrer");
+          // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
+          const waMsg = `${renderContactTemplate(contact.whatsappImportTemplate, { model, year, budget: `${budget} ${currency}`, country, name, phone })}\n• Araç: ${model} (${year})\n• Bütçe / Ülke: ${budget} ${currency} (${country})\n• Ad Soyad: ${name}\n• Telefon: ${phone}`;
+          const url = waLink(undefined, waMsg, contact);
+          setDoneUrl(url);
+          if (autoWhatsApp && typeof window !== "undefined") {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+        } catch (error) {
+          setSubmitError(
+            error instanceof Error ? error.message : "Talep kaydedilemedi. Lütfen tekrar deneyin.",
+          );
+        } finally {
+          setSubmitting(false);
         }
       }}
       className="grid gap-3 sm:grid-cols-2"
@@ -1287,27 +1309,51 @@ function ImportRequestForm({
         placeholder={t.f.country}
         className={`${input} sm:col-span-2`}
       />
-      <input name="name" required placeholder={t.f.name} className={input} />
-      <input name="phone" required placeholder={t.f.phone} className={input} />
-      <button type="submit" className={`${goldBtn} sm:col-span-2`}>
-        {t.send}
+      <input
+        name="name"
+        minLength={2}
+        maxLength={100}
+        required
+        placeholder={t.f.name}
+        className={input}
+      />
+      <input
+        name="phone"
+        type="tel"
+        minLength={7}
+        maxLength={25}
+        required
+        placeholder={t.f.phone}
+        className={input}
+      />
+      <p role="alert" className="text-sm text-destructive sm:col-span-2">
+        {submitError}
+      </p>
+      <button type="submit" disabled={submitting} className={`${goldBtn} sm:col-span-2`}>
+        {submitting ? (lang === "tr" ? "Gönderiliyor…" : "Sending…") : t.send}
       </button>
     </form>
   );
 }
 
 export function QuickOfferForm({
+  contact = DEFAULT_CMS_CONFIG.contact,
   carTitle,
+  vehicleId,
   t,
   lang = "tr",
   autoWhatsApp = true,
 }: {
+  contact?: SiteCMSConfig["contact"];
   carTitle: string;
+  vehicleId?: string;
   t: (typeof T)["tr"];
   lang?: Lang;
   autoWhatsApp?: boolean;
 }) {
   const [doneUrl, setDoneUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   if (doneUrl) {
     return (
       <div className="border border-primary bg-background/50 p-6">
@@ -1337,43 +1383,73 @@ export function QuickOfferForm({
   }
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
+        if (submitting) return;
+        setSubmitting(true);
+        setSubmitError("");
         const fd = new FormData(e.currentTarget);
         const name = String(fd.get("name") || "");
         const phone = String(fd.get("phone") || "");
         const offer = String(fd.get("offer") || "");
 
-        // 1. Save to Admin Inbox
-        addStoredInquiry({
-          type: "Teklif",
-          name,
-          phone,
-          car: carTitle,
-          offerOrBudget: offer,
-        });
+        try {
+          await addStoredInquiry({
+            type: "Teklif",
+            name,
+            phone,
+            car: carTitle,
+            ...(vehicleId ? { vehicleId } : {}),
+            offerOrBudget: offer,
+          });
 
-        // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
-        const waMsg = `Merhaba ByCar Global, web sitenizdeki "${carTitle}" aracınız için teklif/bilgi talebim:\n• Ad Soyad: ${name}\n• Telefon: ${phone}\n• Teklif / Not: ${offer}`;
-        const url = waLink(undefined, waMsg);
-        setDoneUrl(url);
-        if (autoWhatsApp && typeof window !== "undefined") {
-          window.open(url, "_blank", "noopener,noreferrer");
+          // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
+          const waMsg = `Merhaba ByCar Global, web sitenizdeki "${carTitle}" aracınız için teklif/bilgi talebim:\n• Ad Soyad: ${name}\n• Telefon: ${phone}\n• Teklif / Not: ${offer}`;
+          const url = waLink(undefined, waMsg, contact);
+          setDoneUrl(url);
+          if (autoWhatsApp && typeof window !== "undefined") {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+        } catch (error) {
+          setSubmitError(
+            error instanceof Error ? error.message : "Talep kaydedilemedi. Lütfen tekrar deneyin.",
+          );
+        } finally {
+          setSubmitting(false);
         }
       }}
       className="grid gap-3 sm:grid-cols-2"
     >
-      <input name="name" required placeholder={t.f.name} className={input} />
-      <input name="phone" required placeholder={t.f.phone} className={input} />
+      <input
+        name="name"
+        minLength={2}
+        maxLength={100}
+        required
+        placeholder={t.f.name}
+        className={input}
+      />
+      <input
+        name="phone"
+        type="tel"
+        minLength={7}
+        maxLength={25}
+        required
+        placeholder={t.f.phone}
+        className={input}
+      />
       <textarea
         name="offer"
+        maxLength={2000}
         required
         placeholder={t.f.offer}
         rows={3}
         className={`${input} sm:col-span-2`}
       />
-      <button type="submit" className={`${goldBtn} sm:col-span-2`}>
-        {t.send}
+      <p role="alert" className="text-sm text-destructive sm:col-span-2">
+        {submitError}
+      </p>
+      <button type="submit" disabled={submitting} className={`${goldBtn} sm:col-span-2`}>
+        {submitting ? (lang === "tr" ? "Gönderiliyor…" : "Sending…") : t.send}
       </button>
     </form>
   );
@@ -1434,6 +1510,7 @@ function Modal({
 
 function DetailModal({
   car,
+  contact,
   t,
   lang,
   settings,
@@ -1441,6 +1518,7 @@ function DetailModal({
   onOffer,
 }: {
   car: Car;
+  contact: SiteCMSConfig["contact"];
   t: (typeof T)["tr"];
   lang: Lang;
   settings: SiteSettings;
@@ -1507,12 +1585,16 @@ function DetailModal({
       ? car.extrasEn
       : (car.extras || []).map((item) => translateTerm(item, lang));
 
-  const copyShareUrl = () => {
+  const copyShareUrl = async () => {
     if (typeof window === "undefined") return;
-    const url = `${window.location.origin}/arac/${car.id}`;
-    navigator.clipboard?.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    const url = `${window.location.origin}/arac/${encodeURIComponent(car.slug || car.id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      window.prompt(lang === "tr" ? "Bağlantıyı kopyalayın:" : "Copy this link:", url);
+    }
   };
 
   return (
@@ -1636,6 +1718,8 @@ function DetailModal({
             <div className="mt-4 hidden lg:block border border-border bg-card p-4">
               <h3 className="mb-2.5 font-display text-base font-semibold">{t.form}</h3>
               <QuickOfferForm
+                contact={contact}
+                vehicleId={car.id}
                 carTitle={car.title}
                 t={t}
                 lang={lang}
@@ -1669,7 +1753,7 @@ function DetailModal({
                 </button>
                 <Link
                   to="/arac/$slug"
-                  params={{ slug: car.id }}
+                  params={{ slug: car.slug || car.id }}
                   className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                   title="Tam Sayfa İlan Görünümü"
                 >
@@ -1721,7 +1805,7 @@ function DetailModal({
             {!isSold && (
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <a
-                  href={waLink(car.title)}
+                  href={waLink(car.title, undefined, contact)}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center justify-center gap-2 bg-gold px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"
@@ -1729,7 +1813,7 @@ function DetailModal({
                   <MessageCircle className="h-4 w-4" /> {t.waQuote}
                 </a>
                 <a
-                  href={`tel:+${PHONE_RAW}`}
+                  href={`tel:${contact.phone.replace(/\s+/g, "")}`}
                   className="inline-flex items-center justify-center gap-2 border border-primary px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-transform"
                 >
                   <Phone className="h-4 w-4" /> {t.call}
@@ -1748,6 +1832,8 @@ function DetailModal({
               <div className="block lg:hidden border border-border bg-card p-4">
                 <h3 className="mb-2.5 font-display text-base font-semibold">{t.form}</h3>
                 <QuickOfferForm
+                  contact={contact}
+                  vehicleId={car.id}
                   carTitle={car.title}
                   t={t}
                   lang={lang}

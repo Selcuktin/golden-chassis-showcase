@@ -30,6 +30,7 @@ import {
   exportDatabaseJSON,
   importDatabaseJSON,
   clearAllBrowserStorage,
+  syncFromServer,
 } from "@/lib/bycar";
 
 const input =
@@ -75,7 +76,9 @@ export function AdminSystemTab({
 
   const handleSave = (label = "Sistem & İletişim Ayarları Güncellendi") => {
     onSave(form, label);
-    setMsg("✓ İletişim bilgileri ve şalterler başarıyla kaydedildi.");
+    setMsg(
+      "✓ İletişim bilgileri ve şalterler yerel taslak olarak kaydedildi; canlı kayıt durumunu üst çubuktan kontrol edin.",
+    );
     setTimeout(() => setMsg(""), 4000);
   };
 
@@ -677,18 +680,18 @@ export function AdminSystemTab({
             onClick={() => {
               if (
                 confirm(
-                  "Tüm tarayıcı önbelleği temizlenecek ve fabrika ayarlarına dönülecektir. Onaylıyor musunuz?",
+                  "Yerel taslak silinip güncel katalog sunucudan yüklenecek. Onaylıyor musunuz?",
                 )
               ) {
                 clearAllBrowserStorage();
-                onReset();
-                setMsg("Tarayıcı önbelleği ve tüm ayarlar fabrika ayarlarına sıfırlandı.");
+                void syncFromServer(true);
+                setMsg("Yerel taslak temizlendi; güncel katalog sunucudan yükleniyor.");
                 setTimeout(() => setMsg(""), 4000);
               }
             }}
             className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:border-destructive hover:text-destructive"
           >
-            <RotateCcw className="h-4 w-4" /> Önbelleği Temizle & Fabrika Ayarlarına Sıfırla
+            <RotateCcw className="h-4 w-4" /> Yerel Taslağı Temizle & Kataloğu Yenile
           </button>
         </div>
       </div>

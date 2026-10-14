@@ -1,37 +1,27 @@
 import { useEffect, useState } from "react";
+import { CatalogBackupSchema } from "./cms-validation";
 
 export const PHONE = "+90 540 061 16 34";
 export const PHONE_RAW = "905400611634";
 export const INSTAGRAM = "https://instagram.com/bycar.eu";
 
-export const waLink = (car?: string, customText?: string, phoneOverride?: string) => {
-  let targetNumber = PHONE_RAW;
-  let template =
-    "Merhaba, web sitenizdeki {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.";
-  if (typeof window !== "undefined") {
-    try {
-      const cfg = getStoredCmsConfig();
-      if (cfg?.contact?.whatsapp) {
-        const cleaned = cfg.contact.whatsapp.replace(/\D/g, "");
-        if (cleaned) targetNumber = cleaned;
-      }
-      if (cfg?.contact?.whatsappOfferTemplate) {
-        template = cfg.contact.whatsappOfferTemplate;
-      }
-    } catch {
-      // fallback to defaults
-    }
-  }
-  if (phoneOverride) {
-    const cleaned = phoneOverride.replace(/\D/g, "");
-    if (cleaned) targetNumber = cleaned;
-  }
-  const msg = customText
-    ? customText
-    : car
-      ? template.replace("{car}", car)
-      : "Merhaba, ByCar VIP otomotiv hizmetleri hakkında bilgi almak istiyorum.";
-  return `https://wa.me/${targetNumber}?text=${encodeURIComponent(msg)}`;
+export function renderContactTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (placeholder, key: string) => values[key] ?? placeholder);
+}
+export const waLink = (
+  car?: string,
+  customText?: string,
+  contactOrPhone?: SiteCMSConfig["contact"] | string,
+) => {
+  const contact = typeof contactOrPhone === "object" ? contactOrPhone : DEFAULT_CMS_CONFIG.contact;
+  const phone = typeof contactOrPhone === "string" ? contactOrPhone : contact.whatsapp;
+  const number = phone.replace(/\D/g, "") || PHONE_RAW;
+  const message =
+    customText ||
+    (car
+      ? renderContactTemplate(contact.whatsappOfferTemplate, { car })
+      : "Merhaba, ByCar VIP otomotiv hizmetleri hakkında bilgi almak istiyorum.");
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 };
 
 export type CarStatus = "active" | "sold" | "draft";
@@ -39,6 +29,7 @@ export type ImageFit = "contain" | "cover";
 
 export type Car = {
   id: string;
+  slug?: string;
   brand: string;
   title: string;
   year: number;
@@ -1533,11 +1524,33 @@ const UNDO_KEY = "bycar_undo_snapshot_v2";
 const DELETED_CAR_IDS_KEY = "bycar_pending_deleted_car_ids_v1";
 const REVISION_KEY = "bycar_cms_revision_v1";
 const SYNC_EVENT = "bycar-store-sync";
+const DIRTY_KEY = "bycar_cms_dirty_v1";
+const TAB_KEYS = new Set([
+  CARS_KEY,
+  INQ_KEY,
+  SETTINGS_KEY,
+  CMS_KEY,
+  UNDO_KEY,
+  DELETED_CAR_IDS_KEY,
+  REVISION_KEY,
+  DIRTY_KEY,
+]);
+function browserStore(key: string): Storage {
+  return TAB_KEYS.has(key) ? window.sessionStorage : window.localStorage;
+}
+export function hasUnsavedCmsChanges(): boolean {
+  return typeof window !== "undefined" && window.sessionStorage.getItem(DIRTY_KEY) === "1";
+}
+let localEditVersion = 0;
+function markCmsDirty() {
+  localEditVersion++;
+  safeSetItem(DIRTY_KEY, "1");
+}
 
 export function getStoredCmsRevision(): number {
   if (typeof window === "undefined") return 1;
   try {
-    const raw = window.localStorage.getItem(REVISION_KEY);
+    const raw = browserStore(REVISION_KEY).getItem(REVISION_KEY);
     return raw ? parseInt(raw, 10) || 1 : 1;
   } catch {
     return 1;
@@ -1552,7 +1565,7 @@ export function setStoredCmsRevision(revision: number) {
 export function getPendingDeletedCarIds(): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(DELETED_CAR_IDS_KEY);
+    const raw = browserStore(DELETED_CAR_IDS_KEY).getItem(DELETED_CAR_IDS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -1578,7 +1591,7 @@ export function removePendingDeletedCarIds(ids: string[]) {
   const next = current.filter((id) => !toRemove.has(id));
   if (next.length !== current.length) {
     if (next.length === 0) {
-      window.localStorage.removeItem(DELETED_CAR_IDS_KEY);
+      browserStore(DELETED_CAR_IDS_KEY).removeItem(DELETED_CAR_IDS_KEY);
     } else {
       safeSetItem(DELETED_CAR_IDS_KEY, JSON.stringify(next));
     }
@@ -1588,7 +1601,7 @@ export function removePendingDeletedCarIds(ids: string[]) {
 export function clearPendingDeletedCarIds() {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(DELETED_CAR_IDS_KEY);
+    browserStore(DELETED_CAR_IDS_KEY).removeItem(DELETED_CAR_IDS_KEY);
   } catch {
     // Ignore storage errors
   }
@@ -1617,6 +1630,7 @@ function purgeLegacyStorage() {
   try {
     for (const k of LEGACY_KEYS) {
       window.localStorage.removeItem(k);
+      window.sessionStorage.removeItem(k);
     }
   } catch {
     // Ignore storage errors
@@ -1636,8 +1650,10 @@ export function clearAllBrowserStorage() {
       LOCKOUT_KEY,
       DELETED_CAR_IDS_KEY,
       REVISION_KEY,
+      DIRTY_KEY,
     ]) {
       window.localStorage.removeItem(k);
+      window.sessionStorage.removeItem(k);
     }
     window.dispatchEvent(new Event(SYNC_EVENT));
   } catch {
@@ -1648,6 +1664,7 @@ export function clearAllBrowserStorage() {
 export type UndoSnapshot = {
   label: string;
   timestamp: string;
+  createdAt?: number;
   cars: Car[];
   inquiries: Inquiry[];
   settings: SiteSettings;
@@ -1817,9 +1834,17 @@ export async function compressImageToWebP(
 function safeSetItem(key: string, value: string): boolean {
   if (typeof window === "undefined") return false;
   try {
-    window.localStorage.setItem(key, value);
+    browserStore(key).setItem(key, value);
     return true;
   } catch {
+    if (TAB_KEYS.has(key)) {
+      const message =
+        "Tarayıcı taslağı kaydedilemedi. Depolama alanını kontrol edip tekrar deneyin.";
+      window.dispatchEvent(
+        new CustomEvent(SYNC_STATUS_EVENT, { detail: { status: "error", message } }),
+      );
+      throw new Error(message);
+    }
     return false;
   }
 }
@@ -1828,6 +1853,7 @@ export function saveUndoSnapshot(label: string) {
   if (typeof window === "undefined") return;
   const snap: UndoSnapshot = {
     label,
+    createdAt: Date.now(),
     timestamp: new Date().toLocaleTimeString("tr-TR", {
       hour: "2-digit",
       minute: "2-digit",
@@ -1844,9 +1870,10 @@ export function saveUndoSnapshot(label: string) {
 export function getUndoSnapshot(): UndoSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(UNDO_KEY);
+    const raw = browserStore(UNDO_KEY).getItem(UNDO_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as UndoSnapshot;
+    const parsed = JSON.parse(raw) as UndoSnapshot;
+    return parsed.createdAt && Date.now() - parsed.createdAt >= 24 * 60 * 60 * 1000 ? null : parsed;
   } catch {
     return null;
   }
@@ -1857,15 +1884,16 @@ export function restoreUndoSnapshot(): UndoSnapshot | null {
   const snap = getUndoSnapshot();
   if (!snap) return null;
   if (Array.isArray(snap.cars)) {
+    const restoredIds = new Set(snap.cars.map((car) => car.id));
+    for (const car of getStoredCars()) if (!restoredIds.has(car.id)) queueDeletedCarId(car.id);
     removePendingDeletedCarIds(snap.cars.map((c) => c.id));
   }
   safeSetItem(CARS_KEY, JSON.stringify(snap.cars));
-  safeSetItem(INQ_KEY, JSON.stringify(snap.inquiries));
   safeSetItem(SETTINGS_KEY, JSON.stringify(snap.settings));
   if (snap.cmsConfig) {
     safeSetItem(CMS_KEY, JSON.stringify(snap.cmsConfig));
   }
-  window.localStorage.removeItem(UNDO_KEY);
+  browserStore(UNDO_KEY).removeItem(UNDO_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
   triggerServerSync();
   return snap;
@@ -1874,76 +1902,70 @@ export function restoreUndoSnapshot(): UndoSnapshot | null {
 export function getStoredCmsConfig(): SiteCMSConfig {
   if (typeof window === "undefined") return DEFAULT_CMS_CONFIG;
   try {
-    const raw = window.localStorage.getItem(CMS_KEY);
+    const raw = browserStore(CMS_KEY).getItem(CMS_KEY);
     if (!raw) return DEFAULT_CMS_CONFIG;
     const parsed = JSON.parse(raw) as Partial<SiteCMSConfig>;
-    return {
-      ...DEFAULT_CMS_CONFIG,
-      ...parsed,
-      contact: { ...DEFAULT_CMS_CONFIG.contact, ...(parsed.contact || {}) },
-      hero: { ...DEFAULT_CMS_CONFIG.hero, ...(parsed.hero || {}) },
-      stats:
-        Array.isArray(parsed.stats) && parsed.stats.length > 0
-          ? parsed.stats
-          : DEFAULT_CMS_CONFIG.stats,
-      customPresets: {
-        ...DEFAULT_CMS_CONFIG.customPresets,
-        ...(parsed.customPresets || {}),
-      },
-      about: { ...DEFAULT_CMS_CONFIG.about, ...(parsed.about || {}) },
-      services: (Array.isArray(parsed.services) && parsed.services.length > 0
-        ? parsed.services
-        : DEFAULT_CMS_CONFIG.services
-      ).map((s) => ({
+    return mergeCmsConfig(parsed);
+  } catch {
+    return DEFAULT_CMS_CONFIG;
+  }
+}
+
+export function mergeCmsConfig(value?: Partial<SiteCMSConfig> | null): SiteCMSConfig {
+  const parsed = value || {};
+  return {
+    ...DEFAULT_CMS_CONFIG,
+    ...parsed,
+    contact: { ...DEFAULT_CMS_CONFIG.contact, ...(parsed.contact || {}) },
+    hero: { ...DEFAULT_CMS_CONFIG.hero, ...(parsed.hero || {}) },
+    stats: Array.isArray(parsed.stats) ? parsed.stats : DEFAULT_CMS_CONFIG.stats,
+    customPresets: {
+      ...DEFAULT_CMS_CONFIG.customPresets,
+      ...(parsed.customPresets || {}),
+    },
+    about: { ...DEFAULT_CMS_CONFIG.about, ...(parsed.about || {}) },
+    services: (Array.isArray(parsed.services) ? parsed.services : DEFAULT_CMS_CONFIG.services).map(
+      (s) => ({
         ...s,
         descTr: (s.descTr || "").replace(/yetkili bayi kayıtlı/gi, "Avrupa ithalatı onaylı"),
         descEn: (s.descEn || "").replace(
           /official dealer history/gi,
           "verified European import history",
         ),
-      })),
-      conciergeSteps: (Array.isArray(parsed.conciergeSteps) && parsed.conciergeSteps.length > 0
-        ? parsed.conciergeSteps
-        : DEFAULT_CMS_CONFIG.conciergeSteps
-      ).map((s) => ({
-        ...s,
-        descTr: (s.descTr || "").replace(
-          /yetkili bayi ağımızda/gi,
-          "Almanya ve Avrupa geniş tedarik ağımızda",
-        ),
-        descEn: (s.descEn || "").replace(
-          /authorized dealer network/gi,
-          "European and German supplier network",
-        ),
-      })),
-      testimonials:
-        Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0
-          ? parsed.testimonials
-          : DEFAULT_CMS_CONFIG.testimonials,
-      faqs: (Array.isArray(parsed.faqs) && parsed.faqs.length > 0
-        ? parsed.faqs
-        : DEFAULT_CMS_CONFIG.faqs
-      ).map((f) => ({
-        ...f,
-        aTr: (f.aTr || "").replace(
-          /yetkili servis geçmişli/gi,
-          "doğrudan Avrupa / Almanya özel ithalatı",
-        ),
-        aEn: (f.aEn || "").replace(
-          /official dealer verification/gi,
-          "European import verification",
-        ),
-      })),
-      sectionVisibility: {
-        ...DEFAULT_CMS_CONFIG.sectionVisibility,
-        ...(parsed.sectionVisibility || {}),
-      },
-      legal: { ...DEFAULT_CMS_CONFIG.legal, ...(parsed.legal || {}) },
-      seo: { ...DEFAULT_CMS_CONFIG.seo, ...(parsed.seo || {}) },
-    };
-  } catch {
-    return DEFAULT_CMS_CONFIG;
-  }
+      }),
+    ),
+    conciergeSteps: (Array.isArray(parsed.conciergeSteps)
+      ? parsed.conciergeSteps
+      : DEFAULT_CMS_CONFIG.conciergeSteps
+    ).map((s) => ({
+      ...s,
+      descTr: (s.descTr || "").replace(
+        /yetkili bayi ağımızda/gi,
+        "Almanya ve Avrupa geniş tedarik ağımızda",
+      ),
+      descEn: (s.descEn || "").replace(
+        /authorized dealer network/gi,
+        "European and German supplier network",
+      ),
+    })),
+    testimonials: Array.isArray(parsed.testimonials)
+      ? parsed.testimonials
+      : DEFAULT_CMS_CONFIG.testimonials,
+    faqs: (Array.isArray(parsed.faqs) ? parsed.faqs : DEFAULT_CMS_CONFIG.faqs).map((f) => ({
+      ...f,
+      aTr: (f.aTr || "").replace(
+        /yetkili servis geçmişli/gi,
+        "doğrudan Avrupa / Almanya özel ithalatı",
+      ),
+      aEn: (f.aEn || "").replace(/official dealer verification/gi, "European import verification"),
+    })),
+    sectionVisibility: {
+      ...DEFAULT_CMS_CONFIG.sectionVisibility,
+      ...(parsed.sectionVisibility || {}),
+    },
+    legal: { ...DEFAULT_CMS_CONFIG.legal, ...(parsed.legal || {}) },
+    seo: { ...DEFAULT_CMS_CONFIG.seo, ...(parsed.seo || {}) },
+  };
 }
 
 export const SYNC_STATUS_EVENT = "bycar_sync_status";
@@ -1955,7 +1977,7 @@ export type SyncStatusDetail = {
   timestamp?: number;
 };
 
-export async function syncToServer(overrideData?: {
+async function performServerSync(overrideData?: {
   cars?: Car[];
   settings?: SiteSettings;
   cmsConfig?: SiteCMSConfig;
@@ -2001,9 +2023,10 @@ export async function syncToServer(overrideData?: {
       removePendingDeletedCarIds(staleIds);
     }
 
+    const submittedEditVersion = localEditVersion;
     const currentRevision = getStoredCmsRevision();
     const payload = {
-      cars: targetCars,
+      cars: targetCars.length > 0 ? targetCars : undefined,
       settings: overrideData?.settings || getStoredSettings(),
       cmsConfig: overrideData?.cmsConfig || getStoredCmsConfig(),
       deletedCarIds: deletedCarIds.length > 0 ? deletedCarIds : undefined,
@@ -2034,8 +2057,7 @@ export async function syncToServer(overrideData?: {
           detail: { status: "error", message: conflictMsg, timestamp: Date.now() },
         }),
       );
-      // Automatically refresh local state with latest server data
-      await syncFromServer();
+      // Keep the draft and its base revision. Refreshing here silently loses edits.
       return { ok: false, error: conflictMsg, conflict: true };
     }
 
@@ -2043,7 +2065,8 @@ export async function syncToServer(overrideData?: {
       if (typeof data.revision === "number") {
         setStoredCmsRevision(data.revision);
       }
-      clearPendingDeletedCarIds();
+      removePendingDeletedCarIds(deletedCarIds);
+      if (localEditVersion === submittedEditVersion) window.sessionStorage.removeItem(DIRTY_KEY);
       window.dispatchEvent(
         new CustomEvent(SYNC_STATUS_EVENT, {
           detail: {
@@ -2075,6 +2098,18 @@ export async function syncToServer(overrideData?: {
   }
 }
 
+// Serialize requests so each save starts with the last acknowledged revision.
+let syncTail: Promise<unknown> = Promise.resolve();
+export function syncToServer(overrideData?: Parameters<typeof performServerSync>[0]) {
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = null;
+  }
+  const result = syncTail.then(() => performServerSync(overrideData));
+  syncTail = result.catch(() => undefined);
+  return result;
+}
+
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 export function isSyncDebouncePending(): boolean {
   return syncDebounceTimer !== null;
@@ -2082,6 +2117,7 @@ export function isSyncDebouncePending(): boolean {
 
 export function triggerServerSync() {
   if (typeof window === "undefined") return;
+  markCmsDirty();
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(async () => {
     syncDebounceTimer = null;
@@ -2090,10 +2126,14 @@ export function triggerServerSync() {
 }
 
 // Public / Authenticated catalog sync: loads cars, settings, cmsConfig from server D1
-export async function syncFromServer(): Promise<{ ok: boolean; source?: string | undefined }> {
+export async function syncFromServer(
+  discardDraft = false,
+): Promise<{ ok: boolean; source?: string | undefined }> {
   if (typeof window === "undefined") return { ok: false };
+  if (hasUnsavedCmsChanges() && !discardDraft) return { ok: false };
   try {
     const token = window.sessionStorage.getItem("bycar_admin_token");
+    if (!token) return { ok: false };
     const headers: Record<string, string> = {};
     if (token) {
       headers["authorization"] = `Bearer ${token}`;
@@ -2113,7 +2153,7 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string |
       if (typeof data.revision === "number") {
         setStoredCmsRevision(data.revision);
       }
-      if (Array.isArray(data.cars) && data.cars.length > 0) {
+      if (Array.isArray(data.cars)) {
         safeSetItem(CARS_KEY, JSON.stringify(data.cars));
       }
       if (data.settings) {
@@ -2121,6 +2161,15 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string |
       }
       if (data.cmsConfig) {
         safeSetItem(CMS_KEY, JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...data.cmsConfig }));
+      }
+      window.sessionStorage.removeItem(DIRTY_KEY);
+      if (discardDraft) {
+        clearPendingDeletedCarIds();
+        window.dispatchEvent(
+          new CustomEvent(SYNC_STATUS_EVENT, {
+            detail: { status: "synced", message: "Sunucudaki güncel katalog yüklendi." },
+          }),
+        );
       }
       window.dispatchEvent(new Event(SYNC_EVENT));
       return { ok: true, source: data.source };
@@ -2134,21 +2183,18 @@ export async function syncFromServer(): Promise<{ ok: boolean; source?: string |
 // Protected admin sync: requires Bearer token to read customer inquiries (CRM Inbox)
 export async function syncInquiriesFromServer(token: string): Promise<Inquiry[]> {
   if (typeof window === "undefined" || !token) return [];
-  try {
-    const res = await fetch("/api/admin/inquiries", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { ok?: boolean; inquiries?: Inquiry[] };
-    if (data.ok && Array.isArray(data.inquiries)) {
-      safeSetItem(INQ_KEY, JSON.stringify(data.inquiries));
-      window.dispatchEvent(new Event(SYNC_EVENT));
-      return data.inquiries;
-    }
-  } catch {
-    // Offline fallback
-  }
-  return [];
+  const response = await fetch("/api/admin/inquiries", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const data = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    inquiries?: Inquiry[];
+    error?: string;
+  } | null;
+  if (!response.ok || data?.ok !== true || !Array.isArray(data.inquiries))
+    throw new Error(data?.error || "Talepler yüklenemedi. Lütfen tekrar deneyin.");
+  saveStoredInquiries(data.inquiries);
+  return data.inquiries;
 }
 
 export function saveStoredCmsConfig(next: SiteCMSConfig, undoLabel?: string) {
@@ -2162,7 +2208,7 @@ export function saveStoredCmsConfig(next: SiteCMSConfig, undoLabel?: string) {
 export function resetStoredCmsConfig() {
   if (typeof window === "undefined") return;
   saveUndoSnapshot("Site CMS Ayarlarını Sıfırlama");
-  window.localStorage.removeItem(CMS_KEY);
+  browserStore(CMS_KEY).removeItem(CMS_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
   triggerServerSync();
 }
@@ -2187,13 +2233,13 @@ export function getEffectivePresets(custom?: SiteCMSConfig["customPresets"]) {
 }
 
 export function getStoredCars(): Car[] {
-  if (typeof window === "undefined") return CARS;
+  if (typeof window === "undefined") return [];
   purgeLegacyStorage();
   try {
-    const raw = window.localStorage.getItem(CARS_KEY);
-    if (!raw) return CARS;
+    const raw = browserStore(CARS_KEY).getItem(CARS_KEY);
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as Car[];
-    if (!Array.isArray(parsed) || parsed.length === 0) return CARS;
+    if (!Array.isArray(parsed)) return [];
     return parsed.map((c) => ({
       ...c,
       images: Array.isArray(c.images) ? Array.from(new Set(c.images)) : [],
@@ -2236,7 +2282,7 @@ export function getStoredCars(): Car[] {
         : c.description,
     }));
   } catch {
-    return CARS;
+    return [];
   }
 }
 
@@ -2247,6 +2293,7 @@ export function saveStoredCars(next: Car[], undoLabel?: string, immediate = fals
   safeSetItem(CARS_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
   if (immediate) {
+    markCmsDirty();
     void syncToServer({ cars: next });
   } else {
     triggerServerSync();
@@ -2265,64 +2312,73 @@ export function resetStoredCars() {
   if (typeof window === "undefined") return;
   saveUndoSnapshot("Varsayılan 10 Araca Sıfırlama");
   clearPendingDeletedCarIds();
-  window.localStorage.removeItem(CARS_KEY);
+  browserStore(CARS_KEY).removeItem(CARS_KEY);
   window.dispatchEvent(new Event(SYNC_EVENT));
   triggerServerSync();
 }
 
 export function getStoredInquiries(): Inquiry[] {
-  if (typeof window === "undefined") return INITIAL_INQUIRIES;
+  if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(INQ_KEY);
-    if (!raw) return INITIAL_INQUIRIES;
-    const parsed = JSON.parse(raw) as Inquiry[];
-    return Array.isArray(parsed) ? parsed : INITIAL_INQUIRIES;
+    const raw = browserStore(INQ_KEY).getItem(INQ_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return INITIAL_INQUIRIES;
+    return [];
   }
 }
 
-export function saveStoredInquiries(next: Inquiry[], undoLabel?: string) {
+// CRM state is a server-confirmed cache and must never trigger catalog writes.
+export function saveStoredInquiries(next: Inquiry[]) {
   if (typeof window === "undefined") return;
-  if (undoLabel) saveUndoSnapshot(undoLabel);
   safeSetItem(INQ_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(SYNC_EVENT));
-  triggerServerSync();
 }
 
-export function resetStoredInquiries() {
-  if (typeof window === "undefined") return;
-  saveUndoSnapshot("Talepleri Varsayılana Sıfırlama");
-  window.localStorage.removeItem(INQ_KEY);
-  window.dispatchEvent(new Event(SYNC_EVENT));
-  triggerServerSync();
-}
-
-export function addStoredInquiry(item: Omit<Inquiry, "id" | "time" | "status">) {
-  const current = getStoredInquiries();
-  const created: Inquiry = {
-    ...item,
-    id: `inq-${Date.now()}`,
-    time: "Az önce",
-    status: "Yeni",
-  };
-  saveStoredInquiries([created, ...current]);
-
-  // Also post to Cloudflare D1 server API
-  if (typeof window !== "undefined") {
-    void fetch("/api/inquiry", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(item),
-    }).catch(() => {});
+export async function addStoredInquiry(
+  item: Omit<Inquiry, "id" | "time" | "status"> & { vehicleId?: string },
+): Promise<string> {
+  const response = await fetch("/api/inquiry", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(item),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    inquiryId?: string;
+    error?: string;
+  } | null;
+  if (!response.ok || data?.ok !== true || !data.inquiryId) {
+    throw new Error(data?.error || "Talep kaydedilemedi. Lütfen tekrar deneyin.");
   }
-  return created;
+  return data.inquiryId;
+}
+
+export async function updateInquiryOnServer(id: string, status?: Inquiry["status"]): Promise<void> {
+  const token = window.sessionStorage.getItem("bycar_admin_token");
+  if (!token) throw new Error("Yönetici oturumu gerekli.");
+  const response = await fetch(
+    status ? "/api/admin/inquiries/status" : "/api/admin/inquiries/delete",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, ...(status ? { status } : {}) }),
+    },
+  );
+  const data = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (!response.ok || data?.ok !== true)
+    throw new Error(data?.error || "Talep güncellenemedi. Lütfen tekrar deneyin.");
+  saveStoredInquiries(
+    status
+      ? getStoredInquiries().map((item) => (item.id === id ? { ...item, status } : item))
+      : getStoredInquiries().filter((item) => item.id !== id),
+  );
 }
 
 export function getStoredSettings(): SiteSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    const raw = browserStore(SETTINGS_KEY).getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<SiteSettings>) };
   } catch {
@@ -2339,8 +2395,12 @@ export function saveStoredSettings(next: SiteSettings) {
 
 export function getStoredLang(): Lang {
   if (typeof window === "undefined") return "tr";
-  const raw = window.localStorage.getItem(LANG_KEY);
-  return raw === "en" ? "en" : "tr";
+  try {
+    const raw = window.localStorage.getItem(LANG_KEY);
+    return raw === "en" ? "en" : "tr";
+  } catch {
+    return "tr";
+  }
 }
 
 export function saveStoredLang(next: Lang) {
@@ -2363,20 +2423,16 @@ export function exportDatabaseJSON(): string {
 
 export function importDatabaseJSON(rawJson: string): { ok: boolean; message: string } {
   try {
-    const parsed = JSON.parse(rawJson) as {
-      cars?: Car[];
-      inquiries?: Inquiry[];
-      settings?: Partial<SiteSettings>;
-      cmsConfig?: Partial<SiteCMSConfig>;
-    };
-    if (!parsed || !Array.isArray(parsed.cars) || parsed.cars.length === 0) {
-      return { ok: false, message: "Geçersiz yedek dosyası: Araç listesi bulunamadı." };
-    }
+    const result = CatalogBackupSchema.safeParse(JSON.parse(rawJson));
+    if (!result.success)
+      return {
+        ok: false,
+        message: "Geçersiz katalog yedeği: Araç ve ayar alanlarını kontrol edin.",
+      };
+    const parsed = result.data;
     saveUndoSnapshot("JSON Yedek Geri Yükleme Öncesi");
     safeSetItem(CARS_KEY, JSON.stringify(parsed.cars));
-    if (Array.isArray(parsed.inquiries)) {
-      safeSetItem(INQ_KEY, JSON.stringify(parsed.inquiries));
-    }
+    // CRM backup data is not restored through the catalog endpoint.
     if (parsed.settings) {
       safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed.settings }));
     }
@@ -2387,9 +2443,7 @@ export function importDatabaseJSON(rawJson: string): { ok: boolean; message: str
     triggerServerSync();
     return {
       ok: true,
-      message: `Veritabanı başarıyla geri yüklendi (${parsed.cars.length} araç, ${
-        parsed.inquiries?.length ?? 0
-      } talep).`,
+      message: `Katalog taslağı yüklendi (${parsed.cars.length} araç). Canlı kayıt durumunu üst çubuktan kontrol edin. Talep yedekleri bu işlemle geri yüklenmez.`,
     };
   } catch {
     return { ok: false, message: "JSON dosyası okunamadı veya formatı bozuk." };
@@ -2403,73 +2457,128 @@ function sqlEsc(val: string | number | undefined | null): string {
 }
 
 export function exportD1SqlDump(): string {
-  const cars = getStoredCars();
-  const inquiries = getStoredInquiries();
-  const settings = getStoredSettings();
-  const cmsConfig = getStoredCmsConfig();
-  const lines: string[] = [
-    "-- ByCar Global (bycarglobal.com) — Otomatik Üretilen Cloudflare D1 (SQLite) Veritabanı Dökümü",
-    `-- Tarih: ${new Date().toISOString()}`,
+  const lines = [
+    "-- ByCar data export. This is not a full D1/R2 backup.",
+    "-- Production restore must use an independently reviewed migration; never paste this into the live console.",
+    `-- Exported: ${new Date().toISOString()}`,
     "PRAGMA foreign_keys = ON;",
-    "",
-    "-- 1. Araç Koleksiyonu (vehicles & vehicle_images)",
   ];
-
-  for (const c of cars) {
-    const status: CarStatus = c.status || (c.sold ? "sold" : "active");
-    const fit: ImageFit = c.imageFit || "cover";
+  const upsert = (
+    table: string,
+    columns: string[],
+    values: Array<string | number | undefined | null>,
+    key: string,
+  ) => {
     lines.push(
-      `INSERT OR REPLACE INTO vehicles (id, slug, brand, title, year, km, fuel, gear, body, power, color, package, expertise, tramer, image_fit, video_url, extras_json, extras_en_json, description_tr, description_en, status, is_featured) VALUES (${sqlEsc(
-        c.id,
-      )}, ${sqlEsc(c.id)}, ${sqlEsc(c.brand)}, ${sqlEsc(c.title)}, ${c.year}, ${
-        c.km
-      }, ${sqlEsc(c.fuel)}, ${sqlEsc(c.gear)}, ${sqlEsc(c.body)}, ${sqlEsc(
-        c.specs.power,
-      )}, ${sqlEsc(c.specs.color)}, ${sqlEsc(c.specs.package)}, ${sqlEsc(
-        c.specs.expertise,
-      )}, ${sqlEsc(c.specs.tramer)}, ${sqlEsc(fit)}, ${sqlEsc(
-        c.video || null,
-      )}, ${sqlEsc(JSON.stringify(c.extras || []))}, ${sqlEsc(
-        JSON.stringify(c.extrasEn || []),
-      )}, ${sqlEsc(c.description?.tr || "")}, ${sqlEsc(
-        c.description?.en || "",
-      )}, ${sqlEsc(status)}, ${c.featured ? 1 : 0});`,
+      `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${values.map(sqlEsc).join(", ")}) ON CONFLICT(${key}) DO UPDATE SET ${columns
+        .filter((column) => column !== key)
+        .map((column) => `${column} = excluded.${column}`)
+        .join(", ")};`,
     );
-    c.images.forEach((imgUrl, idx) => {
-      const imgId = `${c.id}-img-${idx + 1}`;
-      lines.push(
-        `INSERT OR REPLACE INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES (${sqlEsc(
-          imgId,
-        )}, ${sqlEsc(c.id)}, ${sqlEsc(`vehicles/${c.id}/${idx + 1}.webp`)}, ${sqlEsc(
-          imgUrl,
-        )}, ${idx === 0 ? 1 : 0}, ${idx});`,
+  };
+  getStoredCars().forEach((car, order) => {
+    const status = car.status || (car.sold ? "sold" : "active");
+    upsert(
+      "vehicles",
+      [
+        "id",
+        "slug",
+        "brand",
+        "title",
+        "year",
+        "km",
+        "fuel",
+        "gear",
+        "body",
+        "power",
+        "color",
+        "package",
+        "expertise",
+        "tramer",
+        "image_fit",
+        "video_url",
+        "extras_json",
+        "extras_en_json",
+        "description_tr",
+        "description_en",
+        "status",
+        "is_featured",
+        "sort_order",
+      ],
+      [
+        car.id,
+        car.slug || car.id,
+        car.brand,
+        car.title,
+        car.year,
+        car.km,
+        car.fuel,
+        car.gear,
+        car.body,
+        car.specs.power,
+        car.specs.color,
+        car.specs.package,
+        car.specs.expertise,
+        car.specs.tramer,
+        car.imageFit || "cover",
+        car.video || null,
+        JSON.stringify(car.extras || []),
+        JSON.stringify(car.extrasEn || []),
+        car.description?.tr || "",
+        car.description?.en || "",
+        status,
+        car.featured ? 1 : 0,
+        order,
+      ],
+      "id",
+    );
+    lines.push(`DELETE FROM vehicle_images WHERE vehicle_id = ${sqlEsc(car.id)};`);
+    car.images.forEach((url, index) => {
+      let key = `vehicles/${car.id}/${index + 1}`;
+      try {
+        const pathname = new URL(url, "https://bycar.invalid").pathname;
+        if (pathname.startsWith("/api/media/"))
+          key = decodeURIComponent(pathname.slice("/api/media/".length));
+      } catch {
+        /* Keep the catalog's static-image fallback key. */
+      }
+      upsert(
+        "vehicle_images",
+        ["id", "vehicle_id", "r2_key", "public_url", "is_cover", "sort_order"],
+        [`${car.id}-img-${index + 1}`, car.id, key, url, index === 0 ? 1 : 0, index],
+        "id",
       );
     });
-  }
-
-  lines.push("", "-- 2. Müşteri Teklif & Özel İthalat Talepleri (inquiries)");
-  for (const inq of inquiries) {
-    lines.push(
-      `INSERT OR REPLACE INTO inquiries (id, type, car_title, customer_name, phone, offer_or_budget, details, status) VALUES (${sqlEsc(
-        inq.id,
-      )}, ${sqlEsc(inq.type)}, ${sqlEsc(inq.car)}, ${sqlEsc(inq.name)}, ${sqlEsc(
-        inq.phone,
-      )}, ${sqlEsc(inq.offerOrBudget)}, ${sqlEsc(inq.details || null)}, ${sqlEsc(inq.status)});`,
+  });
+  for (const item of getStoredInquiries()) {
+    upsert(
+      "inquiries",
+      ["id", "type", "car_title", "customer_name", "phone", "offer_or_budget", "details", "status"],
+      [
+        item.id,
+        item.type,
+        item.car,
+        item.name,
+        item.phone,
+        item.offerOrBudget,
+        item.details || null,
+        item.status,
+      ],
+      "id",
     );
   }
-
-  lines.push("", "-- 3. Vitrin & Modal Ayarları (site_settings)");
-  lines.push(
-    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('showcase_settings', ${sqlEsc(
-      JSON.stringify(settings),
-    )});`,
+  upsert(
+    "site_settings",
+    ["key", "value"],
+    ["showcase_settings", JSON.stringify(getStoredSettings())],
+    "key",
   );
-  lines.push(
-    `INSERT OR REPLACE INTO site_settings (key, value) VALUES ('cms_config', ${sqlEsc(
-      JSON.stringify(cmsConfig),
-    )});`,
+  upsert(
+    "site_settings",
+    ["key", "value"],
+    ["cms_config", JSON.stringify(getStoredCmsConfig())],
+    "key",
   );
-
   return lines.join("\n");
 }
 
@@ -2479,91 +2588,82 @@ export type InitialStoreData = {
   cmsConfig?: SiteCMSConfig | undefined;
 };
 
-export function useByCarStore(initialData?: InitialStoreData | null) {
-  const [cars, setCars] = useState<Car[]>(() => {
-    if (initialData?.cars && initialData.cars.length > 0) return initialData.cars;
-    if (typeof window !== "undefined") return getStoredCars();
-    return CARS;
+export function useByCarStore(
+  initialData?: InitialStoreData | null,
+  options?: { admin?: boolean },
+) {
+  const admin = options?.admin === true;
+  const [cars, setCars] = useState<Car[]>(initialData?.cars ?? []);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [settings, setSettings] = useState<SiteSettings>({
+    ...DEFAULT_SETTINGS,
+    ...initialData?.settings,
   });
-  const [inquiries, setInquiries] = useState<Inquiry[]>(() => {
-    if (typeof window !== "undefined") return getStoredInquiries();
-    return INITIAL_INQUIRIES;
-  });
-  const [settings, setSettings] = useState<SiteSettings>(() => {
-    if (initialData?.settings) return { ...DEFAULT_SETTINGS, ...initialData.settings };
-    if (typeof window !== "undefined") return getStoredSettings();
-    return DEFAULT_SETTINGS;
-  });
-  const [cmsConfig, setCmsConfig] = useState<SiteCMSConfig>(() => {
-    if (initialData?.cmsConfig) return { ...DEFAULT_CMS_CONFIG, ...initialData.cmsConfig };
-    if (typeof window !== "undefined") return getStoredCmsConfig();
-    return DEFAULT_CMS_CONFIG;
-  });
-  const [lang, setLangState] = useState<Lang>(() => {
-    if (typeof window !== "undefined") return getStoredLang();
-    return "tr";
-  });
+  const [cmsConfig, setCmsConfig] = useState<SiteCMSConfig>(mergeCmsConfig(initialData?.cmsConfig));
+  const [lang, setLangState] = useState<Lang>("tr");
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
   const [undoSnap, setUndoSnap] = useState<UndoSnapshot | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatusDetail>({ status: "idle" });
 
   useEffect(() => {
+    let active = true;
     const sync = () => {
+      setLangState(getStoredLang());
+      if (!admin) return;
       setCars(getStoredCars());
       setInquiries(getStoredInquiries());
       setSettings(getStoredSettings());
       setCmsConfig(getStoredCmsConfig());
-      setLangState(getStoredLang());
       setUndoSnap(getUndoSnapshot());
     };
-    sync();
-
-    // Cache initial SSR D1 data if available
-    if (initialData?.cars && initialData.cars.length > 0) {
-      safeSetItem(CARS_KEY, JSON.stringify(initialData.cars));
-    }
-    if (initialData?.settings) {
-      safeSetItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...initialData.settings }));
-    }
-    if (initialData?.cmsConfig) {
-      safeSetItem(CMS_KEY, JSON.stringify({ ...DEFAULT_CMS_CONFIG, ...initialData.cmsConfig }));
-    }
-
-    // Auto-sync from Cloudflare D1 server API on initial load
-    void syncFromServer();
-
     const handleSyncStatus = (e: Event) => {
-      const custom = e as CustomEvent<SyncStatusDetail>;
-      if (custom.detail) {
-        setSyncStatus(custom.detail);
-        if (custom.detail.status === "syncing") {
-          setIsSyncing(true);
-        } else {
-          setIsSyncing(false);
-        }
+      const detail = (e as CustomEvent<SyncStatusDetail>).detail;
+      if (detail && admin) {
+        setSyncStatus(detail);
+        setIsSyncing(detail.status === "syncing");
       }
     };
-
     window.addEventListener(SYNC_EVENT, sync);
     window.addEventListener("storage", sync);
     window.addEventListener(SYNC_STATUS_EVENT, handleSyncStatus);
+    sync();
+    if (admin) {
+      if (hasUnsavedCmsChanges())
+        setSyncStatus({
+          status: "error",
+          message:
+            "Bu sekmede henüz sunucuya kaydedilmemiş bir taslak var. Tekrar deneyebilir veya sunucudaki güncel veriyi yükleyebilirsiniz.",
+        });
+      if (window.sessionStorage.getItem("bycar_admin_token")) void syncFromServer();
+    } else {
+      void fetch("/api/cms")
+        .then(async (response) => {
+          if (!response.ok) return;
+          const data = (await response.json()) as InitialStoreData & { ok?: boolean };
+          if (!active || data.ok !== true) return;
+          if (Array.isArray(data.cars)) setCars(data.cars);
+          setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
+          setCmsConfig(mergeCmsConfig(data.cmsConfig));
+        })
+        .catch(() => {
+          /* Keep the server-rendered catalog on transient network errors. */
+        });
+    }
     return () => {
+      active = false;
       window.removeEventListener(SYNC_EVENT, sync);
       window.removeEventListener("storage", sync);
       window.removeEventListener(SYNC_STATUS_EVENT, handleSyncStatus);
     };
-  }, [initialData]);
+  }, [admin]);
 
   const handleManualSync = async () => {
-    setIsSyncing(true);
-    try {
-      await syncFromServer();
-      await syncToServer();
-    } finally {
-      setIsSyncing(false);
-    }
+    const result = await syncToServer();
+    if (!result.ok) throw new Error(result.error || "Senkronizasyon başarısız.");
   };
-
   return {
     cars,
     inquiries,
@@ -2578,9 +2678,6 @@ export function useByCarStore(initialData?: InitialStoreData | null) {
     deleteCar: deleteStoredCar,
     queueDeletedCarId,
     resetCars: resetStoredCars,
-    updateInquiries: saveStoredInquiries,
-    resetInquiries: resetStoredInquiries,
-    addInquiry: addStoredInquiry,
     updateSettings: saveStoredSettings,
     updateCmsConfig: saveStoredCmsConfig,
     resetCmsConfig: resetStoredCmsConfig,

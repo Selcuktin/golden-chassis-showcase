@@ -1,12 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getLiveCmsData, getLiveVehicleBySlug } from "../server/api";
+import { getRequest } from "@tanstack/react-start/server";
+import { getLiveCmsData, getLiveVehicleBySlug, resolveEnv } from "../server/api";
 
+function siteUrl() {
+  return (resolveEnv().SITE_URL || new URL(getRequest().url).origin).replace(/\/+$/, "");
+}
 export const fetchLiveCmsData = createServerFn({ method: "GET" }).handler(async () => {
-  return await getLiveCmsData();
+  return { ...(await getLiveCmsData()), siteUrl: siteUrl() };
 });
-
 export const fetchLiveVehicle = createServerFn({ method: "GET" })
   .validator((slug: string) => slug)
   .handler(async ({ data: slug }) => {
-    return await getLiveVehicleBySlug(slug);
+    const [car, site] = await Promise.all([getLiveVehicleBySlug(slug), getLiveCmsData()]);
+    return { car, settings: site.settings, cmsConfig: site.cmsConfig, siteUrl: siteUrl() };
   });

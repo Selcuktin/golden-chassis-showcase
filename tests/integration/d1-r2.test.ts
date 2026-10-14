@@ -8,6 +8,8 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getPlatformProxy, type PlatformProxy } from "wrangler";
 import {
+  getLiveCmsData,
+  getLiveVehicleBySlug,
   deriveServerPBKDF2HexWithParams,
   handleApiRequest,
   type D1Database as ApiDatabase,
@@ -151,7 +153,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
         "r2_cleanup_queue",
       ]),
     );
-    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(3);
+    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(4);
     expect(
       await db
         .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger'")
@@ -370,6 +372,301 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
   });
 
+  it("persists administrator order and keeps empty/draft catalogs authoritative across SSR, API, and sitemap", async () => {
+    const db = local.env.DB;
+    const revision = Number(
+      await db.prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'").first("value"),
+    );
+    const ordered = ["order-b", "order-a"].map((id) => ({ ...car, id, slug: id }));
+    const save = await handleApiRequest(
+      post("/api/cms", { revision, cars: ordered }, token),
+      local.env,
+    );
+    expect(save?.status).toBe(200);
+    const live = await getLiveCmsData(local.env);
+    expect(live.cars.filter((item) => item.id.startsWith("order-")).map((item) => item.id)).toEqual(
+      ["order-b", "order-a"],
+    );
+    const old = await db
+      .prepare("SELECT id, status FROM vehicles")
+      .all<{ id: string; status: string }>();
+    await db.prepare("UPDATE vehicles SET status = 'draft'").run();
+    try {
+      expect((await getLiveCmsData(local.env)).cars).toEqual([]);
+      expect(await getLiveVehicleBySlug("order-a", local.env)).toBeNull();
+      const response = await handleApiRequest(
+        new Request("https://bycarglobal.com/api/cms"),
+        local.env,
+      );
+      expect(await response!.json()).toMatchObject({ source: "d1", cars: [] });
+      const sitemap = await handleApiRequest(
+        new Request("https://bycarglobal.com/sitemap.xml"),
+        local.env,
+      );
+      expect(await sitemap!.text()).not.toContain("/arac/");
+    } finally {
+      await db.batch(
+        old.results.map((row) =>
+          db.prepare("UPDATE vehicles SET status = ? WHERE id = ?").bind(row.status, row.id),
+        ),
+      );
+    }
+  });
+
+  it.each([false, true])(
+    "rolls back a large catalog when the revision changes in flight (force=%s)",
+    async (force) => {
+      const db = local.env.DB;
+      const revision = Number(
+        await db
+          .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
+          .first("value"),
+      );
+      const before = await db.prepare("SELECT COUNT(*) AS count FROM vehicles").first("count");
+      const racingDb: ApiDatabase = {
+        prepare: db.prepare.bind(db),
+        exec: db.exec.bind(db),
+        async batch(statements) {
+          expect(statements.length).toBeLessThan(30);
+          await db
+            .prepare("UPDATE site_settings SET value = ? WHERE key = 'cms_revision'")
+            .bind(String(revision + 1))
+            .run();
+          return db.batch(statements as Parameters<D1Database["batch"]>[0]);
+        },
+      };
+      const cars = Array.from({ length: 35 }, (_, index) => ({
+        ...car,
+        id: `race-${index}`,
+        slug: `race-${index}`,
+        images: [`/cars/test-${index}.jpg`],
+      }));
+      const response = await handleApiRequest(
+        post(
+          "/api/cms",
+          {
+            revision,
+            cars,
+            ...(force
+              ? { force: true, forceExpectedRevision: revision, forceReason: "Integration race" }
+              : {}),
+          },
+          token,
+        ),
+        { ...local.env, DB: racingDb },
+      );
+      expect(response?.status).toBe(409);
+      expect(await db.prepare("SELECT COUNT(*) AS count FROM vehicles").first("count")).toBe(
+        before,
+      );
+      expect(await db.prepare("SELECT id FROM vehicles WHERE id = 'race-0'").first()).toBeNull();
+    },
+  );
+
+  it("persists customer inquiries and confirms status/delete mutations, including missing IDs", async () => {
+    const db = local.env.DB;
+    const response = await handleApiRequest(
+      post("/api/inquiry", {
+        type: "Teklif",
+        vehicleId: car.id,
+        car: "BMW M5",
+        name: "Integration Client",
+        phone: "+905551234567",
+        offerOrBudget: "Trade-in request",
+      }),
+      local.env,
+    );
+    expect(response?.status).toBe(200);
+    const id = ((await response!.json()) as { inquiryId: string }).inquiryId;
+    expect(
+      await db
+        .prepare("SELECT vehicle_id FROM inquiries WHERE id = ?")
+        .bind(id)
+        .first("vehicle_id"),
+    ).toBe(car.id);
+    const status = await handleApiRequest(
+      post("/api/admin/inquiries/status", { id, status: "Tamamlandı" }, token),
+      local.env,
+    );
+    expect(status?.status).toBe(200);
+    expect(
+      await db.prepare("SELECT status FROM inquiries WHERE id = ?").bind(id).first("status"),
+    ).toBe("Tamamlandı");
+    expect(
+      (await handleApiRequest(post("/api/admin/inquiries/delete", { id }), local.env))?.status,
+    ).toBe(401);
+    expect(
+      (await handleApiRequest(post("/api/admin/inquiries/delete", { id }, token), local.env))
+        ?.status,
+    ).toBe(200);
+    expect(await db.prepare("SELECT id FROM inquiries WHERE id = ?").bind(id).first()).toBeNull();
+    expect(
+      (
+        await handleApiRequest(
+          post("/api/admin/inquiries/status", { id, status: "Yeni" }, token),
+          local.env,
+        )
+      )?.status,
+    ).toBe(404);
+    expect(
+      (await handleApiRequest(post("/api/admin/inquiries/delete", { id }, token), local.env))
+        ?.status,
+    ).toBe(404);
+  });
+
+  it("admits only five concurrent customer requests per IP using one atomic D1 statement", async () => {
+    const requests = Array.from({ length: 10 }, () => {
+      const request = post("/api/inquiry", {
+        type: "Teklif",
+        name: "Parallel Client",
+        phone: "+905551234567",
+        car: "BMW M5",
+        offerOrBudget: "Information",
+      });
+      request.headers.set("cf-connecting-ip", "192.0.2.151");
+      return handleApiRequest(request, local.env);
+    });
+    const responses = await Promise.all(requests);
+    expect(responses.filter((response) => response?.status === 200)).toHaveLength(5);
+    expect(responses.filter((response) => response?.status === 429)).toHaveLength(5);
+    expect(
+      await local.env.DB.prepare(
+        "SELECT COUNT(*) as count FROM inquiry_attempts WHERE ip = '192.0.2.151'",
+      ).first("count"),
+    ).toBe(5);
+  });
+
+  it("keeps retired images available for undo, preserves CMS/video media, and retries failed R2 deletion", async () => {
+    const db = local.env.DB;
+    const key = "vehicles/retired/old.png";
+    const url = `/api/media/${encodeURIComponent(key)}`;
+    await local.env.BUCKET.put(key, "original-image");
+    let revision = Number(
+      await db.prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'").first("value"),
+    );
+    expect(
+      (
+        await handleApiRequest(
+          post(
+            "/api/cms",
+            { revision, cars: [{ ...car, id: "undo-car", slug: "undo-car", images: [url] }] },
+            token,
+          ),
+          local.env,
+        )
+      )?.status,
+    ).toBe(200);
+    revision++;
+    expect(
+      (
+        await handleApiRequest(
+          post("/api/cms", { revision, deletedCarIds: ["undo-car"] }, token),
+          local.env,
+        )
+      )?.status,
+    ).toBe(200);
+    expect(await local.env.BUCKET.head(key)).not.toBeNull();
+    expect(
+      await db.prepare("SELECT id FROM r2_cleanup_queue WHERE r2_key = ?").bind(key).first(),
+    ).not.toBeNull();
+    await handleApiRequest(post("/api/admin/media/gc", { mode: "full" }, token), local.env);
+    expect(await local.env.BUCKET.head(key)).not.toBeNull();
+    revision++;
+    expect(
+      (
+        await handleApiRequest(
+          post(
+            "/api/cms",
+            { revision, cars: [{ ...car, id: "undo-car", slug: "undo-car", images: [url] }] },
+            token,
+          ),
+          local.env,
+        )
+      )?.status,
+    ).toBe(200);
+    await handleApiRequest(post("/api/admin/media/gc", { mode: "queue" }, token), local.env);
+    expect(
+      await db.prepare("SELECT id FROM r2_cleanup_queue WHERE r2_key = ?").bind(key).first(),
+    ).toBeNull();
+    expect(await local.env.BUCKET.head(key)).not.toBeNull();
+
+    const hero = "vehicles/shared/hero.png";
+    const video = "vehicles/shared/video.mp4";
+    for (const candidate of [hero, video]) {
+      await local.env.BUCKET.put(candidate, "referenced-content");
+      await db
+        .prepare("INSERT INTO r2_cleanup_queue (id, r2_key, created_at) VALUES (?, ?, 0)")
+        .bind(candidate, candidate)
+        .run();
+    }
+    await db
+      .prepare(
+        "INSERT INTO site_settings (key, value) VALUES ('cms_config', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .bind(JSON.stringify({ hero: { bgImage: `/api/media/${encodeURIComponent(hero)}` } }))
+      .run();
+    await db
+      .prepare("UPDATE vehicles SET video_url = ? WHERE id = ?")
+      .bind(`/api/media/${encodeURIComponent(video)}`, car.id)
+      .run();
+    await handleApiRequest(post("/api/admin/media/gc", { mode: "full" }, token), local.env);
+    expect(await local.env.BUCKET.head(hero)).not.toBeNull();
+    expect(await local.env.BUCKET.head(video)).not.toBeNull();
+
+    await local.env.BUCKET.put("vehicles/failure/old.png", "retry-me");
+    await db
+      .prepare(
+        "INSERT INTO r2_cleanup_queue (id, r2_key, created_at) VALUES ('retry-media', 'vehicles/failure/old.png', 0)",
+      )
+      .run();
+    const failingBucket = {
+      put: local.env.BUCKET.put.bind(local.env.BUCKET),
+      get: local.env.BUCKET.get.bind(local.env.BUCKET),
+      delete: async () => {
+        throw new Error("R2 temporarily unavailable");
+      },
+    };
+    const failed = await handleApiRequest(post("/api/admin/media/gc", { mode: "queue" }, token), {
+      ...local.env,
+      BUCKET: failingBucket,
+    });
+    expect(failed?.status).toBe(503);
+    expect(
+      await db
+        .prepare("SELECT attempts FROM r2_cleanup_queue WHERE id = 'retry-media'")
+        .first("attempts"),
+    ).toBe(1);
+    expect(await local.env.BUCKET.head("vehicles/failure/old.png")).not.toBeNull();
+    expect(
+      (await handleApiRequest(post("/api/admin/media/gc", { mode: "queue" }, token), local.env))
+        ?.status,
+    ).toBe(200);
+    expect(await local.env.BUCKET.head("vehicles/failure/old.png")).toBeNull();
+  });
+
+  it("reports D1 read outages instead of returning a successful empty fallback", async () => {
+    const db = local.env.DB;
+    const broken: ApiDatabase = {
+      ...local.env.DB,
+      prepare: () => {
+        throw new Error("D1 unavailable");
+      },
+      batch: async (statements) => db.batch(statements as Parameters<D1Database["batch"]>[0]),
+      exec: db.exec.bind(db),
+    };
+    const response = await handleApiRequest(new Request("https://bycarglobal.com/api/cms"), {
+      ...local.env,
+      DB: broken,
+    });
+    expect(response?.status).toBe(503);
+    await expect(getLiveCmsData({ ...local.env, DB: broken })).rejects.toThrow();
+    const health = await handleApiRequest(new Request("https://bycarglobal.com/api/health"), {
+      ...local.env,
+      DB: broken,
+    });
+    expect(health?.status).toBe(503);
+  });
+
   it("does not reapply migrations or reset existing settings on a second run", async () => {
     await local.env.DB.prepare(
       "INSERT INTO site_settings (key, value) VALUES ('replay_setting', 'preserved')",
@@ -385,7 +682,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     ).toBe("42");
     expect(
       await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
-    ).toBe(3);
+    ).toBe(4);
     expect(
       await local.env.DB.prepare(
         "SELECT value FROM site_settings WHERE key = 'replay_setting'",
@@ -665,7 +962,7 @@ describe("0002: retirement of deterministic seed credentials", () => {
     expect((await login(oldPassword))?.status).toBe(401);
     expect(
       await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
-    ).toBe(3);
+    ).toBe(4);
   });
 });
 
@@ -743,6 +1040,11 @@ describe("Upgrade from the pre-migration production schema", () => {
         .prepare("SELECT r2_key FROM vehicle_images WHERE id = 'legacy-image'")
         .first("r2_key"),
     ).toBe("vehicles/legacy/old.png");
+    expect(
+      await local.env.DB.prepare("SELECT sort_order FROM vehicles WHERE id = 'legacy-car'").first(
+        "sort_order",
+      ),
+    ).toBe(0);
     expect(await (await local.env.BUCKET.get("vehicles/legacy/old.png"))?.text()).toBe(
       "existing-media",
     );

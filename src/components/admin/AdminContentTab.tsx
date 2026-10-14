@@ -61,7 +61,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
 
   const handleSave = (label = "Site İçerik Ayarları Güncellendi") => {
     onSave(form, label);
-    setMsg("✓ Tüm içerik ve kurumsal CMS ayarları başarıyla kaydedildi.");
+    setMsg(
+      "✓ Tüm içerik ve kurumsal CMS ayarları yerel taslak olarak kaydedildi; canlı kayıt durumunu üst çubuktan kontrol edin.",
+    );
     setTimeout(() => setMsg(""), 4000);
   };
 
@@ -92,7 +94,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       commentTr: "",
       commentEn: "",
     });
-    setMsg("✓ Yeni müşteri yorumu başarıyla eklendi.");
+    setMsg(
+      "✓ Yeni müşteri yorumu taslağa eklendi; canlı kayıt durumunu üst çubuktan kontrol edin.",
+    );
     setTimeout(() => setMsg(""), 3500);
   };
 
@@ -121,7 +125,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
     setForm(next);
     onSave(next, `Yeni SSS eklendi: ${item.qTr.slice(0, 30)}...`);
     setNewFaq({ qTr: "", qEn: "", aTr: "", aEn: "" });
-    setMsg("✓ Yeni Sıkça Sorulan Soru başarıyla eklendi.");
+    setMsg(
+      "✓ Yeni Sıkça Sorulan Soru taslağa eklendi; canlı kayıt durumunu üst çubuktan kontrol edin.",
+    );
     setTimeout(() => setMsg(""), 3500);
   };
 
@@ -165,7 +171,9 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
       }
     }
     setNewPresetValue("");
-    setMsg(`✓ Yeni "${trimmed}" etiketi kalıcı olarak eklendi.`);
+    setMsg(
+      `✓ Yeni "${trimmed}" etiketi taslağa eklendi; canlı kayıt durumunu üst çubuktan kontrol edin.`,
+    );
     setTimeout(() => setMsg(""), 3500);
   };
 
