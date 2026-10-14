@@ -918,14 +918,18 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         ? authHeader.slice(7).trim()
         : authHeader.trim();
       const tokenHash = await sha256Hex(token);
-      memorySessions.delete(tokenHash);
       if (db) {
         try {
           await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
-        } catch {
-          // ignore
+        } catch (err) {
+          console.error("D1 logout revoke error:", err);
+          return jsonResponse(
+            { ok: false, error: "Oturum sunucuda sonlandırılamadı. Lütfen tekrar deneyin." },
+            { status: 503 },
+          );
         }
       }
+      memorySessions.delete(tokenHash);
     }
     return new Response(JSON.stringify({ ok: true, message: "Oturum sonlandırıldı." }), {
       headers: { "content-type": "application/json; charset=utf-8" },
@@ -1004,7 +1008,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           { status: 503 },
         );
       }
-      await db
+      const updatePassword = db
         .prepare(
           `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
            VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
@@ -1013,15 +1017,16 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
              password_salt = excluded.password_salt,
              iterations = excluded.iterations`,
         )
-        .bind(newHash, randomSaltHex)
-        .run();
+        .bind(newHash, randomSaltHex);
 
-      // Revoke all existing sessions for this admin in D1 and clear memory sessions
-      try {
-        await db.prepare("DELETE FROM admin_sessions WHERE admin_id = 'admin-master'").run();
-      } catch (sessErr) {
-        console.error("D1 sessions revoke error:", sessErr);
-      }
+      // D1 batch is atomic: a revoke failure must also roll back the password.
+      // Resolve by the upsert's username so historical non-master IDs are covered.
+      await db.batch([
+        updatePassword,
+        db.prepare(
+          "DELETE FROM admin_sessions WHERE admin_id IN (SELECT id FROM admin_users WHERE username = 'admin')",
+        ),
+      ]);
       memorySessions.clear();
 
       return new Response(

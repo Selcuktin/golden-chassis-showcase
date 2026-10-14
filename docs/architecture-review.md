@@ -49,9 +49,13 @@ gerektirir; herkese açık katalog erişimi korunur. Bu katman, aşağıdaki mev
 oturum iptali davranışının düzeltilmesinin yerini almaz.
 
 1. **Oturum sonlandırmanın hata davranışı:** logout ve şifre değişiminde D1 session
-   silme hataları yakalanıp başarılı yanıt verilebiliyor. D1 yetkili kaynak olduğundan
-   silinemeyen oturum geçerliliğini koruyabilir. D1 hatasında başarılı çıkış bildirmeyen
-   davranışı ve gerçek D1 hata testlerini ayrı bir auth çalışmasında ele alın.
+   silme hatalarının başarı yanıtıyla maskelenmesi ayrı oturum PR'ında giderildi.
+   Logout, D1 iptali başarısızsa 503 döner ve tekrar denenebilir. Şifre güncellemesi
+   ve oturumların silinmesi aynı D1 batch'inde atomik çalışır; herhangi bir hata
+   ikisini de geri alır. Tarihsel farklı admin ID'leri kullanıcı adına göre bulunur.
+   Panel yalnızca JSON başarı onayından sonra yerel oturumu kapatır; Access giriş
+   sayfasına yönlendirilmiş HTML yanıtı başarı sayılmaz. Gerçek D1 hata/rollback
+   testleri ve panel formu/istemci hata testleri eklendi. Yeni auth algoritması yoktur.
 2. **Auth sahipliği:** PBKDF2, token üretimi, oturum, env ile acil giriş ve rate limit
    `api.ts` içinde özel olarak geliştirilmiş. Bakımı yapılan bir kimlik sağlayıcısı
    veya auth kütüphanesine geçişi ayrı tasarlayın; mevcut oturumların sonlandırılması,
@@ -67,7 +71,8 @@ oturum iptali davranışının düzeltilmesinin yerini almaz.
 5. **Merge kapısı:** workflow eklemek tek başına `main` korumasını açmaz. GitHub ruleset
    içinde `quality` ve `audit` kontrollerini zorunlu yapın; doğrudan push'u kapatın.
 
-Önerilen sıra: bu migration/CI PR'ı → oturum iptali davranışı ve auth geçiş tasarımı
-→ davranışı koruyan modül ayrımı → R2 hata/tekrar-deneme kapsamı. Her turda yalnızca
+Migration/CI, eski seed temizliği, Access katmanı ve oturum iptali düzeltmesi ayrı
+PR'larla tamamlandı. Sonraki bakım sırası: tam auth geçiş tasarımı → davranışı koruyan
+modül ayrımı → R2 hata/tekrar-deneme kapsamı. Her turda yalnızca
 tek sorumluluk alanı değişsin; yeni bir genel güvenlik prompt'uyla tüm sistemi yeniden
 yazmak yerine somut hata, kabul ölçütü ve ilgili gerçek-bağlama testi tanımlansın.

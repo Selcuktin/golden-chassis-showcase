@@ -3,7 +3,9 @@
 The public showroom and inquiries remain public. Administration now uses two
 layers: Cloudflare Access identity first, then the existing application session.
 JWT signature/issuer/audience/lifetime verification is performed by `jose`, not
-custom cryptography. The existing password/session implementation is unchanged.
+custom cryptography. The existing password/session identity model is preserved;
+a separate session reliability fix makes password replacement and revocation
+atomic and makes the panel reject unconfirmed/HTML mutation responses.
 
 ## Managed application
 
