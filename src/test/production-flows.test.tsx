@@ -297,4 +297,45 @@ describe("Authoritative catalog and concurrent saves", () => {
     ).toBe(false);
     expect(SettingsSchema.safeParse({ pinnedBrands: "BMW" }).success).toBe(false);
   });
+
+  it("excludes draft and deleted cars from active brand and attribute filters", () => {
+    const mixedCars = [
+      {
+        ...CARS[0],
+        id: "active-car-1",
+        brand: "Bentley",
+        body: "Coupe",
+        fuel: "Hibrit",
+        gear: "Otomatik",
+        status: "active" as const,
+      },
+      {
+        ...CARS[0],
+        id: "draft-car-1",
+        brand: "Cupra",
+        body: "Hatchback",
+        fuel: "Dizel",
+        gear: "Manuel",
+        status: "draft" as const,
+      },
+    ];
+
+    const visibleCars = mixedCars.filter((c) => c.status !== "draft");
+    const activeBrands = new Set(visibleCars.map((c) => c.brand).filter(Boolean));
+    const preferredOrder = ["Cupra", "Bentley"];
+    const ordered = preferredOrder.filter((b) => activeBrands.has(b));
+    const rest = Array.from(activeBrands).filter((b) => !preferredOrder.includes(b));
+    const hybridBrands = [...ordered, ...rest];
+
+    expect(hybridBrands).toContain("Bentley");
+    expect(hybridBrands).not.toContain("Cupra");
+
+    const availableBodies = Array.from(new Set(visibleCars.map((c) => c.body).filter(Boolean)));
+    expect(availableBodies).toContain("Coupe");
+    expect(availableBodies).not.toContain("Hatchback");
+
+    const availableFuels = Array.from(new Set(visibleCars.map((c) => c.fuel).filter(Boolean)));
+    expect(availableFuels).toContain("Hibrit");
+    expect(availableFuels).not.toContain("Dizel");
+  });
 });

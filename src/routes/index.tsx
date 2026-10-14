@@ -178,11 +178,15 @@ function Index() {
 
   const visibleCars = useMemo(() => cars.filter((c) => c.status !== "draft"), [cars]);
 
-  // Hybrid Brand List: Pinned luxury brands + any new custom brands from added vehicles
+  // Dynamic Brand List: Only include brands that have active, published (non-draft) vehicles in inventory
   const hybridBrands = useMemo(() => {
-    const base = settings.pinnedBrands?.length ? settings.pinnedBrands : BRANDS;
-    const dynamic = visibleCars.map((c) => c.brand).filter(Boolean);
-    return Array.from(new Set([...base, ...dynamic]));
+    const activeBrands = new Set(visibleCars.map((c) => c.brand).filter(Boolean));
+    const preferredOrder = settings.pinnedBrands?.length ? settings.pinnedBrands : BRANDS;
+    const ordered = preferredOrder.filter((b) => activeBrands.has(b));
+    const rest = Array.from(activeBrands)
+      .filter((b) => !preferredOrder.includes(b))
+      .sort((a, b) => a.localeCompare(b, "tr"));
+    return [...ordered, ...rest];
   }, [settings.pinnedBrands, visibleCars]);
 
   const availableYears = useMemo(
@@ -195,39 +199,47 @@ function Index() {
 
   const availableBodies = useMemo(
     () =>
-      Array.from(
-        new Set([
-          "Coupe",
-          "SUV",
-          "Sedan",
-          "Cabrio",
-          ...visibleCars.map((c) => c.body).filter(Boolean),
-        ]),
+      Array.from(new Set(visibleCars.map((c) => c.body).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "tr"),
       ),
     [visibleCars],
   );
 
   const availableFuels = useMemo(
     () =>
-      Array.from(
-        new Set([
-          "Benzin",
-          "Hibrit",
-          "Elektrik",
-          "Dizel",
-          ...visibleCars.map((c) => c.fuel).filter(Boolean),
-        ]),
+      Array.from(new Set(visibleCars.map((c) => c.fuel).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "tr"),
       ),
     [visibleCars],
   );
 
   const availableGears = useMemo(
     () =>
-      Array.from(
-        new Set(["Otomatik", "Manuel", ...visibleCars.map((c) => c.gear).filter(Boolean)]),
+      Array.from(new Set(visibleCars.map((c) => c.gear).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "tr"),
       ),
     [visibleCars],
   );
+
+  // Auto-clear active filter selections when corresponding vehicles are drafted or deleted
+  useEffect(() => {
+    if (brand && !hybridBrands.includes(brand)) setBrand("");
+    if (year && !availableYears.includes(year)) setYear("");
+    if (body && !availableBodies.includes(body)) setBody("");
+    if (fuel && !availableFuels.includes(fuel)) setFuel("");
+    if (gear && !availableGears.includes(gear)) setGear("");
+  }, [
+    brand,
+    year,
+    body,
+    fuel,
+    gear,
+    hybridBrands,
+    availableYears,
+    availableBodies,
+    availableFuels,
+    availableGears,
+  ]);
 
   const activeFilterCount = useMemo(
     () =>

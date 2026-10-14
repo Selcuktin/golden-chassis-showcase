@@ -2,6 +2,7 @@ import { createFileRoute, notFound, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -204,6 +205,14 @@ function VehicleDetailPage() {
                 </button>
               ))}
             </div>
+            <Link
+              to="/"
+              hash="koleksiyon"
+              className="inline-flex items-center gap-1.5 border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary transition hover:border-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              <span>{lang === "tr" ? "Koleksiyona Dön" : "Back to Collection"}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
       </header>
