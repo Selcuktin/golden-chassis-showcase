@@ -68,8 +68,8 @@ Domain satın alındıktan sonra Cloudflare üzerinden canlıya almak için:
 ## 💻 Yerel Geliştirme & Komutlar
 
 ```bash
-# Bağımlılıkları yükle
-npm install
+# Kilitlenmiş bağımlılıkları yükle (Node.js 24)
+npm ci
 
 # Geliştirme sunucusunu başlat (http://localhost:5173)
 npm run dev
@@ -86,6 +86,9 @@ npm run format
 # Birim & Entegrasyon testleri
 npm test
 
+# Gerçek yerel D1/R2 bağlamaları (Wrangler/workerd; üretime erişmez)
+npm run test:integration
+
 # Production SSR derlemesi
 npm run build
 
@@ -97,12 +100,21 @@ npx wrangler deploy --config .output/server/wrangler.json
 
 ## 📁 D1 Veritabanı Yönetimi
 
-Veritabanı şeması `schema.sql` dosyasında yer almaktadır.
+Şemanın TypeScript kaynağı `src/server/db/schema.ts`, uygulanacak SQL geçmişi
+`drizzle/` dizinindedir. API istekleri tablo oluşturmaz veya şema onarımı yapmaz.
 
 ```bash
-# Şemayı Cloudflare D1 üretim veritabanına uygulamak için:
-npx wrangler d1 execute bycar_db --file=./schema.sql --remote
+# Şema değişikliğinden sonra SQL ve snapshot üret:
+npm run db:generate -- --name=degisiklik_adi
 
-# Yerel test ortamında çalıştırmak için:
-npx wrangler d1 execute bycar_db --file=./schema.sql --local
+# Yerel veritabanına sıralı migration uygula:
+npm run db:migrate:local
+
+# İncelenmiş üretim geçişinde, uygulama deploy'undan ÖNCE:
+npm run db:migrate:remote
 ```
+
+İlk kurulum ve mevcut verilerin korunarak devralınması için
+[D1 geçiş rehberini](docs/database-migrations.md), kalan mimari çalışma sırası için
+[mimari inceleme notunu](docs/architecture-review.md) okuyun. CI; tip denetimi,
+şema/snapshot tutarlılığı, lint, Vitest, D1/R2 entegrasyonu, build ve npm audit çalıştırır.

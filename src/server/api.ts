@@ -3,6 +3,9 @@
 // /api/admin/upload, /api/media/*, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
 
 import { z } from "zod";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "./db/client";
+import type { vehicles, vehicleImages, inquiries, siteSettings } from "./db/schema";
 import type { Car, SiteSettings, SiteCMSConfig, ImageFit, CarStatus } from "../lib/bycar";
 
 export type D1Database = {
@@ -52,61 +55,13 @@ export type ServerEnv = {
 };
 
 // Strongly typed DB row interfaces
-interface VehicleDbRow {
-  id: string;
-  slug: string;
-  brand: string;
-  title: string;
-  year: number;
-  km: number;
-  fuel: string;
-  gear: string;
-  body: string;
-  power: string;
-  color: string;
-  package: string;
-  expertise: string;
-  tramer: string | null;
-  image_fit: string;
-  video_url: string | null;
-  extras_json: string;
-  extras_en_json: string;
-  description_tr: string;
-  description_en: string;
-  status: string;
-  is_featured: number;
-  created_at: string;
-  updated_at: string;
-}
+type VehicleDbRow = typeof vehicles.$inferSelect;
 
-interface ImageDbRow {
-  id: string;
-  vehicle_id: string;
-  r2_key: string;
-  public_url: string;
-  is_cover: number;
-  sort_order: number;
-  created_at: string;
-}
+type ImageDbRow = typeof vehicleImages.$inferSelect;
 
-interface InquiryDbRow {
-  id: string;
-  type: string;
-  vehicle_id: string | null;
-  car_title: string;
-  customer_name: string;
-  phone: string;
-  offer_or_budget: string;
-  details: string | null;
-  status: string;
-  created_at: string;
-}
+type InquiryDbRow = typeof inquiries.$inferSelect;
 
-interface SettingDbRow {
-  key: string;
-  value: string;
-  updated_at: string;
-}
+type SettingDbRow = typeof siteSettings.$inferSelect;
 
 interface AdminSessionRow {
   id: string;
@@ -268,115 +223,6 @@ export function resetRateLimitsForTesting() {
   ipInquiryAttempts.clear();
 }
 
-// Full D1 Production Schema statements (aligned with schema.sql)
-const D1_SCHEMA_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS vehicles (
-  id TEXT PRIMARY KEY,
-  slug TEXT UNIQUE NOT NULL,
-  brand TEXT NOT NULL,
-  title TEXT NOT NULL,
-  year INTEGER NOT NULL CHECK (year >= 1900),
-  km INTEGER NOT NULL DEFAULT 0 CHECK (km >= 0),
-  fuel TEXT NOT NULL CHECK (length(trim(fuel)) > 0),
-  gear TEXT NOT NULL CHECK (length(trim(gear)) > 0),
-  body TEXT NOT NULL CHECK (length(trim(body)) > 0),
-  power TEXT NOT NULL,
-  color TEXT NOT NULL,
-  package TEXT NOT NULL,
-  expertise TEXT NOT NULL,
-  tramer TEXT NOT NULL DEFAULT 'Yok',
-  image_fit TEXT NOT NULL DEFAULT 'cover' CHECK (image_fit IN ('contain', 'cover')),
-  video_url TEXT,
-  extras_json TEXT NOT NULL DEFAULT '[]',
-  extras_en_json TEXT NOT NULL DEFAULT '[]',
-  description_tr TEXT NOT NULL DEFAULT '',
-  description_en TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'sold', 'draft')),
-  is_featured INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_vehicles_vitrin ON vehicles(status, is_featured DESC, created_at DESC)`,
-  `CREATE INDEX IF NOT EXISTS idx_vehicles_status_brand ON vehicles(status, brand)`,
-  `CREATE INDEX IF NOT EXISTS idx_vehicles_year ON vehicles(year DESC)`,
-  `CREATE TABLE IF NOT EXISTS vehicle_images (
-  id TEXT PRIMARY KEY,
-  vehicle_id TEXT NOT NULL,
-  r2_key TEXT NOT NULL UNIQUE,
-  public_url TEXT NOT NULL,
-  is_cover INTEGER NOT NULL DEFAULT 0,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle ON vehicle_images(vehicle_id, is_cover DESC, sort_order ASC)`,
-  `CREATE TABLE IF NOT EXISTS inquiries (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('Teklif', 'İthalat')),
-  vehicle_id TEXT,
-  car_title TEXT NOT NULL,
-  customer_name TEXT NOT NULL,
-  phone TEXT NOT NULL,
-  offer_or_budget TEXT NOT NULL,
-  details TEXT,
-  status TEXT NOT NULL DEFAULT 'Yeni' CHECK (status IN ('Yeni', 'İletişime Geçildi', 'Tamamlandı')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_inquiries_status_created ON inquiries(status, created_at DESC)`,
-  `CREATE TABLE IF NOT EXISTS admin_users (
-  id TEXT PRIMARY KEY,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  password_salt TEXT NOT NULL,
-  iterations INTEGER NOT NULL DEFAULT 100000 CHECK (iterations >= 100000),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-)`,
-  `CREATE TABLE IF NOT EXISTS admin_sessions (
-  id TEXT PRIMARY KEY,
-  admin_id TEXT NOT NULL,
-  token_hash TEXT UNIQUE NOT NULL,
-  ip_address TEXT,
-  user_agent TEXT,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE CASCADE
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash)`,
-  `CREATE TABLE IF NOT EXISTS login_attempts (
-  id TEXT PRIMARY KEY,
-  ip_or_user_key TEXT UNIQUE NOT NULL,
-  attempt_count INTEGER NOT NULL DEFAULT 1,
-  locked_until TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-)`,
-  `CREATE TABLE IF NOT EXISTS site_settings (
-  key TEXT PRIMARY KEY NOT NULL,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-)`,
-  `DELETE FROM site_settings WHERE key IS NULL`,
-  `CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings BEFORE INSERT ON site_settings WHEN NEW.key IS NULL BEGIN SELECT RAISE(ABORT, 'site_settings.key cannot be NULL'); END;`,
-  `CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings_update BEFORE UPDATE ON site_settings WHEN NEW.key IS NULL BEGIN SELECT RAISE(ABORT, 'site_settings.key cannot be NULL'); END;`,
-  `CREATE TABLE IF NOT EXISTS inquiry_attempts (
-  id TEXT PRIMARY KEY,
-  ip TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_inquiry_attempts_ip_time ON inquiry_attempts(ip, created_at)`,
-  `CREATE TABLE IF NOT EXISTS r2_cleanup_queue (
-  id TEXT PRIMARY KEY,
-  r2_key TEXT NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  created_at INTEGER NOT NULL
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_r2_cleanup_queue_key ON r2_cleanup_queue(r2_key)`,
-  `INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES ('cms_revision', '1', datetime('now'))`,
-];
-
-let d1Initialized = false;
-
 // Constant-time string equality to prevent timing attacks
 export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -396,22 +242,6 @@ export function sanitizeHtmlInput(input: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;")
     .replace(/\//g, "&#x2F;");
-}
-
-async function ensureD1Tables(db: D1Database) {
-  if (d1Initialized) return;
-  try {
-    for (const stmt of D1_SCHEMA_STATEMENTS) {
-      await db
-        .prepare(stmt)
-        .run()
-        .catch(() => {});
-    }
-    d1Initialized = true;
-  } catch (err) {
-    console.error("D1 schema init error:", err);
-    d1Initialized = true;
-  }
 }
 
 // Security: IP Resolution Helper
@@ -560,7 +390,6 @@ export async function verifyAdminToken(request: Request, db?: D1Database): Promi
   // D1 is the authoritative source of truth for session validity & revocation
   if (db) {
     try {
-      await ensureD1Tables(db);
       const row = await db
         .prepare(
           "SELECT id FROM admin_sessions WHERE token_hash = ? AND datetime(expires_at) > datetime('now') LIMIT 1",
@@ -630,7 +459,6 @@ export async function getLiveCmsData(env?: unknown): Promise<{
   const resolved = resolveEnv(env);
   const db = resolved.DB;
   if (db) {
-    await ensureD1Tables(db);
     try {
       const vehiclesRes = await db
         .prepare(
@@ -640,7 +468,9 @@ export async function getLiveCmsData(env?: unknown): Promise<{
       const imagesRes = await db
         .prepare("SELECT * FROM vehicle_images ORDER BY vehicle_id, sort_order ASC")
         .all<ImageDbRow>();
-      const settingsRes = await db.prepare("SELECT * FROM site_settings").all<SettingDbRow>();
+      const settingsRes = await createDatabase(db).all<SettingDbRow>(
+        sql`SELECT * FROM site_settings`,
+      );
 
       const imagesMap = new Map<string, string[]>();
       for (const row of imagesRes.results || []) {
@@ -681,7 +511,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
       }));
 
       const settingsMap: Record<string, unknown> = {};
-      for (const s of settingsRes.results || []) {
+      for (const s of settingsRes) {
         try {
           settingsMap[s.key] = JSON.parse(s.value);
         } catch {
@@ -715,7 +545,6 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
   const resolved = resolveEnv(env);
   const db = resolved.DB;
   if (db) {
-    await ensureD1Tables(db);
     try {
       const row = await db
         .prepare("SELECT * FROM vehicles WHERE (slug = ? OR id = ?) AND status != 'draft' LIMIT 1")
@@ -833,7 +662,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
     // Persistent Rate Limit Check (D1 with Memory fallback)
     if (db) {
-      await ensureD1Tables(db);
       try {
         const attemptRow = await db
           .prepare("SELECT * FROM login_attempts WHERE ip_or_user_key = ? LIMIT 1")
@@ -892,7 +720,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       // 1. Check D1 admin_users table first
       if (db) {
-        await ensureD1Tables(db);
         try {
           const adminRow = await db
             .prepare("SELECT * FROM admin_users WHERE username = ? LIMIT 1")
@@ -1012,8 +839,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       // Store in D1 if available
       if (db) {
         try {
-          await ensureD1Tables(db);
-
           // If authenticated via environment secret, ensure admin-master row exists in admin_users
           // to satisfy FOREIGN KEY (admin_id) REFERENCES admin_users(id) on admin_sessions table
           if (matchedViaEnv) {
@@ -1170,8 +995,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           { status: 503 },
         );
       }
-
-      await ensureD1Tables(db);
       await db
         .prepare(
           `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
@@ -1395,8 +1218,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     try {
-      await ensureD1Tables(db);
-
       // Parse optional GC parameters from request body
       let mode = "full"; // "queue" | "scan" | "full"
       let scanLimit = 50;
@@ -1662,7 +1483,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
 
     if (db) {
-      await ensureD1Tables(db);
       try {
         const inquiriesRes = await db
           .prepare("SELECT * FROM inquiries ORDER BY created_at DESC")
@@ -1730,7 +1550,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const { id, status } = validated.data;
 
       if (db) {
-        await ensureD1Tables(db);
         await db.prepare("UPDATE inquiries SET status = ? WHERE id = ?").bind(status, id).run();
       }
 
@@ -1763,7 +1582,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       : { "cache-control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600" };
 
     if (db) {
-      await ensureD1Tables(db);
       try {
         const vehicleQuery = isAuthedAdmin
           ? "SELECT * FROM vehicles ORDER BY is_featured DESC, updated_at DESC"
@@ -1775,7 +1593,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .prepare("SELECT * FROM vehicle_images ORDER BY vehicle_id, sort_order ASC")
           .all<ImageDbRow>();
 
-        const settingsRes = await db.prepare("SELECT * FROM site_settings").all<SettingDbRow>();
+        const settingsRes = await createDatabase(db).all<SettingDbRow>(
+          sql`SELECT * FROM site_settings`,
+        );
 
         // Reconstruct vehicles with their images array
         const imagesMap = new Map<string, string[]>();
@@ -1817,7 +1637,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }));
 
         const settingsMap: Record<string, unknown> = {};
-        for (const s of settingsRes.results || []) {
+        for (const s of settingsRes) {
           try {
             settingsMap[s.key] = JSON.parse(s.value);
           } catch {
@@ -1994,7 +1814,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       // Optimistic concurrency control check
       if (db) {
-        await ensureD1Tables(db);
         const revisionRow = await db
           .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
           .first<{ value: string }>();
@@ -2562,7 +2381,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     const cutoff = now - windowMs;
 
     if (db) {
-      await ensureD1Tables(db);
       try {
         await db
           .prepare("DELETE FROM inquiry_attempts WHERE created_at < ?")
@@ -2674,7 +2492,6 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       const inqId = `inq-${crypto.randomUUID()}`;
       if (db) {
-        await ensureD1Tables(db);
         await db
           .prepare(
             `INSERT INTO inquiries (id, type, vehicle_id, car_title, customer_name, phone, offer_or_budget, details, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Yeni', datetime('now'))`,
@@ -2737,7 +2554,6 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
   const db = resolvedEnv?.DB;
   if (db) {
     try {
-      await ensureD1Tables(db);
       const rows = await db
         .prepare(
           "SELECT slug, updated_at FROM vehicles WHERE status = 'active' ORDER BY is_featured DESC, updated_at DESC",

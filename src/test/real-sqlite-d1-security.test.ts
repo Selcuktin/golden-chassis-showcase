@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -20,12 +20,16 @@ function createSqliteD1(sqlite: DatabaseSync): D1Database {
         },
         async all<T = unknown>() {
           const stmt = sqlite.prepare(query);
-          const results = stmt.all(...(boundArgs as (string | number | bigint | null | Uint8Array)[])) as T[];
+          const results = stmt.all(
+            ...(boundArgs as (string | number | bigint | null | Uint8Array)[]),
+          ) as T[];
           return { results, success: true };
         },
         async first<T = unknown>(col?: string) {
           const stmt = sqlite.prepare(query);
-          const row = stmt.get(...(boundArgs as (string | number | bigint | null | Uint8Array)[])) as Record<string, unknown> | undefined;
+          const row = stmt.get(
+            ...(boundArgs as (string | number | bigint | null | Uint8Array)[]),
+          ) as Record<string, unknown> | undefined;
           if (!row) return null;
           if (col) return (row[col] as T) ?? null;
           return row as T;
@@ -37,7 +41,7 @@ function createSqliteD1(sqlite: DatabaseSync): D1Database {
       sqlite.exec("BEGIN");
       try {
         const results = [];
-        for (const s of (stmts as Array<{ run: () => Promise<unknown> }>)) {
+        for (const s of stmts as Array<{ run: () => Promise<unknown> }>) {
           results.push(await s.run());
         }
         sqlite.exec("COMMIT");
@@ -63,16 +67,22 @@ describe("Real SQLite (Node:sqlite) D1 Compliance & Security Suite (B1-B7)", () 
     sqlite = new DatabaseSync(":memory:");
     sqlite.exec("PRAGMA foreign_keys = ON;");
 
-    // Load full production schema.sql directly
-    const schemaPath = path.resolve(__dirname, "../../schema.sql");
-    const schemaSql = fs.readFileSync(schemaPath, "utf-8");
-    sqlite.exec(schemaSql);
+    // Use the same ordered migrations as Wrangler, never a parallel test schema.
+    const migrationsPath = path.resolve(__dirname, "../../drizzle");
+    for (const file of fs
+      .readdirSync(migrationsPath)
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
+      sqlite.exec(fs.readFileSync(path.join(migrationsPath, file), "utf-8"));
+    }
 
     // Seed default revision
     sqlite.exec("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('cms_revision', '1');");
 
     d1 = createSqliteD1(sqlite);
   });
+
+  afterEach(() => sqlite.close());
 
   async function getAdminToken(): Promise<string> {
     const loginRes = await handleApiRequest(
@@ -277,7 +287,9 @@ describe("Real SQLite (Node:sqlite) D1 Compliance & Security Suite (B1-B7)", () 
     expect(inqRes?.status).toBe(200);
 
     // Inspect direct row in SQLite database
-    const row = sqlite.prepare("SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 1").get() as {
+    const row = sqlite
+      .prepare("SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 1")
+      .get() as {
       customer_name: string;
       car_title: string;
       details: string;

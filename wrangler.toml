@@ -11,12 +11,14 @@ directory = ".output/public"
 # Cloudflare D1 Server Database
 # D1 Veritabanı oluşturmak için terminalden:
 # npx wrangler d1 create bycar_db
-# D1 Şemasını uygulamak için:
-# npx wrangler d1 execute bycar_db --file=./schema.sql
+# Şema değişiklikleri yalnızca versioned migration ile uygulanır:
+# npm run db:migrate:local
+# npm run db:migrate:remote (reviewed production rollout only)
 [[d1_databases]]
 binding = "DB"
 database_name = "bycar_db"
 database_id = "cb9bbc34-a9ef-446e-b993-46405a7ca765"
+migrations_dir = "drizzle"
 
 # Cloudflare R2 Storage (Vehicle Images & Media)
 # npx wrangler r2 bucket create bycar-media
