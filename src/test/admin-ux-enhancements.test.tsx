@@ -151,3 +151,19 @@ it("provides video upload button and file selection for car presentation video",
     screen.getByText(/Tanıtım Videosunu Güncelle|Bilgisayardan Tanıtım Videosu Seç/i),
   ).toBeInTheDocument();
 });
+
+it("provides desktop and mobile hero image file selection buttons in CMS editor", async () => {
+  window.sessionStorage.setItem("bycar_admin_active_tab", "content");
+  window.sessionStorage.setItem("bycar_admin_content_section", "hero");
+
+  const router = adminRouter();
+  render(<RouterProvider router={router} />);
+
+  await screen.findByText(/1\. Hero Karşılama Alanı/i);
+  expect(
+    screen.getByText(/Bilgisayardan Masaüstü Görseli Seç \(PNG \/ JPG \/ WEBP\)/i),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/Bilgisayardan Mobil Görseli Seç \(PNG \/ JPG \/ WEBP\)/i),
+  ).toBeInTheDocument();
+});

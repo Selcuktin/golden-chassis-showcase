@@ -24,6 +24,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import hero from "@/assets/hero.png";
+import heroMobile from "@/assets/hero-mobile.png";
 import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import {
   BRANDS,
@@ -483,21 +484,21 @@ function Index() {
             </a>
           </div>
 
-          {/* Framed Vehicle Spotlight Card - Enlarged & Badges Removed */}
-          <div className="relative -mx-2 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl bg-black">
+          {/* Framed Vehicle Spotlight Card - Enlarged & Focused on Hypercar */}
+          <div className="relative -mx-3 sm:mx-0 mt-6 overflow-hidden rounded-2xl border border-primary/40 bg-card/80 p-1.5 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+            <div className="relative aspect-[4/3] sm:aspect-[16/10] w-full min-h-[270px] sm:min-h-[320px] overflow-hidden rounded-xl bg-black">
               <img
                 src={
-                  cmsConfig.hero.bgImage && !cmsConfig.hero.bgImage.includes("hero")
-                    ? cmsConfig.hero.bgImage
-                    : hero
+                  cmsConfig.hero.bgImageMobile && !cmsConfig.hero.bgImageMobile.includes("hero")
+                    ? cmsConfig.hero.bgImageMobile
+                    : heroMobile
                 }
                 alt="ByCar Exclusive hypercar"
-                width={1920}
-                height={1088}
+                width={1832}
+                height={858}
                 className="h-full w-full object-cover object-center"
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10" />
             </div>
           </div>
         </div>

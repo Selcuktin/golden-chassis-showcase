@@ -141,6 +141,7 @@ export type SiteCMSConfig = {
     subtitleTr: string;
     subtitleEn: string;
     bgImage: string;
+    bgImageMobile?: string;
     primaryBtnTextTr: string;
     primaryBtnTextEn: string;
     secondaryBtnTextTr: string;
@@ -255,6 +256,7 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
     subtitleEn:
       "A curated collection of pristine, certified low-mileage supercars and luxury vehicles from the world's most prestigious marques. An elite automotive experience in Bursa.",
     bgImage: "/hero.png",
+    bgImageMobile: "/hero-mobile.png",
     primaryBtnTextTr: "Koleksiyonu Keşfet",
     primaryBtnTextEn: "Explore Collection",
     secondaryBtnTextTr: "Özel İthalat / Talep",
