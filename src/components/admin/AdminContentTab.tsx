@@ -380,11 +380,11 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 <label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
                   <Image className="h-4 w-4" /> Masaüstü & Tablet Hero Görseli
                 </label>
-                {form.hero.bgImage && form.hero.bgImage !== "/hero.png" && (
+                {form.hero.bgImage && form.hero.bgImage !== "/hero.webp" && (
                   <button
                     type="button"
                     onClick={() =>
-                      setForm({ ...form, hero: { ...form.hero, bgImage: "/hero.png" } })
+                      setForm({ ...form, hero: { ...form.hero, bgImage: "/hero.webp" } })
                     }
                     className="text-[10px] text-destructive hover:underline cursor-pointer"
                   >
@@ -437,7 +437,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                     })
                   }
                   className={input}
-                  placeholder="/hero.png"
+                  placeholder="/hero.webp"
                 />
               </div>
             </div>
@@ -448,13 +448,13 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                 <label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
                   <Image className="h-4 w-4" /> Mobil Hero Görseli (Araba Odaklı)
                 </label>
-                {form.hero.bgImageMobile && form.hero.bgImageMobile !== "/hero-mobile.png" && (
+                {form.hero.bgImageMobile && form.hero.bgImageMobile !== "/hero-mobile.webp" && (
                   <button
                     type="button"
                     onClick={() =>
                       setForm({
                         ...form,
-                        hero: { ...form.hero, bgImageMobile: "/hero-mobile.png" },
+                        hero: { ...form.hero, bgImageMobile: "/hero-mobile.webp" },
                       })
                     }
                     className="text-[10px] text-destructive hover:underline cursor-pointer"
@@ -511,7 +511,7 @@ export function AdminContentTab({ cmsConfig, onSave, onReset }: AdminContentTabP
                     })
                   }
                   className={input}
-                  placeholder="/hero-mobile.png"
+                  placeholder="/hero-mobile.webp"
                 />
               </div>
             </div>

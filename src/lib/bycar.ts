@@ -255,8 +255,8 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       "Dünyanın en prestijli markalarından seçilmiş, hatasız ekspertizli ve koleksiyon değeri taşıyan süper spor ve lüks otomobiller. Bursa Nilüfer'de ayrıcalıklı otomotiv deneyimi.",
     subtitleEn:
       "A curated collection of pristine, certified low-mileage supercars and luxury vehicles from the world's most prestigious marques. An elite automotive experience in Bursa.",
-    bgImage: "/hero.png",
-    bgImageMobile: "/hero-mobile.png",
+    bgImage: "/hero.webp",
+    bgImageMobile: "/hero-mobile.webp",
     primaryBtnTextTr: "Koleksiyonu Keşfet",
     primaryBtnTextEn: "Explore Collection",
     secondaryBtnTextTr: "Özel İthalat / Talep",
