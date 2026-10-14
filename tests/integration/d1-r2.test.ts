@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -7,7 +7,11 @@ import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPlatformProxy, type PlatformProxy } from "wrangler";
-import { handleApiRequest, type D1Database as ApiDatabase } from "../../src/server/api";
+import {
+  deriveServerPBKDF2HexWithParams,
+  handleApiRequest,
+  type D1Database as ApiDatabase,
+} from "../../src/server/api";
 import { createDatabase } from "../../src/server/db/client";
 import { siteSettings, vehicles } from "../../src/server/db/schema";
 
@@ -16,7 +20,7 @@ const root = process.cwd();
 const secret = "IntegrationOnlyPassword!2026";
 type Bindings = { DB: D1Database; BUCKET: R2Bucket };
 
-async function createLocalDatabase(legacy: boolean | "empty" = false) {
+async function createLocalDatabase(legacy: boolean | "empty" | "before-seed-repair" = false) {
   const directory = await mkdtemp(path.join(tmpdir(), "bycar-d1-test-"));
   const configPath = path.join(directory, "wrangler.json");
   const persist = path.join(directory, "state");
@@ -24,6 +28,14 @@ async function createLocalDatabase(legacy: boolean | "empty" = false) {
     await readFile(path.join(root, "tests/fixtures/wrangler.json"), "utf8"),
   );
   config.d1_databases[0].migrations_dir = path.join(root, "drizzle");
+  if (legacy === "before-seed-repair") {
+    const priorMigrations = path.join(directory, "migrations");
+    await mkdir(priorMigrations);
+    for (const name of ["0000_baseline.sql", "0001_site_settings_integrity.sql"]) {
+      await copyFile(path.join(root, "drizzle", name), path.join(priorMigrations, name));
+    }
+    config.d1_databases[0].migrations_dir = priorMigrations;
+  }
   await writeFile(configPath, JSON.stringify(config));
 
   async function wrangler(...args: string[]) {
@@ -49,7 +61,7 @@ async function createLocalDatabase(legacy: boolean | "empty" = false) {
       "--file",
       path.join(root, "tests/fixtures/legacy-schema.sql"),
     );
-  } else if (legacy === false) {
+  } else if (legacy === false || legacy === "before-seed-repair") {
     await wrangler("d1", "migrations", "apply", "DB");
   }
 
@@ -69,6 +81,8 @@ async function createLocalDatabase(legacy: boolean | "empty" = false) {
     // Stop workerd before the CLI opens the same persisted SQLite database.
     async migrate() {
       await proxy.dispose();
+      config.d1_databases[0].migrations_dir = path.join(root, "drizzle");
+      await writeFile(configPath, JSON.stringify(config));
       const result = await wrangler("d1", "migrations", "apply", "DB");
       this.env = await connect();
       return result.stdout;
@@ -137,7 +151,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
         "r2_cleanup_queue",
       ]),
     );
-    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(2);
+    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(3);
     expect(
       await db
         .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger'")
@@ -340,12 +354,152 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     ).toBe("42");
     expect(
       await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
-    ).toBe(2);
+    ).toBe(3);
     expect(
       await local.env.DB.prepare(
         "SELECT value FROM site_settings WHERE key = 'replay_setting'",
       ).first("value"),
     ).toBe("preserved");
+  });
+});
+
+describe("0002: retirement of deterministic seed credentials", () => {
+  let local: Awaited<ReturnType<typeof createLocalDatabase>>;
+  const oldPassword = "SyntheticOldSeedPassword!2026";
+  const customPassword = "SyntheticCustomPassword!2026";
+  const legacySalt = "bycar-global-vip-salt-2026";
+  const customSalt = "e5dfd514b2c14f27aa52e51e1ddbaab9";
+  let customHash: string;
+  let oldToken: string;
+  let customToken: string;
+
+  const login = (password: string, username = "admin") =>
+    handleApiRequest(post("/api/admin/login", { password, username }), {
+      ...local.env,
+      ADMIN_PASSWORD: secret,
+    });
+  const me = (token: string) =>
+    handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/me", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      local.env,
+    );
+
+  beforeAll(async () => {
+    // Exercise a database where 0000/0001 are already recorded as applied.
+    local = await createLocalDatabase("before-seed-repair");
+    const legacyHash = await deriveServerPBKDF2HexWithParams(oldPassword, legacySalt, 100000);
+    customHash = await deriveServerPBKDF2HexWithParams(customPassword, customSalt, 100000);
+    await local.env.DB.batch([
+      local.env.DB.prepare(
+        "INSERT INTO admin_users (id, username, password_hash, password_salt) VALUES ('admin-master', 'admin', ?, ?)",
+      ).bind(legacyHash, legacySalt),
+      local.env.DB.prepare(
+        "INSERT INTO admin_users (id, username, password_hash, password_salt) VALUES ('another-seed', 'legacy-secondary', ?, ?)",
+      ).bind(legacyHash, legacySalt),
+      local.env.DB.prepare(
+        "INSERT INTO admin_users (id, username, password_hash, password_salt) VALUES ('custom-admin', 'custom', ?, ?)",
+      ).bind(customHash, customSalt),
+      local.env.DB.prepare(
+        "INSERT INTO admin_sessions (id, admin_id, token_hash, expires_at) VALUES ('secondary-session', 'another-seed', 'secondary-session-hash', datetime('now', '+1 day'))",
+      ),
+      local.env.DB.prepare("UPDATE site_settings SET value = '51' WHERE key = 'cms_revision'"),
+    ]);
+    // Reproduce the report: env login must not overwrite the row, so it also
+    // cannot retire historical seed credentials without this data migration.
+    expect((await login(secret))?.status).toBe(200);
+    expect(
+      await local.env.DB.prepare(
+        "SELECT password_salt FROM admin_users WHERE id = 'admin-master'",
+      ).first("password_salt"),
+    ).toBe(legacySalt);
+    const legacyLogin = await login(oldPassword);
+    expect(legacyLogin?.status).toBe(200);
+    oldToken = ((await legacyLogin!.json()) as { token: string }).token;
+    const customLogin = await login(customPassword, "custom");
+    expect(customLogin?.status).toBe(200);
+    customToken = ((await customLogin!.json()) as { token: string }).token;
+    await local.env.BUCKET.put("vehicles/seed-repair/keep.png", "keep-media");
+    await local.migrate();
+  });
+  afterAll(async () => local?.dispose());
+
+  it("removes every legacy seed account and its sessions, preserving custom credentials and unrelated data", async () => {
+    const db = local.env.DB;
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) AS count FROM admin_users WHERE password_salt = ?")
+        .bind(legacySalt)
+        .first("count"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM admin_sessions WHERE admin_id IN ('admin-master', 'another-seed')",
+        )
+        .first("count"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare("SELECT password_hash, password_salt FROM admin_users WHERE id = 'custom-admin'")
+        .first(),
+    ).toEqual({ password_hash: customHash, password_salt: customSalt });
+    expect((await me(oldToken))?.status).toBe(401);
+    expect((await me(customToken))?.status).toBe(200);
+    expect((await login(customPassword, "custom"))?.status).toBe(200);
+    expect(
+      await db.prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'").first("value"),
+    ).toBe("51");
+    expect(await (await local.env.BUCKET.get("vehicles/seed-repair/keep.png"))?.text()).toBe(
+      "keep-media",
+    );
+    expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("rejects the old password and allows env login to provision a fresh random-salt admin without reviving old sessions", async () => {
+    expect((await login(oldPassword))?.status).toBe(401);
+    const freshLogin = await login(secret);
+    expect(freshLogin?.status).toBe(200);
+    const freshToken = ((await freshLogin!.json()) as { token: string }).token;
+    const row = await local.env.DB.prepare(
+      "SELECT id, password_salt FROM admin_users WHERE username = 'admin'",
+    ).first<{ id: string; password_salt: string }>();
+    expect(row?.id).toBe("admin-master");
+    expect(row?.password_salt).toMatch(/^[a-f0-9]{32}$/);
+    expect(row?.password_salt).not.toBe(legacySalt);
+    expect((await me(freshToken))?.status).toBe(200);
+    expect((await me(oldToken))?.status).toBe(401);
+    expect((await login(oldPassword))?.status).toBe(401);
+
+    // A panel password set after recovery must survive subsequent env logins
+    // and a second migration apply, which must be a no-op.
+    const panelPassword = "NewPanelPasswordAfterRecovery!2026";
+    const change = await handleApiRequest(
+      post(
+        "/api/admin/change-password",
+        { currentPassword: secret, newPassword: panelPassword },
+        freshToken,
+      ),
+      local.env,
+    );
+    expect(change?.status).toBe(200);
+    expect((await me(freshToken))?.status).toBe(401);
+    const updated = await local.env.DB.prepare(
+      "SELECT password_hash, password_salt FROM admin_users WHERE id = 'admin-master'",
+    ).first();
+    expect((await login(secret))?.status).toBe(200);
+    await local.migrate();
+    expect(
+      await local.env.DB.prepare(
+        "SELECT password_hash, password_salt FROM admin_users WHERE id = 'admin-master'",
+      ).first(),
+    ).toEqual(updated);
+    expect((await login(panelPassword))?.status).toBe(200);
+    expect((await login(oldPassword))?.status).toBe(401);
+    expect(
+      await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
+    ).toBe(3);
   });
 });
 

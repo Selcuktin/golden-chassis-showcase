@@ -27,6 +27,20 @@ unutulursa da hata verir. Drizzle Kit'in eski yardımcı bağımlılığından g
 açığı yalnızca o alt bağımlılığa uygulanan override ile giderildi; generation ve
 testlerle doğrulandı.
 
+## Bağımsız denetim sonrası seed düzeltmesi
+
+Env girişindeki `ON CONFLICT DO NOTHING`, panelde değiştirilmiş parolayı korur;
+ancak eski seed hesabını kendiliğinden geçersiz kılamaz. Bu durum gerçek yerel D1'de
+yeniden üretildi. `0002_revoke_legacy_seed_admin.sql`, yalnızca eski salt işaretli
+hesapları ve bağlı oturumlarını kaldırır. Env ile yeniden oluşturulan `admin-master`
+kimliği eski oturumları canlandıramaz; farklı salt'lı hesaplar ve değiştirilen
+parolalar korunur. Bu bir veri onarımıdır; yeni auth algoritması eklenmez.
+
+Canlı D1'de salt/hash değerlerini paylaşmadan yapılan sayımda eski seed hesabı ve
+bağlı oturum sayısı sıfır bulundu. Yine de eski veritabanlarından geçiş için bu
+migration gereklidir. Node 24 gereksinimi `engines` ve `.nvmrc` ile belirtildi;
+testlerin bir bölümü `node:sqlite` kullandığı için Node 22 doğrulaması yeterli değildir.
+
 ## Sonraki işler: ayrı ve dar kapsamlı PR'lar
 
 1. **Oturum sonlandırmanın hata davranışı:** logout ve şifre değişiminde D1 session
