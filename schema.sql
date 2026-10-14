@@ -101,10 +101,20 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 
 -- 7. Galeri & Vitrin/Modal Ayarları Tablosu
 CREATE TABLE IF NOT EXISTS site_settings (
-  key TEXT PRIMARY KEY,
+  key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings BEFORE INSERT ON site_settings WHEN NEW.key IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'site_settings.key cannot be NULL');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings_update BEFORE UPDATE ON site_settings WHEN NEW.key IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'site_settings.key cannot be NULL');
+END;
 
 -- 8. Teklif Formu Rate Limiting (IP Başına 10 Dakika / 5 İstek)
 CREATE TABLE IF NOT EXISTS inquiry_attempts (

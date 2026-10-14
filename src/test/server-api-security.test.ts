@@ -1741,14 +1741,14 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(body.error).toContain("cars");
   });
 
-  it("Regression Test 7: Rejects legacy hardcoded password when not in env or D1 (bootstrap backdoor closed)", async () => {
+  it("Regression Test 7: Rejects unauthorized passwords when not in env or D1 (bootstrap backdoor closed)", async () => {
     const origEnv = (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__;
     (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__ = {};
 
     const req = new Request("https://bycarglobal.com/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.99" },
-      body: JSON.stringify({ password: "bybycar1453" }),
+      body: JSON.stringify({ password: "revoked-legacy-test-credential" }),
     });
     const res = await handleApiRequest(req, {});
     expect(res?.status).toBe(401);
@@ -2069,5 +2069,203 @@ describe("Server API, D1 Security & Stability Engine", () => {
       { BUCKET: { put: async () => ({}) } },
     );
     expect(realUploadRes?.status).toBe(200);
+  });
+
+  it("Regression Test 16: Empty catalog without allowEmptyCatalog returns 400 (B5)", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "SecrEtPassword!2026" }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const { token } = (await loginRes?.json()) as { token: string };
+
+    const cmsRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/cms", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cars: [],
+          revision: 1,
+        }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    expect(cmsRes?.status).toBe(400);
+    const body = await cmsRes?.json();
+    expect(body.error).toContain("allowEmptyCatalog");
+  });
+
+  it("Regression Test 17: Duplicate slug across payload cars returns 400 (B2)", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "SecrEtPassword!2026" }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const { token } = (await loginRes?.json()) as { token: string };
+
+    const cmsRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/cms", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cars: [
+            {
+              id: "car-1",
+              brand: "Porsche",
+              title: "911 GT3",
+              slug: "porsche-gt3",
+              year: 2024,
+              km: 1000,
+              fuel: "Benzin",
+              gear: "Otomatik",
+              body: "Coupe",
+              status: "active",
+            },
+            {
+              id: "car-2",
+              brand: "Porsche",
+              title: "911 GT3 RS",
+              slug: "porsche-gt3", // Duplicate slug!
+              year: 2024,
+              km: 500,
+              fuel: "Benzin",
+              gear: "Otomatik",
+              body: "Coupe",
+              status: "active",
+            },
+          ],
+          revision: 1,
+        }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    expect(cmsRes?.status).toBe(400);
+    const body = await cmsRes?.json();
+    expect(body.error).toContain("porsche-gt3");
+  });
+
+  it("Regression Test 18: Media response includes x-content-type-options: nosniff (B6)", async () => {
+    const fakeStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("fake-image"));
+        controller.close();
+      },
+    });
+
+    const res = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/media/vehicles/test/img.webp", {
+        method: "GET",
+      }),
+      {
+        BUCKET: {
+          get: async () => ({
+            body: fakeStream,
+            httpMetadata: { contentType: "image/webp" },
+          }),
+        },
+      },
+    );
+    expect(res?.status).toBe(200);
+    expect(res?.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("Regression Test 19: Customer inquiry sanitizes HTML script tags (B6)", async () => {
+    const res = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/inquiry", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.199",
+        },
+        body: JSON.stringify({
+          type: "Teklif",
+          car: "Porsche 911 <script>alert(1)</script>",
+          name: "Ahmet <script>alert('xss')</script>",
+          phone: "+90 555 123 4567",
+          offerOrBudget: "100000 EUR",
+          details: "<img src=x onerror=alert(1)>",
+        }),
+      }),
+      {},
+    );
+    expect(res?.status).toBe(200);
+    const data = await res?.json();
+    expect(data.ok).toBe(true);
+
+    // Verify stored inquiry text in GET /api/admin/inquiries
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "SecrEtPassword!2026" }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const { token } = (await loginRes?.json()) as { token: string };
+
+    const inqRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/inquiries", {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const inqData = await inqRes?.json();
+    const stored = inqData.inquiries.find((i: { id: string }) => i.id === data.inquiryId);
+    expect(stored).toBeDefined();
+    expect(stored.name).not.toContain("<script>");
+    expect(stored.name).toContain("&lt;script&gt;");
+    expect(stored.car).toContain("&lt;script&gt;");
+  });
+
+  it("Regression Test 20: Upload path traversal dots are stripped from safeName (B6)", async () => {
+    const loginRes = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "SecrEtPassword!2026" }),
+      }),
+      { ADMIN_PASSWORD: "SecrEtPassword!2026" },
+    );
+    const { token } = (await loginRes?.json()) as { token: string };
+
+    let uploadedKey = "";
+    const mockBucket = {
+      put: async (key: string) => {
+        uploadedKey = key;
+        return {};
+      },
+    };
+
+    // Valid PNG magic bytes: 89 50 4E 47
+    const validPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]);
+
+    const res = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "image/png",
+          "x-file-name": "../../etc/passwd..evil.png",
+          "x-vehicle-id": "car-123",
+        },
+        body: validPng.buffer,
+      }),
+      { BUCKET: mockBucket },
+    );
+    expect(res?.status).toBe(200);
+    expect(uploadedKey).not.toContain("..");
   });
 });

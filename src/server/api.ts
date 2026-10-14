@@ -351,10 +351,13 @@ const D1_SCHEMA_STATEMENTS = [
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`,
   `CREATE TABLE IF NOT EXISTS site_settings (
-  key TEXT PRIMARY KEY,
+  key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`,
+  `DELETE FROM site_settings WHERE key IS NULL`,
+  `CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings BEFORE INSERT ON site_settings WHEN NEW.key IS NULL BEGIN SELECT RAISE(ABORT, 'site_settings.key cannot be NULL'); END;`,
+  `CREATE TRIGGER IF NOT EXISTS prevent_null_key_site_settings_update BEFORE UPDATE ON site_settings WHEN NEW.key IS NULL BEGIN SELECT RAISE(ABORT, 'site_settings.key cannot be NULL'); END;`,
   `CREATE TABLE IF NOT EXISTS inquiry_attempts (
   id TEXT PRIMARY KEY,
   ip TEXT NOT NULL,
@@ -382,6 +385,17 @@ export function timingSafeEqual(a: string, b: string): boolean {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
+}
+
+// Defense-in-depth: HTML sanitization helper for user-supplied free text (B6)
+export function sanitizeHtmlInput(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .replace(/\//g, "&#x2F;");
 }
 
 async function ensureD1Tables(db: D1Database) {
@@ -780,6 +794,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             headers: {
               "content-type": contentType,
               "cache-control": "public, max-age=31536000, immutable",
+              "x-content-type-options": "nosniff",
             },
           });
         }
@@ -1012,14 +1027,16 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
               .prepare(
                 `INSERT INTO admin_users (id, username, password_hash, password_salt, iterations, created_at)
                  VALUES ('admin-master', 'admin', ?, ?, 100000, datetime('now'))
-                 ON CONFLICT(username) DO UPDATE SET
-                   password_hash = excluded.password_hash,
-                   password_salt = excluded.password_salt,
-                   iterations = excluded.iterations`,
+                 ON CONFLICT(username) DO NOTHING`,
               )
               .bind(freshHash, freshSalt)
               .run();
-            authenticatedAdminId = "admin-master";
+
+            const existingAdmin = await db
+              .prepare("SELECT id FROM admin_users WHERE username = ? LIMIT 1")
+              .bind("admin")
+              .first<{ id: string }>();
+            authenticatedAdminId = existingAdmin?.id || "admin-master";
           }
 
           await db
@@ -1211,7 +1228,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const rawVehicleId = request.headers.get("x-vehicle-id") || "misc";
       const vehicleId = rawVehicleId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "misc";
       const filename = request.headers.get("x-file-name") || `img-${Date.now()}.webp`;
-      const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 100);
+      const safeName =
+        filename
+          .replace(/\.+/g, ".")
+          .replace(/[^a-zA-Z0-9._-]/g, "_")
+          .replace(/^[_.-]+|[_.-]+$/g, "")
+          .slice(0, 100) || "image.webp";
       const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
 
       const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
@@ -1924,6 +1946,52 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       const payload = parseResult.data;
 
+      // Empty catalog protection (B5)
+      if (
+        Array.isArray(payload.cars) &&
+        payload.cars.length === 0 &&
+        payload.allowEmptyCatalog !== true
+      ) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Boş katalog koruması: Tüm araçları silmek istiyorsanız allowEmptyCatalog: true parametresi gönderilmelidir.",
+          }),
+          { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
+
+      // Unique slug & ID validation across payload cars (B2)
+      if (Array.isArray(payload.cars) && payload.cars.length > 0) {
+        const seenSlugs = new Map<string, string>();
+        const seenIds = new Set<string>();
+        for (const car of payload.cars) {
+          if (seenIds.has(car.id)) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: `Benzersizlik hatası: "${car.id}" ID değeri birden fazla araçta mükerrer kullanılmış.`,
+              }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+          seenIds.add(car.id);
+
+          const effectiveSlug = (car.slug || car.id).trim().toLowerCase();
+          if (seenSlugs.has(effectiveSlug)) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: `Benzersizlik hatası: "${effectiveSlug}" URL slug değeri birden fazla araçta (${seenSlugs.get(effectiveSlug)} ve ${car.id}) kullanılmış. Lütfen her aracın slug/başlık değerini benzersiz yapın.`,
+              }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+          seenSlugs.set(effectiveSlug, car.id);
+        }
+      }
+
       // Optimistic concurrency control check
       if (db) {
         await ensureD1Tables(db);
@@ -2292,14 +2360,41 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             // Keep default
           }
 
-          const isConstraintOrCasMismatch =
+          // Distinct error reporting for unique constraints vs CAS revision conflicts (B2)
+          if (
+            errMsg.includes("vehicles.slug") ||
+            (errMsg.includes("UNIQUE") && errMsg.includes("slug"))
+          ) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error:
+                  "Benzersizlik hatası: Aynı URL/slug değerine sahip birden fazla araç bulunuyor. Lütfen araç başlıklarını veya slug'larını benzersiz yapın.",
+              }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
+          if (
+            errMsg.includes("vehicle_images.r2_key") ||
+            (errMsg.includes("UNIQUE") && errMsg.includes("r2_key"))
+          ) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error:
+                  "Benzersizlik hatası: Aynı görsel anahtarı (r2_key) mükerrer olarak eklenemez.",
+              }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
+          const isCasMismatch =
             (typeof payload.revision === "number" && conflictRevision !== payload.revision) ||
             errMsg.includes("site_settings.key") ||
-            errMsg.includes("NOT NULL") ||
-            errMsg.includes("SQLITE_CONSTRAINT") ||
-            errMsg.includes("constraint");
+            errMsg.includes("prevent_null_key_site_settings");
 
-          if (isConstraintOrCasMismatch) {
+          if (isCasMismatch) {
             return new Response(
               JSON.stringify({
                 ok: false,
@@ -2571,6 +2666,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
       }
 
+      const cleanName = sanitizeHtmlInput(name);
+      const cleanPhone = sanitizeHtmlInput(phone);
+      const cleanCarTitle = sanitizeHtmlInput(carTitle);
+      const cleanOfferOrBudget = sanitizeHtmlInput(offerOrBudget);
+      const cleanDetails = details ? sanitizeHtmlInput(details) : "";
+
       const inqId = `inq-${crypto.randomUUID()}`;
       if (db) {
         await ensureD1Tables(db);
@@ -2582,11 +2683,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             inqId,
             type,
             verifiedVehicleId,
-            carTitle,
-            name,
-            phone,
-            offerOrBudget,
-            details || null,
+            cleanCarTitle,
+            cleanName,
+            cleanPhone,
+            cleanOfferOrBudget,
+            cleanDetails || null,
           )
           .run();
       }
@@ -2597,11 +2698,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         {
           id: inqId,
           type,
-          car: carTitle,
-          name,
-          phone,
-          offerOrBudget,
-          details,
+          car: cleanCarTitle,
+          name: cleanName,
+          phone: cleanPhone,
+          offerOrBudget: cleanOfferOrBudget,
+          details: cleanDetails,
           status: "Yeni",
           time: "Az önce",
         },
