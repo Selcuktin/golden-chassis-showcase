@@ -11,6 +11,21 @@ describe("Server API, D1 Security & Stability Engine", () => {
   beforeEach(() => {
     resetRateLimitsForTesting();
   });
+  it("rejects production API use without D1 even when email verification is disabled", async () => {
+    for (const path of ["/api/admin/login", "/api/cms", "/api/inquiry"]) {
+      const res = await handleApiRequest(
+        new Request(`https://bycar.example${path}`, {
+          method: path === "/api/cms" ? "GET" : "POST",
+        }),
+        {
+          NODE_ENV: "production",
+          CF_ACCESS_REQUIRED: "false",
+          ADMIN_PASSWORD: TEST_ADMIN_PASSWORD,
+        },
+      );
+      expect(res?.status).toBe(503);
+    }
+  });
   it("GET /api/health returns operational status, version, and commit metadata", async () => {
     const req = new Request("https://bycarglobal.com/api/health", { method: "GET" });
     const res = await handleApiRequest(req, {});

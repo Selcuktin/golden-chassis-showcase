@@ -275,6 +275,130 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     ).toBeNull();
   });
 
+  it("keeps password login and every admin mutation protected when Access is explicitly disabled", async () => {
+    const env = {
+      ...local.env,
+      ADMIN_PASSWORD: secret,
+      CF_ACCESS_REQUIRED: "false",
+      CF_ACCESS_TEAM_DOMAIN: "https://stale.cloudflareaccess.com",
+      CF_ACCESS_AUD: "stale-audience",
+    };
+    const login = await handleApiRequest(post("/api/admin/login", { password: secret }), env);
+    expect(login?.status).toBe(200);
+    const session = ((await login!.json()) as { token: string }).token;
+    expect(
+      (
+        await handleApiRequest(
+          new Request("https://bycarglobal.com/api/admin/me", {
+            headers: { authorization: `Bearer ${session}` },
+          }),
+          env,
+        )
+      )?.status,
+    ).toBe(200);
+    for (const endpoint of [
+      "/api/cms",
+      "/api/admin/upload",
+      "/api/admin/change-password",
+      "/api/admin/media/gc",
+      "/api/admin/inquiries/status",
+      "/api/admin/inquiries/delete",
+    ]) {
+      expect((await handleApiRequest(post(endpoint, {}), env))?.status).toBe(401);
+    }
+    for (const endpoint of ["/api/admin/me", "/api/admin/inquiries", "/api/cms"]) {
+      const read = await handleApiRequest(
+        new Request(`https://bycarglobal.com${endpoint}`, {
+          headers: { authorization: "Bearer forged-session" },
+        }),
+        env,
+      );
+      expect(read?.status).toBe(401);
+    }
+  });
+
+  it("rejects oversized chunked uploads before writing R2 and cancels the incoming stream", async () => {
+    const before = (await local.env.BUCKET.list()).objects.length;
+    let cancelled = false;
+    let pulled = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        pulled++;
+        controller.enqueue(new Uint8Array(1024 * 1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const response = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "image/png" },
+        body,
+        duplex: "half",
+      } as RequestInit),
+      local.env,
+    );
+    expect(response?.status).toBe(413);
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(7);
+    expect((await local.env.BUCKET.list()).objects.length).toBe(before);
+  });
+
+  it("uploads authenticated video and streams exact byte ranges from real R2", async () => {
+    const bytes = new Uint8Array([
+      0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7,
+      8,
+    ]);
+    const upload = await handleApiRequest(
+      new Request("https://bycarglobal.com/api/admin/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "video/mp4",
+          "x-file-name": "test.mp4",
+        },
+        body: bytes,
+      }),
+      local.env,
+    );
+    expect(upload?.status).toBe(200);
+    const { url } = (await upload!.json()) as { url: string };
+    for (const [range, start, end] of [
+      ["bytes=0-3", 0, 3],
+      ["bytes=8-", 8, 23],
+      ["bytes=-4", 20, 23],
+      ["bytes=20-99", 20, 23],
+    ] as const) {
+      const media = await handleApiRequest(
+        new Request(`https://bycarglobal.com${url}`, { headers: { range } }),
+        local.env,
+      );
+      expect(media?.status).toBe(206);
+      expect(media?.headers.get("content-type")).toBe("video/mp4");
+      expect(media?.headers.get("content-length")).toBe(String(end - start + 1));
+      expect(media?.headers.get("content-range")).toBe(`bytes ${start}-${end}/${bytes.length}`);
+      expect(new Uint8Array(await media!.arrayBuffer())).toEqual(bytes.slice(start, end + 1));
+    }
+    const head = await handleApiRequest(
+      new Request(`https://bycarglobal.com${url}`, {
+        method: "HEAD",
+        headers: { range: "bytes=0-3" },
+      }),
+      local.env,
+    );
+    expect(head?.status).toBe(200);
+    expect(head?.headers.get("content-length")).toBe(String(bytes.length));
+    expect(head?.headers.has("content-range")).toBe(false);
+    expect(await head!.text()).toBe("");
+    const invalid = await handleApiRequest(
+      new Request(`https://bycarglobal.com${url}`, { headers: { range: "bytes=100-200" } }),
+      local.env,
+    );
+    expect(invalid?.status).toBe(416);
+    expect(invalid?.headers.get("content-range")).toBe(`bytes */${bytes.length}`);
+  });
+
   it("rolls the entire CMS batch back when another writer wins the revision race", async () => {
     const db = local.env.DB;
     const revision = Number(

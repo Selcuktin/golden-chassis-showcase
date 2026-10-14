@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Lock,
   Plus,
@@ -327,10 +327,11 @@ function Admin() {
 
   const [videoUploading, setVideoUploading] = useState(false);
   const [videoUploadMsg, setVideoUploadMsg] = useState("");
+  const videoFormVersion = useRef(0);
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || videoUploading || savingCar) return;
     e.target.value = "";
 
     const allowedTypes = ["video/mp4", "video/webm", "video/quicktime"];
@@ -354,23 +355,35 @@ function Admin() {
 
     setVideoUploading(true);
     setVideoUploadMsg("Video Cloudflare R2 sunucusuna aktarılıyor...");
+    const formVersion = videoFormVersion.current;
+    const contentType = allowedTypes.includes(file.type)
+      ? file.type
+      : /\.webm$/i.test(file.name)
+        ? "video/webm"
+        : /\.mov$/i.test(file.name)
+          ? "video/quicktime"
+          : "video/mp4";
 
     try {
       const uploadRes = await fetch("/api/admin/upload", {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
-          "content-type": file.type || "video/mp4",
+          "content-type": contentType,
           "x-vehicle-id": editingId || "fleet",
           "x-file-name": file.name.replace(/[^a-zA-Z0-9._-]/g, "_"),
         },
         body: file,
       });
+      // A late upload must never attach its video to a newly opened/reset car form.
+      if (formVersion !== videoFormVersion.current) return;
 
       if (uploadRes.ok) {
         const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
+        if (formVersion !== videoFormVersion.current) return;
         if (resJson.ok && resJson.url) {
           setVideo(resJson.url);
+          setFormDirty(true);
           setVideoUploadMsg("✓ Tanıtım videosu başarıyla yüklendi!");
           setTimeout(() => setVideoUploadMsg(""), 4000);
         } else {
@@ -379,10 +392,12 @@ function Admin() {
         }
       } else {
         const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+        if (formVersion !== videoFormVersion.current) return;
         alert(errData.error || `Video yüklenemedi (HTTP ${uploadRes.status}).`);
         setVideoUploadMsg("");
       }
     } catch (err) {
+      if (formVersion !== videoFormVersion.current) return;
       console.error("Video upload error:", err);
       alert("Video yüklenirken bir ağ hatası oluştu.");
       setVideoUploadMsg("");
@@ -495,6 +510,8 @@ function Admin() {
   };
 
   const startEdit = (c: Car) => {
+    videoFormVersion.current++;
+    setVideoUploadMsg("");
     setFormDirty(false);
     setEditingId(c.id);
     setBrand(c.brand);
@@ -539,6 +556,8 @@ function Admin() {
   };
 
   const clearForm = () => {
+    videoFormVersion.current++;
+    setVideoUploadMsg("");
     setFormDirty(false);
     setEditingId(null);
     setBrand("Porsche");
@@ -1503,7 +1522,7 @@ function Admin() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (savingCar || uploading) return;
+                if (savingCar || uploading || videoUploading) return;
                 if (!images.length) {
                   alert("Araca ait en az bir fotoğraf ekleyin.");
                   return;
@@ -2577,7 +2596,7 @@ function Admin() {
               <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row">
                 <button
                   type="submit"
-                  disabled={savingCar || uploading}
+                  disabled={savingCar || uploading || videoUploading}
                   className={`${goldBtn} flex-1 py-4`}
                 >
                   {editingId ? "Değişiklikleri Kaydet & Yayınla" : "Aracı Koleksiyona Kaydet"}

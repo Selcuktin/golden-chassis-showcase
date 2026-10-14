@@ -86,12 +86,34 @@ for (const path of media)
     assert.equal(r.status, 200);
     assert.match(r.headers.get("content-type") || "", /^(image|video)\//);
   });
-if (base.protocol === "https:")
-  await check("admin Access gate", async () => {
-    const r = await response("/admin", { redirect: "manual" });
+const accessRequired = process.env.CF_ACCESS_REQUIRED === "true";
+await check(accessRequired ? "admin Access gate" : "admin password login", async () => {
+  const r = await response("/admin", { redirect: "manual" });
+  if (accessRequired) {
     assert.equal(r.status, 302);
     assert.ok(new URL(r.headers.get("location")).hostname.endsWith(".cloudflareaccess.com"));
+  } else {
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("content-type") || "", /text\/html/);
+    assert.match(r.headers.get("cache-control") || "", /no-store/);
+    assert.match(await r.text(), /type="password"/);
+  }
+});
+if (!accessRequired) {
+  for (const path of ["/api/admin/me", "/api/admin/inquiries"])
+    await check(`anonymous denied ${path}`, async () => {
+      const r = await response(path, { redirect: "manual" });
+      assert.equal(r.status, 401);
+      assert.equal((await r.json()).ok, false);
+      assert.match(r.headers.get("cache-control") || "", /no-store/);
+    });
+  await check("invalid session cannot read admin catalog", async () => {
+    const r = await response("/api/cms", {
+      headers: { authorization: "Bearer release-check-invalid" },
+    });
+    assert.equal(r.status, 401);
   });
+}
 console.log(
   JSON.stringify(
     { origin, checked, vehicles: cms.cars.length, media: media.size, failures: problems },

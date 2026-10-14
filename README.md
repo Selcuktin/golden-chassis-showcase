@@ -31,8 +31,8 @@
    `POST /api/cms`, `GET /api/admin/inquiries` ve `POST /api/admin/inquiries/status` endpoint'leri kriptografik Bearer session token ile korunmaktadır.
 2. **KVKK Veri İzolasyonu:**  
    Müşteri ad-soyad, telefon ve teklif bilgileri genel katalog sorgusundan (`GET /api/cms`) tamamen izole edilmiştir; sadece yetkili yönetici oturumuyla erişilebilir.
-3. **Mevcut parola doğrulaması ve Cloudflare Access:**
-   Yönetici girişi Cloudflare Access e-posta politikası ve mevcut 100.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve D1 kalıcı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
+3. **Mevcut parola doğrulaması:**
+   Yönetici girişi mevcut 100.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve D1 kalıcı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur. Sahip kararıyla `CF_ACCESS_REQUIRED=false`; e-posta/OTP girişi kullanılmaz. Panelin açılması özel API'lere erişim vermez: geçerli D1 oturumu gerekir.
 4. **Talep & CSRF Sınırları:**  
    Teklif formu (`POST /api/inquiry`) IP başına 10 dakikada en fazla 5 istekle sınırlandırılmış olup, gövde boyutları ve girdi temizliği sunucu tarafında doğrulanır.
 5. **SEO & Gerçek HTTP 404:**  
@@ -42,8 +42,8 @@
 
 ## 🚀 Cloudflare Custom Domain (bycarglobal.com) Bağlama Rehberi
 
-Alan adı, DNS/TLS, iki yönetim yolu için Access koruması ve `SITE_URL` ayarı birlikte
-hazırlanmalıdır. **Access yollarını eklemeden `SITE_URL` etkinleştirmeyin.**
+Alan adı, DNS/TLS ve `SITE_URL` ayarı birlikte hazırlanmalıdır. Ana alan adı ve
+`www` aynı Worker üzerinde çalışmadan `SITE_URL` etkinleştirilmemelidir.
 Adım adım geçiş ve son kontrol komutları için
 [yayın hazırlığı raporunu](docs/production-readiness.md#alan-adı-alındığında) okuyun.
 
@@ -107,7 +107,7 @@ npm run db:migrate:remote
 [mimari inceleme notunu](docs/architecture-review.md) okuyun. CI; tip denetimi,
 şema/snapshot tutarlılığı, lint, Vitest, D1/R2 entegrasyonu, build ve npm audit çalıştırır.
 
-Yönetici erişiminin Cloudflare Access ayarları ve yayın kontrolü
+İsteğe bağlı Cloudflare Access'in yeniden etkinleştirme ayarları ve mevcut giriş düzeni
 [Access rehberinde](docs/cloudflare-access.md) açıklanmıştır.
 
 Ayrıntılı son sistem denetimi, düzeltilen akışlar ve işletim sınırları:
