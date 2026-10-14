@@ -6,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Route as AdminRoute } from "../routes/admin";
 import { CARS, DEFAULT_CMS_CONFIG, DEFAULT_SETTINGS, clearAllBrowserStorage } from "../lib/bycar";
@@ -150,6 +150,45 @@ it("provides video upload button and file selection for car presentation video",
   expect(
     screen.getByText(/Tanıtım Videosunu Güncelle|Bilgisayardan Tanıtım Videosu Seç/i),
   ).toBeInTheDocument();
+});
+
+it("blocks publication during video upload and discards a late result after the car form is reset", async () => {
+  const router = adminRouter();
+  render(<RouterProvider router={router} />);
+  await screen.findByText(CARS[0]!.title);
+  fireEvent.click(screen.getAllByRole("button", { name: /Düzenle/i })[0]!);
+  await screen.findByText(/^Tanıtım Videosu$/i);
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  let finish!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementation((input, init) =>
+    String(input) === "/api/admin/upload"
+      ? new Promise<Response>((resolve) => {
+          finish = resolve;
+        })
+      : original(input, init),
+  );
+  const input = document.querySelector(
+    'input[type="file"][accept="video/mp4,video/webm,video/quicktime"]',
+  )!;
+  fireEvent.change(input, { target: { files: [new File(["test"], "demo.webm", { type: "" })] } });
+  const save = screen.getByRole("button", { name: /Değişiklikleri Kaydet & Yayınla/i });
+  await waitFor(() => expect(save).toBeDisabled());
+  const upload = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/admin/upload");
+  expect(upload?.[1]?.headers).toMatchObject({ "content-type": "video/webm" });
+  fireEvent.submit(save.closest("form")!);
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.some(([url, init]) => url === "/api/cms" && init?.method === "POST"),
+  ).toBe(false);
+  fireEvent.click(screen.getAllByRole("button", { name: /Düzenlemeyi Sıfırla/i })[0]!);
+  await act(async () =>
+    finish(new Response(JSON.stringify({ ok: true, url: "/api/media/late-video.webm" }))),
+  );
+  expect(screen.getByPlaceholderText(/Veya video URL/i)).not.toHaveValue(
+    "/api/media/late-video.webm",
+  );
+  expect(save).toBeEnabled();
 });
 
 it("locks hero visuals to studio media and focuses CMS on headlines and CTAs", async () => {

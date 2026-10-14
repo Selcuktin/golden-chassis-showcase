@@ -27,6 +27,7 @@ export type D1Database = {
 };
 
 export type R2Bucket = {
+  head?: (key: string) => Promise<{ size: number } | null>;
   put: (
     key: string,
     value: unknown,
@@ -58,6 +59,7 @@ export type ServerEnv = CloudflareAccessEnv & {
   DB?: D1Database;
   BUCKET?: R2Bucket;
   ADMIN_PASSWORD?: string;
+  NODE_ENV?: string;
   SITE_URL?: string;
   GIT_COMMIT?: string;
 };
@@ -443,7 +445,8 @@ export function resolveEnv(env?: unknown, request?: Request): ServerEnv {
       "CF_ACCESS_REQUIRED" in env ||
       "CF_ACCESS_TEAM_DOMAIN" in env ||
       "CF_ACCESS_AUD" in env ||
-      "CF_ACCESS_ALLOWED_EMAILS" in env)
+      "CF_ACCESS_ALLOWED_EMAILS" in env ||
+      "NODE_ENV" in env)
   ) {
     return env as ServerEnv;
   }
@@ -648,11 +651,39 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     const resolvedEnv = resolveEnv(env, request);
     if (resolvedEnv.BUCKET && key) {
       try {
-        const rangeHeader = request.headers.get("range");
-        const object = await resolvedEnv.BUCKET.get(
-          key,
-          rangeHeader ? { range: request.headers } : undefined,
-        );
+        // Range applies to GET only. Ignore unsupported/malformed range sets;
+        // normalize a single byte range against metadata before reading R2.
+        const match =
+          request.method === "GET"
+            ? /^bytes=(\d*)-(\d*)$/.exec(request.headers.get("range") || "")
+            : null;
+        let range: { offset: number; length: number } | undefined;
+        if (match && (match[1] || match[2])) {
+          const metadata = resolvedEnv.BUCKET.head
+            ? await resolvedEnv.BUCKET.head(key)
+            : await resolvedEnv.BUCKET.get(key);
+          if (metadata && "body" in metadata) await metadata.body.cancel();
+          if (!metadata) return jsonResponse({ error: "Media not found" }, { status: 404 });
+          const size = metadata.size;
+          const first = Number(match[1]);
+          const last = match[2] ? Number(match[2]) : (size ?? 0) - 1;
+          if (size !== undefined && Number.isSafeInteger(first) && Number.isSafeInteger(last)) {
+            const offset = match[1] ? first : Math.max(0, size - last);
+            const end = match[1] ? Math.min(last, size - 1) : size - 1;
+            if (offset >= size || end < offset || (!match[1] && last === 0)) {
+              return new Response(null, {
+                status: 416,
+                headers: {
+                  "content-range": `bytes */${size}`,
+                  "cache-control": "no-store",
+                  "accept-ranges": "bytes",
+                },
+              });
+            }
+            range = { offset, length: end - offset + 1 };
+          }
+        }
+        const object = await resolvedEnv.BUCKET.get(key, range ? { range } : undefined);
         if (object) {
           const contentType = object.httpMetadata?.contentType || "image/webp";
           const headers = new Headers({
@@ -664,21 +695,18 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           if (object.size !== undefined) {
             headers.set("content-length", String(object.size));
           }
-          if (
-            rangeHeader &&
-            "range" in object &&
-            (object as { range?: { offset: number; length: number } }).range
-          ) {
-            const r = (object as { range: { offset: number; length: number } }).range;
+          if (range) {
+            headers.set("content-length", String(range.length));
             headers.set(
               "content-range",
-              `bytes ${r.offset}-${r.offset + r.length - 1}/${object.size}`,
+              `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}`,
             );
-            return new Response(request.method === "HEAD" ? null : object.body, {
+            return new Response(object.body, {
               status: 206,
               headers,
             });
           }
+          if (request.method === "HEAD") await object.body.cancel();
           return new Response(request.method === "HEAD" ? null : object.body, {
             status: 200,
             headers,
@@ -686,6 +714,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
       } catch (err) {
         console.error("R2 media fetch error:", err);
+        return jsonResponse({ error: "Media temporarily unavailable" }, { status: 503 });
       }
     }
     return jsonResponse({ error: "Media not found" }, { status: 404 });
@@ -697,7 +726,11 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   const db = resolvedEnv?.DB;
   const isD1 = Boolean(db);
   const ip = getClientIp(request);
-  if (resolvedEnv.CF_ACCESS_REQUIRED === "true" && !db && url.pathname !== "/api/health") {
+  if (
+    (resolvedEnv.NODE_ENV === "production" || resolvedEnv.CF_ACCESS_REQUIRED === "true") &&
+    !db &&
+    url.pathname !== "/api/health"
+  ) {
     return jsonResponse(
       { ok: false, error: "Veritabanı bağlantısı yapılandırılmamış." },
       { status: 503 },
@@ -1184,7 +1217,34 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
       }
 
-      const arrayBuffer = await request.arrayBuffer();
+      // Enforce the limit while reading, including chunked bodies without Content-Length.
+      const reader = request.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let uploadSize = 0;
+      if (reader) {
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          uploadSize += part.value.byteLength;
+          if (uploadSize > MAX_UPLOAD_BYTES) {
+            await reader.cancel();
+            return jsonResponse(
+              {
+                ok: false,
+                error: `Dosya boyutu çok büyük (Maksimum ${isVideo ? "50 MB" : "5 MB"} izin verilir).`,
+              },
+              { status: 413 },
+            );
+          }
+          chunks.push(part.value);
+        }
+      }
+      const arrayBuffer = new Uint8Array(uploadSize);
+      let uploadOffset = 0;
+      for (const chunk of chunks) {
+        arrayBuffer.set(chunk, uploadOffset);
+        uploadOffset += chunk.byteLength;
+      }
       if (arrayBuffer.byteLength === 0) {
         return jsonResponse({ ok: false, error: "Boş dosya yüklenemez." }, { status: 400 });
       }
@@ -1200,7 +1260,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       }
 
       // Sniff binary magic bytes for image and video authenticity
-      const bytes = new Uint8Array(arrayBuffer.slice(0, 16));
+      const bytes = arrayBuffer.subarray(0, 16);
       const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
       const isPng =
         bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
