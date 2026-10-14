@@ -984,9 +984,12 @@ function Index() {
             <div className="flex flex-col items-center lg:col-span-4">
               <div className="relative overflow-hidden rounded-full border-2 border-primary/60 p-2 shadow-gold">
                 <img
-                  src="/favicon.png"
-                  alt="Burak Yılmaz — ByCar Global"
-                  className="h-56 w-56 rounded-full object-cover md:h-64 md:w-64"
+                  src="/bycar-logo-dark.webp"
+                  alt="ByCar Global logosu"
+                  width={720}
+                  height={208}
+                  loading="lazy"
+                  className="h-56 w-56 rounded-full bg-black object-contain p-6 md:h-64 md:w-64"
                 />
               </div>
               <div className="mt-6 text-center">
