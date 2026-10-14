@@ -112,3 +112,6 @@ npm run db:migrate:remote
 
 Ayrıntılı son sistem denetimi, düzeltilen akışlar ve işletim sınırları:
 [docs/production-readiness.md](docs/production-readiness.md).
+
+Son gerçek tarayıcı testi ve fotoğraf yükleme düzeltmesi:
+[işlev doğrulama raporu](docs/final-functional-verification.md).

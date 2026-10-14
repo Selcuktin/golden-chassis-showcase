@@ -1805,44 +1805,39 @@ export function recordLoginAttempt(success: boolean): LockoutState {
 // Client-Side HTML5 Canvas WebP Compression (prevents storage overflow & speeds up loading)
 export async function compressImageToWebP(
   file: File,
-  maxWidth = 1600,
+  maxDimension = 1600,
   quality = 0.82,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Dosya okunamadı"));
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      if (typeof document === "undefined") {
-        resolve(dataUrl);
-        return;
-      }
-      const img = new Image();
-      img.onerror = () => resolve(dataUrl);
-      img.onload = () => {
-        try {
-          const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-          const w = Math.round(img.width * scale);
-          const h = Math.round(img.height * scale);
-          const canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve(dataUrl);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          const webpUrl = canvas.toDataURL("image/webp", quality);
-          resolve(webpUrl.startsWith("data:image/webp") ? webpUrl : dataUrl);
-        } catch {
-          resolve(dataUrl);
+): Promise<Blob> {
+  if (typeof document === "undefined") return file;
+  const objectUrl = URL.createObjectURL(file);
+  return new Promise<Blob>((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error("Görsel açılamadı. Geçerli bir fotoğraf seçin."));
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
         }
-      };
-      img.src = dataUrl;
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(
+          (blob) => resolve(blob?.type === "image/webp" ? blob : file),
+          "image/webp",
+          quality,
+        );
+      } catch {
+        resolve(file);
+      }
     };
-    reader.readAsDataURL(file);
-  });
+    img.src = objectUrl;
+  }).finally(() => URL.revokeObjectURL(objectUrl));
 }
 
 function safeSetItem(key: string, value: string): boolean {

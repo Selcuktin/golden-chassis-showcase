@@ -328,6 +328,7 @@ function Admin() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [videoUploadMsg, setVideoUploadMsg] = useState("");
   const videoFormVersion = useRef(0);
+  const imageUploadBusy = useRef(false);
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -608,60 +609,72 @@ function Admin() {
   };
 
   const processFiles = async (fileList: File[]) => {
-    if (fileList.length === 0) return;
+    if (fileList.length === 0 || imageUploadBusy.current || savingCar) return;
+    const token = window.sessionStorage.getItem("bycar_admin_token");
+    if (!token) {
+      alert("Görsel yüklemek için VIP Yönetici girişi yapmalısınız.");
+      return;
+    }
+    const formVersion = videoFormVersion.current;
+    imageUploadBusy.current = true;
     setUploading(true);
     try {
       const processed: string[] = [];
-      const token =
-        typeof window !== "undefined" ? window.sessionStorage.getItem("bycar_admin_token") : null;
 
       for (const file of fileList) {
+        if (formVersion !== videoFormVersion.current) return;
         if (!file.type.startsWith("image/")) continue;
-        const webpDataUrl = await compressImageToWebP(file, 1600, 0.82);
 
-        // Direct R2 upload via /api/admin/upload if authenticated
-        if (token) {
-          try {
-            const blobRes = await fetch(webpDataUrl);
-            const blob = await blobRes.blob();
-            const uploadContentType = blob.type.startsWith("image/") ? blob.type : "image/webp";
-            const uploadExtension =
-              uploadContentType === "image/jpeg"
-                ? ".jpg"
-                : uploadContentType === "image/png"
-                  ? ".png"
-                  : ".webp";
-            const uploadRes = await fetch("/api/admin/upload", {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${token}`,
-                "content-type": uploadContentType,
-                "x-vehicle-id": editingId || "fleet",
-                "x-file-name": file.name.replace(/\.[^/.]+$/, "") + uploadExtension,
-              },
-              body: blob,
-            });
-            if (uploadRes.ok) {
-              const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
-              if (resJson.ok && resJson.url) {
-                processed.push(resJson.url);
-              } else {
-                console.error("R2 upload error response:", resJson);
-                alert("Görsel sunucuya yüklenemedi. Lütfen tekrar deneyin.");
-              }
+        try {
+          const blob = await compressImageToWebP(file, 1600, 0.82);
+          if (formVersion !== videoFormVersion.current) return;
+          const uploadContentType = blob.type.startsWith("image/") ? blob.type : "image/webp";
+          const uploadExtension =
+            uploadContentType === "image/jpeg"
+              ? ".jpg"
+              : uploadContentType === "image/png"
+                ? ".png"
+                : uploadContentType === "image/gif"
+                  ? ".gif"
+                  : uploadContentType === "image/avif"
+                    ? ".avif"
+                    : ".webp";
+          const uploadRes = await fetch("/api/admin/upload", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": uploadContentType,
+              "x-vehicle-id": editingId || "fleet",
+              "x-file-name": file.name.replace(/\.[^/.]+$/, "") + uploadExtension,
+            },
+            body: blob,
+          });
+          if (formVersion !== videoFormVersion.current) return;
+          if (uploadRes.ok) {
+            const resJson = (await uploadRes.json()) as { ok?: boolean; url?: string };
+            if (formVersion !== videoFormVersion.current) return;
+            if (resJson.ok && resJson.url) {
+              processed.push(resJson.url);
             } else {
-              const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
-              console.error("R2 upload HTTP error:", uploadRes.status, errData);
-              alert(errData.error || `Görsel yüklenemedi (HTTP ${uploadRes.status}).`);
+              console.error("R2 upload error response:", resJson);
+              alert("Görsel sunucuya yüklenemedi. Lütfen tekrar deneyin.");
             }
-          } catch (uploadErr) {
-            console.error("R2 upload network error:", uploadErr);
-            alert("Görsel yüklenirken ağ hatası oluştu. Lütfen bağlantınızı kontrol edin.");
+          } else {
+            const errData = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+            if (formVersion !== videoFormVersion.current) return;
+            console.error("R2 upload HTTP error:", uploadRes.status, errData);
+            alert(errData.error || `Görsel yüklenemedi (HTTP ${uploadRes.status}).`);
           }
-        } else {
-          alert("Görsel yüklemek için VIP Yönetici girişi yapmalısınız.");
+        } catch (uploadErr) {
+          if (formVersion !== videoFormVersion.current) return;
+          console.error("R2 upload network error:", uploadErr);
+          alert(
+            `${file.name}: ${uploadErr instanceof Error ? uploadErr.message : "Görsel yüklenemedi. Tekrar deneyin."}`,
+          );
         }
       }
+      if (formVersion !== videoFormVersion.current) return;
+      if (processed.length > 0) setFormDirty(true);
       setImages((prev) => {
         const next = [...prev];
         for (const item of processed) {
@@ -670,6 +683,7 @@ function Admin() {
         return next;
       });
     } finally {
+      imageUploadBusy.current = false;
       setUploading(false);
     }
   };
