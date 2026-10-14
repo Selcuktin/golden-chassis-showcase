@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "./db/client";
+import { enforceCloudflareAccess, type CloudflareAccessEnv } from "./cloudflare-access";
 import type { vehicles, vehicleImages, inquiries, siteSettings } from "./db/schema";
 import type { Car, SiteSettings, SiteCMSConfig, ImageFit, CarStatus } from "../lib/bycar";
 
@@ -46,7 +47,7 @@ export type R2Bucket = {
   }>;
 };
 
-export type ServerEnv = {
+export type ServerEnv = CloudflareAccessEnv & {
   DB?: D1Database;
   BUCKET?: R2Bucket;
   ADMIN_PASSWORD?: string;
@@ -431,7 +432,13 @@ export function resolveEnv(env?: unknown, request?: Request): ServerEnv {
   if (
     env &&
     typeof env === "object" &&
-    ("DB" in env || "ADMIN_PASSWORD" in env || "BUCKET" in env)
+    ("DB" in env ||
+      "ADMIN_PASSWORD" in env ||
+      "BUCKET" in env ||
+      "CF_ACCESS_REQUIRED" in env ||
+      "CF_ACCESS_TEAM_DOMAIN" in env ||
+      "CF_ACCESS_AUD" in env ||
+      "CF_ACCESS_ALLOWED_EMAILS" in env)
   ) {
     return env as ServerEnv;
   }
@@ -599,6 +606,8 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
 // Main API Handler
 export async function handleApiRequest(request: Request, env: unknown): Promise<Response | null> {
   const url = new URL(request.url);
+  const accessResponse = await enforceCloudflareAccess(request, resolveEnv(env, request));
+  if (accessResponse) return accessResponse;
 
   // Dynamic Sitemap Route
   if (url.pathname === "/sitemap.xml" && request.method === "GET") {

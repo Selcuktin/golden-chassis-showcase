@@ -118,3 +118,6 @@ npm run db:migrate:remote
 [D1 geçiş rehberini](docs/database-migrations.md), kalan mimari çalışma sırası için
 [mimari inceleme notunu](docs/architecture-review.md) okuyun. CI; tip denetimi,
 şema/snapshot tutarlılığı, lint, Vitest, D1/R2 entegrasyonu, build ve npm audit çalıştırır.
+
+Yönetici erişiminin Cloudflare Access ayarları ve yayın kontrolü
+[Access rehberinde](docs/cloudflare-access.md) açıklanmıştır.

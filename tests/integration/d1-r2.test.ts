@@ -183,6 +183,37 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     ).rejects.toThrow();
   });
 
+  it("rejects CMS writes with an app session but no Access identity before changing real D1 data", async () => {
+    const db = local.env.DB;
+    const before = await db
+      .prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'")
+      .first("value");
+    const response = await handleApiRequest(
+      post(
+        "/api/cms",
+        {
+          revision: Number(before),
+          cars: [{ ...car, id: "access-denied-car", slug: "access-denied-car" }],
+        },
+        token,
+      ),
+      {
+        ...local.env,
+        CF_ACCESS_REQUIRED: "true",
+        CF_ACCESS_TEAM_DOMAIN: "https://bycar-test.cloudflareaccess.com",
+        CF_ACCESS_AUD: "test-admin-audience",
+        CF_ACCESS_ALLOWED_EMAILS: "owner@example.com",
+      },
+    );
+    expect(response?.status).toBe(401);
+    expect(
+      await db.prepare("SELECT value FROM site_settings WHERE key = 'cms_revision'").first("value"),
+    ).toBe(before);
+    expect(
+      await db.prepare("SELECT id FROM vehicles WHERE id = 'access-denied-car'").first(),
+    ).toBeNull();
+  });
+
   it("uploads to R2, saves CMS image metadata in D1, serves bytes, and protects referenced media during GC", async () => {
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const upload = await handleApiRequest(
