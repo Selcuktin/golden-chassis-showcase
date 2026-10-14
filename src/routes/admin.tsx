@@ -46,6 +46,9 @@ import {
   importDatabaseJSON,
   recordLoginAttempt,
   syncFromServer,
+  updateInquiryOnServer,
+  hasUnsavedCmsChanges,
+  isSyncDebouncePending,
   syncInquiriesFromServer,
   translateTerm,
   useByCarStore,
@@ -206,15 +209,16 @@ function Admin() {
     setLang,
     updateCars,
     deleteCar,
-    resetCars,
-    updateInquiries,
-    resetInquiries,
     updateSettings,
     updateCmsConfig,
     resetCmsConfig,
     restoreUndo,
     syncWithServer,
-  } = useByCarStore();
+  } = useByCarStore(undefined, { admin: true });
+
+  const [uploading, setUploading] = useState(false);
+  const [savingCar, setSavingCar] = useState(false);
+  const [formDirty, setFormDirty] = useState(false);
 
   // SSR-safe hydration: initialize false and sync in useEffect
   const [authed, setAuthed] = useState(false);
@@ -241,7 +245,9 @@ function Admin() {
             } | null;
             if (res.ok && data?.ok === true && data.authenticated === true) {
               setAuthed(true);
-              void syncInquiriesFromServer(token);
+              void syncInquiriesFromServer(token).catch((error: unknown) => {
+                flashNotice(error instanceof Error ? error.message : "Talepler yüklenemedi.");
+              });
             } else {
               window.sessionStorage.removeItem("bycar_admin_token");
               window.sessionStorage.removeItem("bycar_admin_auth");
@@ -265,7 +271,15 @@ function Admin() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSyncing || syncStatus.status === "syncing") {
+      if (
+        isSyncing ||
+        syncStatus.status === "syncing" ||
+        isSyncDebouncePending() ||
+        hasUnsavedCmsChanges() ||
+        uploading ||
+        savingCar ||
+        formDirty
+      ) {
         e.preventDefault();
         e.returnValue =
           "Değişiklikler Cloudflare D1 veritabanına aktarılıyor. Sayfadan ayrılmak istediğinize emin misiniz?";
@@ -274,7 +288,7 @@ function Admin() {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isSyncing, syncStatus.status]);
+  }, [isSyncing, syncStatus.status, uploading, savingCar, formDirty]);
 
   const [tab, setTab] = useState<"fleet" | "add" | "inbox" | "settings" | "content" | "system">(
     "fleet",
@@ -313,6 +327,7 @@ function Admin() {
   };
 
   const handleDeletePreset = (category: keyof SiteCMSConfig["customPresets"], item: string) => {
+    if (!window.confirm(`"${item}" hazır etiketi silinsin mi?`)) return;
     if (category === "extras") {
       const next = {
         ...cmsConfig,
@@ -339,7 +354,6 @@ function Admin() {
   const [dbMsg, setDbMsg] = useState("");
   const [fleetSearch, setFleetSearch] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number>(0);
@@ -347,7 +361,7 @@ function Admin() {
   // Form states for Add / Edit Vehicle
   const [brand, setBrand] = useState("Porsche");
   const [title, setTitle] = useState("");
-  const [year, setYear] = useState("2025");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [km, setKm] = useState("0");
   const [fuel, setFuel] = useState<Car["fuel"]>("Benzin");
   const [gear, setGear] = useState<Car["gear"]>("Otomatik");
@@ -376,10 +390,15 @@ function Admin() {
 
   const flashNotice = (msg: string) => {
     setSavedMsg(msg);
-    setTimeout(() => setSavedMsg(""), 4500);
+    setDbMsg(msg);
+    setTimeout(() => {
+      setSavedMsg("");
+      setDbMsg("");
+    }, 7000);
   };
 
   const startEdit = (c: Car) => {
+    setFormDirty(false);
     setEditingId(c.id);
     setBrand(c.brand);
     setTitle(c.title);
@@ -423,10 +442,11 @@ function Admin() {
   };
 
   const clearForm = () => {
+    setFormDirty(false);
     setEditingId(null);
     setBrand("Porsche");
     setTitle("");
-    setYear("2025");
+    setYear(String(new Date().getFullYear()));
     setKm("0");
     setFuel("Benzin");
     setGear("Otomatik");
@@ -618,6 +638,13 @@ function Admin() {
       : Math.min(previewIdx, Math.max(0, previewImages.length - 1));
 
   const removeImage = (idx: number) => {
+    if (
+      !window.confirm(
+        "Bu fotoğraf araçtan kaldırılsın mı? Değişiklik, aracı kaydettiğinizde vitrine yansır.",
+      )
+    )
+      return;
+    setFormDirty(true);
     setImages((prev) => prev.filter((_, i) => i !== idx));
     setPreviewIdx((prev) => Math.max(0, Math.min(prev, images.length - 2)));
   };
@@ -653,8 +680,13 @@ function Admin() {
 
   const handleDeleteCar = async (id: string) => {
     const target = cars.find((c) => c.id === id);
+    if (
+      !target ||
+      !window.confirm(`"${target.title}" aracı silinsin mi? İlan canlı vitrinden kaldırılacak.`)
+    )
+      return;
     const nextCars = cars.filter((c) => c.id !== id);
-    deleteCar(id, target ? `"${target.title}" Silindi` : "Araç Silindi");
+    deleteCar(id, target ? `"${target.title}" Silindi` : "Araç Silindi", false);
     if (editingId === id) clearForm();
     const res = await syncToServerNow({ deletedCarIds: [id], cars: nextCars });
     if (res.ok) {
@@ -670,26 +702,29 @@ function Admin() {
     }
   };
 
-  const handleInquiryStatus = (id: string, nextStatus: Inquiry["status"]) => {
-    updateInquiries(inquiries.map((m) => (m.id === id ? { ...m, status: nextStatus } : m)));
-    if (typeof window !== "undefined") {
-      const token = window.sessionStorage.getItem("bycar_admin_token");
-      if (token) {
-        void fetch("/api/admin/inquiries/status", {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ id, status: nextStatus }),
-        });
-      }
+  const [inquiryBusy, setInquiryBusy] = useState(false);
+  const handleInquiryStatus = async (id: string, nextStatus: Inquiry["status"]) => {
+    if (inquiryBusy) return;
+    setInquiryBusy(true);
+    try {
+      await updateInquiryOnServer(id, nextStatus);
+    } catch (error) {
+      flashNotice(error instanceof Error ? error.message : "Talep güncellenemedi.");
+    } finally {
+      setInquiryBusy(false);
     }
   };
 
-  const handleDeleteInquiry = (id: string) => {
-    const target = inquiries.find((m) => m.id === id);
-    updateInquiries(
-      inquiries.filter((m) => m.id !== id),
-      target ? `"${target.name}" Talebi Silindi` : "Talep Silindi",
-    );
+  const handleDeleteInquiry = async (id: string) => {
+    if (inquiryBusy || !window.confirm("Bu müşteri talebi kalıcı olarak silinsin mi?")) return;
+    setInquiryBusy(true);
+    try {
+      await updateInquiryOnServer(id);
+    } catch (error) {
+      flashNotice(error instanceof Error ? error.message : "Talep silinemedi.");
+    } finally {
+      setInquiryBusy(false);
+    }
   };
 
   const downloadFile = (content: string, filename: string, mime: string) => {
@@ -710,6 +745,12 @@ function Admin() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      if (
+        !window.confirm(
+          "Bu yedekteki katalog ve ayarlar yüklensin mi? Yerel taslak değişecek ve sunucuya kaydedilmeye çalışılacak.",
+        )
+      )
+        return;
       const res = importDatabaseJSON(String(reader.result || ""));
       setDbMsg(res.message);
       setTimeout(() => setDbMsg(""), 5000);
@@ -787,7 +828,9 @@ function Admin() {
                 setLockout({ attempts: 0, lockedUntil: null });
                 window.sessionStorage.setItem("bycar_admin_auth", "1");
                 window.sessionStorage.setItem("bycar_admin_token", serverToken);
-                void syncInquiriesFromServer(serverToken);
+                void syncInquiriesFromServer(serverToken).catch((error: unknown) => {
+                  flashNotice(error instanceof Error ? error.message : "Talepler yüklenemedi.");
+                });
                 void syncFromServer();
                 setAuthed(true);
                 setPwErr("");
@@ -880,6 +923,26 @@ function Admin() {
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`} />
               Buluta Şimdi Eşitle (Tekrar Dene)
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer border border-destructive px-3 py-1.5 text-xs"
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "Yerel değişikliklerden vazgeçip sunucudaki güncel kataloğu yüklemek istiyor musunuz? Önce JSON yedeği indirmeniz önerilir.",
+                  )
+                )
+                  return;
+                const result = await syncFromServer(true);
+                flashNotice(
+                  result.ok
+                    ? "Güncel katalog yüklendi."
+                    : "Katalog yüklenemedi. Yerel taslağınız korundu.",
+                );
+              }}
+            >
+              Sunucudaki Güncel Veriyi Yükle
             </button>
           </div>
         </div>
@@ -1006,6 +1069,12 @@ function Admin() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Son katalog işlemi geri alınsın mı? Önceki veriler canlıya gönderilecek.",
+                      )
+                    )
+                      return;
                     const snap = restoreUndo();
                     if (snap) {
                       setDbMsg(`"${snap.label}" işlemi geri alındı, önceki veriler yüklendi.`);
@@ -1121,16 +1190,20 @@ function Admin() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Yerel taslağı silip güncel kataloğu yüklemek istiyor musunuz?",
+                        )
+                      )
+                        return;
                       clearAllBrowserStorage();
-                      setDbMsg(
-                        "Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.",
-                      );
+                      void syncFromServer(true);
+                      setDbMsg("Yerel taslak temizlendi. Güncel katalog sunucudan yükleniyor.");
                       setTimeout(() => setDbMsg(""), 4000);
                     }}
                     className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                   >
-                    <RotateCcw className="h-3.5 w-3.5" /> Varsayılan 10 Aracı Yükle (Önbelleği
-                    Temizle)
+                    <RotateCcw className="h-3.5 w-3.5" /> Yerel Taslağı Temizle ve Kataloğu Yenile
                   </button>
                 </div>
               </div>
@@ -1315,94 +1388,121 @@ function Admin() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const parsedYear = Number(String(year).replace(/[^0-9]/g, ""));
-                const numYear = parsedYear > 0 ? parsedYear : new Date().getFullYear();
-                const parsedKm = Number(String(km).replace(/[^0-9]/g, ""));
-                const numKm = parsedKm >= 0 ? parsedKm : 0;
-                const cleanBrand = brand.trim() || "Porsche";
-                const finalTitle = title.trim() || `${cleanBrand} ${pkg.trim() || "Exclusive"}`;
-                const finalImages =
-                  images.length > 0
-                    ? Array.from(new Set(images))
-                    : ["/cars/cupra/1.jpg", "/cars/cupra/2.jpg"];
-
-                const finalDescTr =
-                  descTr.trim() ||
-                  `${numYear} model ${finalTitle}. ${power || "Yüksek performans"}, ${
-                    color || "Özel renk"
-                  }, ${expertise || "Hatasız / Boyasız"} kondisyonda ByCar Global özel koleksiyon aracı.`;
-                const finalDescEn =
-                  descEn.trim() ||
-                  autoGenerateEnglishDescription(
-                    finalTitle,
-                    cleanBrand,
-                    numYear,
-                    numKm,
-                    power,
-                    pkg,
-                    expertise,
-                  );
-
-                const finalExtrasEn = selectedExtras.map((trItem) => translateTerm(trItem, "en"));
-
-                const newCar: Car = {
-                  id: editingId || `car-${Date.now()}`,
-                  brand: cleanBrand,
-                  title: finalTitle,
-                  year: numYear,
-                  km: numKm,
-                  fuel: fuel.trim() || "Benzin",
-                  gear: gear.trim() || "Otomatik",
-                  body: body.trim() || "Coupe",
-                  status,
-                  sold: status === "sold",
-                  featured,
-                  imageFit,
-                  video: video.trim() || undefined,
-                  images: finalImages,
-                  specs: {
-                    power: power.trim() || "Belirtilmedi",
-                    color: color.trim() || "Özel Renk",
-                    package: pkg.trim() || "Exclusive Paket",
-                    expertise: expertise.trim() || "Hatasız / Boyasız / Orijinal",
-                    tramer: tramer.trim() || "Yok",
-                  },
-                  extras: selectedExtras,
-                  extrasEn: finalExtrasEn,
-                  description: {
-                    tr: finalDescTr,
-                    en: finalDescEn,
-                  },
-                };
-
-                const nextCars = editingId
-                  ? cars.map((c) => (c.id === editingId ? newCar : c))
-                  : [newCar, ...cars];
-
-                if (editingId) {
-                  updateCars(nextCars, `"${newCar.title}" Güncelleme Öncesi`);
-                  flashNotice(
-                    "Araç değişiklikleri kaydedildi, Cloudflare D1 veritabanına eşitleniyor...",
-                  );
-                } else {
-                  updateCars(nextCars, `"${newCar.title}" Ekleme Öncesi`);
-                  clearForm();
-                  flashNotice("Yeni araç eklendi, Cloudflare D1 veritabanına eşitleniyor...");
+                if (savingCar || uploading) return;
+                if (!images.length) {
+                  alert("Araca ait en az bir fotoğraf ekleyin.");
+                  return;
                 }
+                const parsedYear = Number(year);
+                if (
+                  !Number.isInteger(parsedYear) ||
+                  parsedYear < 1900 ||
+                  parsedYear > new Date().getFullYear() + 1
+                ) {
+                  alert("Geçerli bir model yılı girin.");
+                  return;
+                }
+                const rawKm = Number(String(km).replace(/[.\s]/g, "").replace(",", "."));
+                if (!Number.isInteger(rawKm) || rawKm < 0) {
+                  alert("Geçerli bir kilometre girin.");
+                  return;
+                }
+                setSavingCar(true);
+                try {
+                  const numYear = parsedYear > 0 ? parsedYear : new Date().getFullYear();
+                  const parsedKm = rawKm;
+                  const numKm = parsedKm >= 0 ? parsedKm : 0;
+                  const cleanBrand = brand.trim() || "Porsche";
+                  const finalTitle = title.trim() || `${cleanBrand} ${pkg.trim() || "Exclusive"}`;
+                  const finalImages = images.length > 0 ? Array.from(new Set(images)) : [];
 
-                const syncRes = await syncToServerNow({ cars: nextCars });
-                if (syncRes.ok) {
-                  flashNotice(
-                    editingId
-                      ? "✓ Araç değişiklikleri başarıyla kaydedildi ve canlı vitrine (D1) yansıtıldı!"
-                      : "✓ Yeni araç başarıyla koleksiyona eklendi ve canlı vitrine (D1) aktarıldı!",
-                  );
-                } else {
-                  flashNotice(
-                    `⚠️ Araç yerel olarak kaydedildi, ancak D1 senkronizasyonu başarısız oldu: ${syncRes.error || "Ağ hatası"}. Lütfen üst bardan Tekrar Dene butonuna basınız.`,
-                  );
+                  const finalDescTr =
+                    descTr.trim() ||
+                    `${numYear} model ${finalTitle}. ${power || "Yüksek performans"}, ${
+                      color || "Özel renk"
+                    }, ${expertise || "Hatasız / Boyasız"} kondisyonda ByCar Global özel koleksiyon aracı.`;
+                  const finalDescEn =
+                    descEn.trim() ||
+                    autoGenerateEnglishDescription(
+                      finalTitle,
+                      cleanBrand,
+                      numYear,
+                      numKm,
+                      power,
+                      pkg,
+                      expertise,
+                    );
+
+                  const finalExtrasEn = selectedExtras.map((trItem) => translateTerm(trItem, "en"));
+
+                  const newCar: Car = {
+                    id: editingId || `car-${Date.now()}`,
+                    ...(editingId && cars.find((c) => c.id === editingId)?.slug
+                      ? { slug: cars.find((c) => c.id === editingId)!.slug! }
+                      : {}),
+                    brand: cleanBrand,
+                    title: finalTitle,
+                    year: numYear,
+                    km: numKm,
+                    fuel: fuel.trim() || "Benzin",
+                    gear: gear.trim() || "Otomatik",
+                    body: body.trim() || "Coupe",
+                    status,
+                    sold: status === "sold",
+                    featured,
+                    imageFit,
+                    video: video.trim() || undefined,
+                    images: finalImages,
+                    specs: {
+                      power: power.trim() || "Belirtilmedi",
+                      color: color.trim() || "Özel Renk",
+                      package: pkg.trim() || "Exclusive Paket",
+                      expertise: expertise.trim() || "Hatasız / Boyasız / Orijinal",
+                      tramer: tramer.trim() || "Yok",
+                    },
+                    extras: selectedExtras,
+                    extrasEn: finalExtrasEn,
+                    description: {
+                      tr: finalDescTr,
+                      en: finalDescEn,
+                    },
+                  };
+
+                  const nextCars = editingId
+                    ? cars.map((c) => (c.id === editingId ? newCar : c))
+                    : [newCar, ...cars];
+
+                  if (editingId) {
+                    updateCars(nextCars, `"${newCar.title}" Güncelleme Öncesi`);
+                    flashNotice(
+                      "Araç değişiklikleri kaydedildi, Cloudflare D1 veritabanına eşitleniyor...",
+                    );
+                  } else {
+                    updateCars(nextCars, `"${newCar.title}" Ekleme Öncesi`);
+                    clearForm();
+                    flashNotice("Yeni araç eklendi, Cloudflare D1 veritabanına eşitleniyor...");
+                  }
+
+                  const syncRes = await syncToServerNow({ cars: nextCars });
+                  if (syncRes.ok) {
+                    flashNotice(
+                      editingId
+                        ? "✓ Araç değişiklikleri başarıyla kaydedildi ve canlı vitrine (D1) yansıtıldı!"
+                        : "✓ Yeni araç başarıyla koleksiyona eklendi ve canlı vitrine (D1) aktarıldı!",
+                    );
+                  } else {
+                    flashNotice(
+                      `⚠️ Araç yerel olarak kaydedildi, ancak D1 senkronizasyonu başarısız oldu: ${syncRes.error || "Ağ hatası"}. Lütfen üst bardan Tekrar Dene butonuna basınız.`,
+                    );
+                  }
+                  setFormDirty(false);
+                } catch (error) {
+                  flashNotice(error instanceof Error ? error.message : "Araç kaydedilemedi.");
+                } finally {
+                  setSavingCar(false);
                 }
               }}
+              onChange={() => setFormDirty(true)}
               className="grid gap-5 border border-border bg-card p-6 sm:grid-cols-2"
             >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 sm:col-span-2">
@@ -2296,7 +2396,11 @@ function Admin() {
               </div>
 
               <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row">
-                <button type="submit" className={`${goldBtn} flex-1 py-4`}>
+                <button
+                  type="submit"
+                  disabled={savingCar || uploading}
+                  className={`${goldBtn} flex-1 py-4`}
+                >
                   {editingId ? "Değişiklikleri Kaydet & Yayınla" : "Aracı Koleksiyona Kaydet"}
                 </button>
                 <button
@@ -2358,10 +2462,18 @@ function Admin() {
                 </div>
                 <button
                   type="button"
-                  onClick={resetInquiries}
+                  onClick={async () => {
+                    const token = window.sessionStorage.getItem("bycar_admin_token");
+                    if (token)
+                      await syncInquiriesFromServer(token).catch((error: unknown) => {
+                        flashNotice(
+                          error instanceof Error ? error.message : "Talepler yüklenemedi.",
+                        );
+                      });
+                  }}
                   className="inline-flex cursor-pointer items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" /> Varsayılan Talepleri Yükle
+                  <RotateCcw className="h-3.5 w-3.5" /> Talepleri Yenile
                 </button>
               </div>
               {inquiries.length === 0 ? (
@@ -2599,7 +2711,14 @@ function Admin() {
 
                     <button
                       type="button"
-                      onClick={() => updateSettings(DEFAULT_SETTINGS)}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Vitrin ve filtre ayarları varsayılan değerlere döndürülsün mü?",
+                          )
+                        )
+                          updateSettings(DEFAULT_SETTINGS);
+                      }}
                       className="inline-flex cursor-pointer items-center gap-1.5 border border-border px-4 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> Ayarları Varsayılana Döndür
@@ -2694,10 +2813,11 @@ function Admin() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!window.confirm("Yerel taslak silinip güncel katalog yüklensin mi?"))
+                        return;
                       clearAllBrowserStorage();
-                      setDbMsg(
-                        "Tarayıcı önbelleği (LocalStorage) tamamen temizlendi ve varsayılan 10 araç yüklendi.",
-                      );
+                      void syncFromServer(true);
+                      setDbMsg("Yerel taslak temizlendi; katalog sunucudan yükleniyor.");
                       setTimeout(() => setDbMsg(""), 4000);
                     }}
                     className="inline-flex cursor-pointer items-center justify-center gap-2 border border-border bg-background px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:border-destructive hover:text-destructive"
@@ -2709,6 +2829,12 @@ function Admin() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (
+                          !window.confirm(
+                            "Son katalog işlemi geri alınsın mı? Önceki veriler canlıya gönderilecek.",
+                          )
+                        )
+                          return;
                         const snap = restoreUndo();
                         if (snap) {
                           setDbMsg(`"${snap.label}" işlemi geri alındı.`);
@@ -2730,7 +2856,10 @@ function Admin() {
             <AdminContentTab
               cmsConfig={cmsConfig}
               onSave={updateCmsConfig}
-              onReset={resetCmsConfig}
+              onReset={() => {
+                if (window.confirm("Site içerik ayarları varsayılan değerlere döndürülsün mü?"))
+                  resetCmsConfig();
+              }}
             />
           )}
 
@@ -2745,11 +2874,16 @@ function Admin() {
               }}
               cmsConfig={cmsConfig}
               onSave={updateCmsConfig}
-              onReset={resetCmsConfig}
+              onReset={() => {
+                if (window.confirm("Site içerik ayarları varsayılan değerlere döndürülsün mü?"))
+                  resetCmsConfig();
+              }}
               carsCount={cars.length}
               inquiriesCount={inquiries.length}
               undoSnap={undoSnap}
-              onRestoreUndo={restoreUndo}
+              onRestoreUndo={() => {
+                if (window.confirm("Son katalog işlemi geri alınsın mı?")) restoreUndo();
+              }}
               onSyncServer={syncWithServer}
               isSyncing={isSyncing}
             />

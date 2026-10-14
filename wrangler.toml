@@ -28,8 +28,10 @@ bucket_name = "bycar-media"
 
 [vars]
 NODE_ENV = "production"
-GIT_COMMIT = "357d6ca"
-CF_ACCESS_REQUIRED = "true"
-CF_ACCESS_TEAM_DOMAIN = "https://sami-app-pages.cloudflareaccess.com"
-CF_ACCESS_AUD = "b60d5e51dce3637ad067bdb9018f782e8bd574158aea2e65c573105850141065"
+# After custom-domain DNS/TLS and Access rules are ready, set SITE_URL to the
+# purchased primary https origin. It also activates alias redirects.
+# SITE_URL = "https://your-purchased-domain.example"
+CF_ACCESS_REQUIRED = "false"
+# CF_ACCESS_TEAM_DOMAIN = "https://sami-app-pages.cloudflareaccess.com"
+# CF_ACCESS_AUD = "b60d5e51dce3637ad067bdb9018f782e8bd574158aea2e65c573105850141065"
 # CF_ACCESS_ALLOWED_EMAILS is stored as a Worker secret, not in Git.

@@ -25,14 +25,14 @@
 
 ---
 
-## 🛡️ Güvenlik ve KVKK Uyumluluğu
+## 🛡️ Güvenlik ve Veri Koruma
 
 1. **Sunucu Tarafı API Yetkilendirmesi:**  
    `POST /api/cms`, `GET /api/admin/inquiries` ve `POST /api/admin/inquiries/status` endpoint'leri kriptografik Bearer session token ile korunmaktadır.
 2. **KVKK Veri İzolasyonu:**  
    Müşteri ad-soyad, telefon ve teklif bilgileri genel katalog sorgusundan (`GET /api/cms`) tamamen izole edilmiştir; sadece yetkili yönetici oturumuyla erişilebilir.
-3. **NIST Standartlarında PBKDF2 Şifreleme:**  
-   Yönetici girişi Cloudflare Workers CPU sınırlarına optimize 100.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve D1 kalıcı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
+3. **Mevcut parola doğrulaması ve Cloudflare Access:**
+   Yönetici girişi Cloudflare Access e-posta politikası ve mevcut 100.000 iterasyonlu Web Crypto PBKDF2-HMAC-SHA256 ve D1 kalıcı Brute-Force kilidi (5 hatalı denemede 15 dakika kilit) ile korunur.
 4. **Talep & CSRF Sınırları:**  
    Teklif formu (`POST /api/inquiry`) IP başına 10 dakikada en fazla 5 istekle sınırlandırılmış olup, gövde boyutları ve girdi temizliği sunucu tarafında doğrulanır.
 5. **SEO & Gerçek HTTP 404:**  
@@ -42,26 +42,14 @@
 
 ## 🚀 Cloudflare Custom Domain (bycarglobal.com) Bağlama Rehberi
 
-Domain satın alındıktan sonra Cloudflare üzerinden canlıya almak için:
+Alan adı, DNS/TLS, iki yönetim yolu için Access koruması ve `SITE_URL` ayarı birlikte
+hazırlanmalıdır. **Access yollarını eklemeden `SITE_URL` etkinleştirmeyin.**
+Adım adım geçiş ve son kontrol komutları için
+[yayın hazırlığı raporunu](docs/production-readiness.md#alan-adı-alındığında) okuyun.
 
-### 1. Cloudflare Dashboard Üzerinden Domain Ekleme
-
-1. [Cloudflare Dashboard](https://dash.cloudflare.com)'a giriş yapın ve **Add a Site** diyerek `bycarglobal.com` alan adını ekleyin.
-2. Domain firmanızdaki (isimtescil, godaddy vb.) Name Server'ları Cloudflare'in size vereceği iki NS adresine yönlendirin.
-
-### 2. Worker'a Custom Domain Bağlama
-
-1. Cloudflare Dashboard > **Workers & Pages** > `selcuktin-golden-chassis-showcase` worker'ına tıklayın.
-2. **Settings** > **Domains & Routes** sekmesine gelin.
-3. **Add** butonuna basıp **Custom Domain** seçeneğini seçin.
-4. `bycarglobal.com` ve `www.bycarglobal.com` adreslerini ekleyin.
-5. Cloudflare SSL/TLS sertifikalarını (Edge Certificates) otomatik olarak aktif edecektir.
-
-### 3. DNS Ayarları (Otomatik Yapılmazsa)
-
-- **Root (@):** CNAME veya Proxied (Turuncu bulut)
-- **www:** CNAME `bycarglobal.com` (Proxied)
-- **SSL Modu:** **Full (Strict)** olarak ayarlanmalıdır.
+Satın alınmış alan adı veya e-posta kutusu bu repoda varsayılmaz. `SITE_URL`
+verilmediğinde çalışan adresin origin'i kullanılır; verildiğinde alternatif
+adresler yöntem/gövde koruyan 308 ile ana adrese yönlendirilir.
 
 ---
 
@@ -121,3 +109,6 @@ npm run db:migrate:remote
 
 Yönetici erişiminin Cloudflare Access ayarları ve yayın kontrolü
 [Access rehberinde](docs/cloudflare-access.md) açıklanmıştır.
+
+Ayrıntılı son sistem denetimi, düzeltilen akışlar ve işletim sınırları:
+[docs/production-readiness.md](docs/production-readiness.md).

@@ -3,6 +3,8 @@
 // /api/admin/upload, /api/media/*, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
 
 import { z } from "zod";
+import { CmsConfigSchema, SettingsSchema, VehicleSchema } from "../lib/cms-validation";
+import { isMediaReferenced, mediaKey } from "./media-references";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "./db/client";
 import { enforceCloudflareAccess, type CloudflareAccessEnv } from "./cloudflare-access";
@@ -90,46 +92,13 @@ interface AdminUserRow {
 }
 
 // Zod Validation Schemas
-export const VehicleSchema = z.object({
-  id: z.string().min(1).max(100),
-  slug: z.string().optional(),
-  brand: z.string().min(1).max(100),
-  title: z.string().min(1).max(150),
-  year: z.number().int().min(1900).max(2100),
-  km: z.number().int().min(0),
-  fuel: z.string().min(1).max(50),
-  gear: z.string().min(1).max(50),
-  body: z.string().min(1).max(50),
-  specs: z
-    .object({
-      power: z.string().default(""),
-      color: z.string().default(""),
-      package: z.string().default(""),
-      expertise: z.string().default(""),
-      tramer: z.string().default("Yok"),
-    })
-    .default({}),
-  imageFit: z.enum(["contain", "cover"]).default("cover"),
-  video: z.string().optional(),
-  images: z.array(z.string()).default([]),
-  extras: z.array(z.string()).default([]),
-  extrasEn: z.array(z.string()).default([]),
-  description: z
-    .object({
-      tr: z.string().default(""),
-      en: z.string().default(""),
-    })
-    .default({ tr: "", en: "" }),
-  status: z.enum(["active", "sold", "draft"]).default("active"),
-  sold: z.boolean().optional(),
-  featured: z.boolean().default(false),
-});
+export { VehicleSchema } from "../lib/cms-validation";
 
 export const CmsPayloadSchema = z
   .object({
     cars: z.array(VehicleSchema).max(35).optional(),
-    settings: z.record(z.unknown()).optional(),
-    cmsConfig: z.record(z.unknown()).optional(),
+    settings: SettingsSchema.optional(),
+    cmsConfig: CmsConfigSchema.optional(),
     allowEmptyCatalog: z.boolean().optional(),
     deletedCarIds: z.array(z.string().min(1).max(100)).max(100).optional(),
     revision: z.number().int().nonnegative().optional(),
@@ -161,7 +130,7 @@ export const InquiryStatusSchema = z.object({
 });
 
 export const ChangePasswordSchema = z.object({
-  newPassword: z.string().min(6, "Yönetici şifresi en az 6 karakter olmalıdır."),
+  newPassword: z.string().trim().min(6, "Yönetici şifresi en az 6 karakter olmalıdır.").max(1024),
 });
 
 // In-Memory store fallback when D1 is not bound (e.g. local preview/dev)
@@ -265,7 +234,35 @@ async function parseJsonBody<T = unknown>(
   request: Request,
 ): Promise<{ success: true; data: T } | { success: false; response: Response }> {
   try {
-    const data = (await request.json()) as T;
+    const limit = new URL(request.url).pathname === "/api/cms" ? 5 * 1024 * 1024 : 64 * 1024;
+    const reader = request.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        size += part.value.byteLength;
+        if (size > limit) {
+          await reader.cancel();
+          return {
+            success: false,
+            response: jsonResponse(
+              { ok: false, error: "İstek boyutu çok büyük." },
+              { status: 413 },
+            ),
+          };
+        }
+        chunks.push(part.value);
+      }
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const data = JSON.parse(new TextDecoder().decode(bytes)) as T;
     return { success: true, data };
   } catch {
     return {
@@ -288,6 +285,7 @@ export function jsonResponse(
 ): Response {
   const status = init?.status ?? 200;
   const headers = new Headers(init?.headers);
+  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json; charset=utf-8");
   }
@@ -309,7 +307,9 @@ export function sanitizeCmsConfig(config: unknown): Record<string, unknown> | nu
 export const PBKDF2_SALT = "bycar-global-vip-salt-2026";
 export const PBKDF2_ITERATIONS = 100000;
 
-export const BUILD_GIT_COMMIT = "357d6ca";
+declare const __BYCAR_BUILD_COMMIT__: string;
+export const BUILD_GIT_COMMIT =
+  typeof __BYCAR_BUILD_COMMIT__ === "string" ? __BYCAR_BUILD_COMMIT__ : "development";
 
 export async function deriveServerPBKDF2HexWithParams(
   password: string,
@@ -469,7 +469,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
     try {
       const vehiclesRes = await db
         .prepare(
-          "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, updated_at DESC",
+          "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, sort_order ASC, updated_at DESC",
         )
         .all<VehicleDbRow>();
       const imagesRes = await db
@@ -489,6 +489,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
 
       const cars: Car[] = (vehiclesRes.results || []).map((row) => ({
         id: String(row.id),
+        slug: String(row.slug || row.id),
         brand: String(row.brand),
         title: String(row.title),
         year: Number(row.year),
@@ -526,7 +527,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
         }
       }
 
-      if (cars.length > 0) {
+      {
         return {
           cars,
           settings: (settingsMap["showcase_settings"] as SiteSettings) || null,
@@ -536,11 +537,12 @@ export async function getLiveCmsData(env?: unknown): Promise<{
       }
     } catch (err) {
       console.error("getLiveCmsData D1 error:", err);
+      throw new Error("Katalog şu anda yüklenemiyor.");
     }
   }
 
   return {
-    cars: (memoryStore.cars as Car[]) || [],
+    cars: ((memoryStore.cars as Car[]) || []).filter((car) => car.status !== "draft"),
     settings: (memoryStore.settings as SiteSettings) || null,
     cmsConfig: (sanitizeCmsConfig(memoryStore.cmsConfig) as SiteCMSConfig) || null,
     source: "memory",
@@ -568,6 +570,7 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
 
         return {
           id: String(row.id),
+          slug: String(row.slug || row.id),
           brand: String(row.brand),
           title: String(row.title),
           year: Number(row.year),
@@ -598,6 +601,7 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
       }
     } catch (err) {
       console.error("getLiveVehicleBySlug D1 error:", err);
+      throw new Error("Araç şu anda yüklenemiyor.");
     }
   }
   return null;
@@ -606,8 +610,19 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
 // Main API Handler
 export async function handleApiRequest(request: Request, env: unknown): Promise<Response | null> {
   const url = new URL(request.url);
+  // Cloudflare serves /api routes without shared caching; response headers also protect browsers.
   const accessResponse = await enforceCloudflareAccess(request, resolveEnv(env, request));
   if (accessResponse) return accessResponse;
+
+  if (url.pathname === "/robots.txt" && request.method === "GET") {
+    const base = (resolveEnv(env, request).SITE_URL || url.origin).replace(/\/+$/, "");
+    return new Response(
+      `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`,
+      {
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" },
+      },
+    );
+  }
 
   // Dynamic Sitemap Route
   if (url.pathname === "/sitemap.xml" && request.method === "GET") {
@@ -615,7 +630,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   }
 
   // R2 Media Streaming Handler
-  if (url.pathname.startsWith("/api/media/") && request.method === "GET") {
+  if (
+    url.pathname.startsWith("/api/media/") &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
     let key: string;
     try {
       key = decodeURIComponent(url.pathname.slice("/api/media/".length));
@@ -628,7 +646,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         const object = await resolvedEnv.BUCKET.get(key);
         if (object) {
           const contentType = object.httpMetadata?.contentType || "image/webp";
-          return new Response(object.body, {
+          return new Response(request.method === "HEAD" ? null : object.body, {
             headers: {
               "content-type": contentType,
               "cache-control": "public, max-age=31536000, immutable",
@@ -649,9 +667,24 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   const db = resolvedEnv?.DB;
   const isD1 = Boolean(db);
   const ip = getClientIp(request);
+  if (resolvedEnv.CF_ACCESS_REQUIRED === "true" && !db && url.pathname !== "/api/health") {
+    return jsonResponse(
+      { ok: false, error: "Veritabanı bağlantısı yapılandırılmamış." },
+      { status: 503 },
+    );
+  }
 
   // 1. GET /api/health — Includes live D1 status, version, and commit tracking
   if (url.pathname === "/api/health" && request.method === "GET") {
+    try {
+      if (db) await db.prepare("SELECT 1 AS ok").first();
+      if (resolvedEnv.BUCKET?.list) await resolvedEnv.BUCKET.list({ limit: 1 });
+    } catch {
+      return jsonResponse(
+        { status: "degraded", commit: resolvedEnv.GIT_COMMIT || BUILD_GIT_COMMIT },
+        { status: 503 },
+      );
+    }
     return new Response(
       JSON.stringify({
         status: "ok",
@@ -712,7 +745,15 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     try {
       const parsedBody = await parseJsonBody<{ password?: string; username?: string }>(request);
       if (!parsedBody.success) return parsedBody.response;
-      const body = parsedBody.data;
+      const validatedLogin = z
+        .object({
+          password: z.string().max(1024).optional(),
+          username: z.string().max(100).optional(),
+        })
+        .safeParse(parsedBody.data);
+      if (!validatedLogin.success)
+        return jsonResponse({ ok: false, error: "Geçersiz giriş bilgileri." }, { status: 400 });
+      const body = validatedLogin.data;
       const rawPassword = String(body.password || "").trim();
       const rawUsername = String(body.username || "admin").trim();
 
@@ -1071,7 +1112,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .replace(/[^a-zA-Z0-9._-]/g, "_")
           .replace(/^[_.-]+|[_.-]+$/g, "")
           .slice(0, 100) || "image.webp";
-      const r2Key = `vehicles/${vehicleId}/${Date.now()}-${safeName}`;
+      const r2Key = `vehicles/${vehicleId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
 
       const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
       const ALLOWED_MIME_TYPES = new Set([
@@ -1279,9 +1320,9 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       if (mode !== "scan") {
         const queueRows = await db
           .prepare(
-            "SELECT id, r2_key, attempts FROM r2_cleanup_queue ORDER BY created_at ASC LIMIT 50",
+            "SELECT id, r2_key, attempts, created_at FROM r2_cleanup_queue ORDER BY created_at ASC LIMIT 50",
           )
-          .all<{ id: string; r2_key: string; attempts: number }>();
+          .all<{ id: string; r2_key: string; attempts: number; created_at: number }>();
 
         const items = queueRows.results || [];
         queueProcessed = items.length;
@@ -1295,12 +1336,14 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             .bind(item.r2_key, `%${encodeURIComponent(item.r2_key)}%`)
             .first<{ count: number }>();
 
-          if ((inUseRow?.count || 0) > 0) {
+          if ((inUseRow?.count || 0) > 0 || (await isMediaReferenced(db, item.r2_key))) {
             // Key is currently in use, remove from cleanup queue
             await db.prepare("DELETE FROM r2_cleanup_queue WHERE id = ?").bind(item.id).run();
             queueSkippedInUse++;
             continue;
           }
+
+          if (Number(item.created_at) > Date.now() - 24 * 60 * 60 * 1000) continue;
 
           if (resolvedEnv.BUCKET) {
             try {
@@ -1329,6 +1372,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       let nextCursor: string | undefined = undefined;
       let isTruncated = false;
       let pagesProcessed = 0;
+      let scanFailed = false;
 
       if (mode !== "queue" && resolvedEnv.BUCKET && typeof resolvedEnv.BUCKET.list === "function") {
         try {
@@ -1407,6 +1451,16 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                 isReferenced = (inUseRow?.count || 0) > 0;
               }
 
+              if (!isReferenced) isReferenced = await isMediaReferenced(db, obj.key);
+              if (!isReferenced) {
+                const recentlyRetired = await db
+                  .prepare(
+                    "SELECT id FROM r2_cleanup_queue WHERE r2_key = ? AND created_at > ? LIMIT 1",
+                  )
+                  .bind(obj.key, nowMs - GRACE_PERIOD_MS)
+                  .first();
+                isReferenced = Boolean(recentlyRetired);
+              }
               if (!isReferenced) {
                 // Historical orphan older than 24h!
                 try {
@@ -1417,12 +1471,13 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                   try {
                     await db
                       .prepare(
-                        "INSERT INTO r2_cleanup_queue (id, r2_key, attempts, last_error, created_at) VALUES (?, ?, 1, ?, datetime('now'))",
+                        "INSERT INTO r2_cleanup_queue (id, r2_key, attempts, last_error, created_at) VALUES (?, ?, 1, ?, ?)",
                       )
                       .bind(
                         `hist-orphan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                         obj.key,
                         String(delErr),
+                        Date.now(),
                       )
                       .run();
                   } catch (enqueueErr) {
@@ -1439,6 +1494,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             }
           }
         } catch (scanErr) {
+          scanFailed = true;
           console.error("Historical R2 bucket scan error:", scanErr);
         }
       }
@@ -1449,7 +1505,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
 
       return new Response(
         JSON.stringify({
-          ok: true,
+          ok: !scanFailed && queueFailed === 0,
           mode,
           processed: queueProcessed + scannedBucketCount,
           deleted: queueDeleted + historicalDeletedCount,
@@ -1472,7 +1528,13 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             pagesProcessed,
           },
         }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
+        {
+          status: scanFailed || queueFailed > 0 ? 503 : 200,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        },
       );
     } catch (err) {
       console.error("POST /api/admin/media/gc error:", err);
@@ -1519,6 +1581,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         });
       } catch (err) {
         console.error("D1 inquiries read error:", err);
+        return jsonResponse(
+          { ok: false, error: "Talepler okunamadı. Lütfen tekrar deneyin." },
+          { status: 503 },
+        );
       }
     }
 
@@ -1564,7 +1630,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
       const { id, status } = validated.data;
 
       if (db) {
-        await db.prepare("UPDATE inquiries SET status = ? WHERE id = ?").bind(status, id).run();
+        const updated = await db
+          .prepare("UPDATE inquiries SET status = ? WHERE id = ? RETURNING id")
+          .bind(status, id)
+          .first<{ id: string }>();
+        if (!updated)
+          return jsonResponse({ ok: false, error: "Talep bulunamadı." }, { status: 404 });
       }
 
       // Update memory store if present
@@ -1588,18 +1659,57 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
     }
   }
 
+  if (url.pathname === "/api/admin/inquiries/delete" && request.method === "POST") {
+    if (!(await verifyAdminToken(request, db)))
+      return jsonResponse({ ok: false, error: "Yönetici oturumu gerekli." }, { status: 401 });
+    const parsed = await parseJsonBody(request);
+    if (!parsed.success) return parsed.response;
+    const validated = z.object({ id: z.string().min(1).max(100) }).safeParse(parsed.data);
+    if (!validated.success)
+      return jsonResponse({ ok: false, error: "Geçersiz talep kimliği." }, { status: 400 });
+    try {
+      if (db) {
+        const deleted = await db
+          .prepare("DELETE FROM inquiries WHERE id = ? RETURNING id")
+          .bind(validated.data.id)
+          .first<{ id: string }>();
+        if (!deleted)
+          return jsonResponse({ ok: false, error: "Talep bulunamadı." }, { status: 404 });
+      }
+      memoryStore.inquiries = (memoryStore.inquiries || []).filter(
+        (item) => (item as { id: string }).id !== validated.data.id,
+      );
+      return jsonResponse({ ok: true });
+    } catch (error) {
+      console.error("Inquiry deletion failed:", error);
+      return jsonResponse(
+        { ok: false, error: "Talep silinemedi. Lütfen tekrar deneyin." },
+        { status: 503 },
+      );
+    }
+  }
+
   // 8. GET /api/cms — PUBLIC / ADMIN: Filter drafts unless authenticated admin
   if (url.pathname === "/api/cms" && request.method === "GET") {
     const isAuthedAdmin = await verifyAdminToken(request, db);
+    if (
+      !isAuthedAdmin &&
+      (request.headers.has("authorization") || request.headers.has("x-admin-token"))
+    ) {
+      return jsonResponse(
+        { ok: false, error: "Yönetici oturumu sona erdi. Yeniden giriş yapın." },
+        { status: 401 },
+      );
+    }
     const cacheHeaders = isAuthedAdmin
       ? { "cache-control": "private, no-cache, no-store, must-revalidate" }
-      : { "cache-control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600" };
+      : { "cache-control": "no-cache" };
 
     if (db) {
       try {
         const vehicleQuery = isAuthedAdmin
-          ? "SELECT * FROM vehicles ORDER BY is_featured DESC, updated_at DESC"
-          : "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, updated_at DESC";
+          ? "SELECT * FROM vehicles ORDER BY is_featured DESC, sort_order ASC, updated_at DESC"
+          : "SELECT * FROM vehicles WHERE status IN ('active', 'sold') ORDER BY is_featured DESC, sort_order ASC, updated_at DESC";
 
         const vehiclesRes = await db.prepare(vehicleQuery).all<VehicleDbRow>();
 
@@ -1669,7 +1779,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             ok: true,
             source: "d1",
             revision: currentRevision,
-            cars: cars.length > 0 ? cars : null,
+            cars,
             settings: settingsMap["showcase_settings"] || null,
             cmsConfig: sanitizeCmsConfig(settingsMap["cms_config"]),
           }),
@@ -1682,6 +1792,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         );
       } catch (err) {
         console.error("D1 Read error:", err);
+        return jsonResponse(
+          { ok: false, error: "Katalog okunamadı. Lütfen tekrar deneyin." },
+          { status: 503 },
+        );
       }
     }
 
@@ -1890,9 +2004,8 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         }
 
         const extractR2Key = (targetUrl: string, fallbackKey?: string): string | null => {
-          if (targetUrl.startsWith("/api/media/")) {
-            return decodeURIComponent(targetUrl.replace("/api/media/", ""));
-          }
+          const parsed = mediaKey(targetUrl);
+          if (parsed) return parsed;
           if (fallbackKey && fallbackKey.startsWith("vehicles/")) {
             return fallbackKey;
           }
@@ -1986,11 +2099,53 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             }
           }
 
-          // Upsert each vehicle
-          for (const c of payload.cars) {
+          // Keep parameter counts below D1's 100-variable limit and reduce query overhead.
+          const vehicleValues: unknown[][] = [];
+          const imageValues: unknown[][] = [];
+          for (const [sortOrder, c] of payload.cars.entries()) {
             const specs = c.specs || {};
             const desc = c.description || {};
-
+            vehicleValues.push([
+              c.id,
+              c.slug || c.id,
+              c.brand,
+              c.title,
+              c.year,
+              c.km,
+              c.fuel,
+              c.gear,
+              c.body,
+              specs.power || "",
+              specs.color || "",
+              specs.package || "",
+              specs.expertise || "",
+              specs.tramer || "Yok",
+              c.imageFit,
+              c.video ? String(c.video) : null,
+              JSON.stringify(c.extras || []),
+              JSON.stringify(c.extrasEn || []),
+              desc.tr || "",
+              desc.en || "",
+              c.status,
+              c.featured ? 1 : 0,
+              sortOrder,
+            ]);
+            c.images.forEach((imageUrl, index) => {
+              const key =
+                extractR2Key(imageUrl, `vehicles/${c.id}/${index + 1}`) ||
+                `vehicles/${c.id}/${index + 1}`;
+              imageValues.push([
+                `${c.id}-img-${index + 1}`,
+                c.id,
+                key,
+                imageUrl,
+                index === 0 ? 1 : 0,
+                index,
+              ]);
+            });
+          }
+          for (let offset = 0; offset < vehicleValues.length; offset += 4) {
+            const chunk = vehicleValues.slice(offset, offset + 4);
             stmts.push(
               db
                 .prepare(
@@ -1998,8 +2153,8 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                     id, slug, brand, title, year, km, fuel, gear, body,
                     power, color, package, expertise, tramer, image_fit,
                     video_url, extras_json, extras_en_json, description_tr,
-                    description_en, status, is_featured, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    description_en, status, is_featured, sort_order, updated_at
+                  ) VALUES ${chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))").join(", ")}
                   ON CONFLICT(id) DO UPDATE SET
                     slug = excluded.slug,
                     brand = excluded.brand,
@@ -2022,61 +2177,28 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                     description_en = excluded.description_en,
                     status = excluded.status,
                     is_featured = excluded.is_featured,
+                    sort_order = excluded.sort_order,
                     updated_at = datetime('now')`,
                 )
-                .bind(
-                  c.id,
-                  c.slug || c.id,
-                  c.brand,
-                  c.title,
-                  c.year,
-                  c.km,
-                  c.fuel,
-                  c.gear,
-                  c.body,
-                  specs.power || "",
-                  specs.color || "",
-                  specs.package || "",
-                  specs.expertise || "",
-                  specs.tramer || "Yok",
-                  c.imageFit,
-                  c.video ? String(c.video) : null,
-                  JSON.stringify(c.extras || []),
-                  JSON.stringify(c.extrasEn || []),
-                  desc.tr || "",
-                  desc.en || "",
-                  c.status,
-                  c.featured ? 1 : 0,
-                ),
+                .bind(...chunk.flat()),
             );
-
-            // Refresh images for this vehicle atomically
-            stmts.push(db.prepare("DELETE FROM vehicle_images WHERE vehicle_id = ?").bind(c.id));
-
-            if (Array.isArray(c.images) && c.images.length > 0) {
-              const IMAGE_CHUNK = 15;
-              for (let i = 0; i < c.images.length; i += IMAGE_CHUNK) {
-                const chunk = c.images.slice(i, i + IMAGE_CHUNK);
-                const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
-                const sql = `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES ${placeholders}`;
-                const params: unknown[] = [];
-                chunk.forEach((imgUrl: string, cIdx: number) => {
-                  const idx = i + cIdx;
-                  const effectiveR2Key =
-                    extractR2Key(String(imgUrl), `vehicles/${c.id}/${idx + 1}`) ||
-                    `vehicles/${c.id}/${idx + 1}`;
-                  params.push(
-                    `${c.id}-img-${idx + 1}`,
-                    c.id,
-                    effectiveR2Key,
-                    String(imgUrl),
-                    idx === 0 ? 1 : 0,
-                    idx,
-                  );
-                });
-                stmts.push(db.prepare(sql).bind(...params));
-              }
-            }
+          }
+          stmts.push(
+            db
+              .prepare(
+                `DELETE FROM vehicle_images WHERE vehicle_id IN (${carIds.map(() => "?").join(",")})`,
+              )
+              .bind(...carIds),
+          );
+          for (let offset = 0; offset < imageValues.length; offset += 15) {
+            const chunk = imageValues.slice(offset, offset + 15);
+            stmts.push(
+              db
+                .prepare(
+                  `INSERT INTO vehicle_images (id, vehicle_id, r2_key, public_url, is_cover, sort_order) VALUES ${chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ")}`,
+                )
+                .bind(...chunk.flat()),
+            );
           }
         } else if (
           Array.isArray(payload.cars) &&
@@ -2088,10 +2210,25 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           stmts.push(db.prepare("DELETE FROM vehicles"));
         }
 
+        const retiredKeys = [...orphanedR2Keys];
+        for (let offset = 0; offset < retiredKeys.length; offset += 25) {
+          const chunk = retiredKeys.slice(offset, offset + 25);
+          stmts.push(
+            db
+              .prepare(
+                `INSERT INTO r2_cleanup_queue (id, r2_key, attempts, created_at) VALUES ${chunk.map(() => "(?, ?, 0, ?)").join(", ")} ON CONFLICT(id) DO UPDATE SET created_at = excluded.created_at`,
+              )
+              .bind(...chunk.flatMap((key) => [`retired:${key}`, key, Date.now()])),
+          );
+        }
+
         // Pre-batch CAS statement preparation:
         const nextRevision = Math.max(currentRevision, payload.revision || 0) + 1;
 
-        if (!payload.force && payload.revision !== undefined) {
+        {
+          const expectedRevision = payload.force
+            ? payload.forceExpectedRevision!
+            : payload.revision!;
           // SQL-Level In-Batch CAS:
           // Atomically checks if current revision matches payload.revision inside the D1 transaction.
           // If revision matches (or no setting row exists yet), key is 'cms_revision'.
@@ -2113,15 +2250,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
                  )
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;`,
               )
-              .bind(String(payload.revision), String(nextRevision)),
-          );
-        } else {
-          stmts.push(
-            db
-              .prepare(
-                "INSERT INTO site_settings (key, value, updated_at) VALUES ('cms_revision', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-              )
-              .bind(String(nextRevision)),
+              .bind(String(expectedRevision), String(nextRevision)),
           );
         }
 
@@ -2165,20 +2294,10 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           );
         }
 
-        // Batch execution:
-        // Cloudflare D1 executes a single batch call as an atomic ACID transaction.
-        // For standard catalog sizes (<= 90 statements), this provides 100% all-or-nothing atomicity.
+        // A single D1 batch is the transaction boundary, regardless of catalog size.
+        // Splitting this list can commit vehicles without the revision guard.
         try {
-          if (stmts.length <= 90) {
-            await db.batch(stmts);
-          } else {
-            // Large catalog chunking protection (prevents D1 100-statement limit errors)
-            const CHUNK_SIZE = 50;
-            for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
-              const chunk = stmts.slice(i, i + CHUNK_SIZE);
-              await db.batch(chunk);
-            }
-          }
+          await db.batch(stmts);
         } catch (batchErr: unknown) {
           const errMsg = String(batchErr);
           let conflictRevision = currentRevision;
@@ -2223,7 +2342,8 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           }
 
           const isCasMismatch =
-            (typeof payload.revision === "number" && conflictRevision !== payload.revision) ||
+            conflictRevision !==
+              (payload.force ? payload.forceExpectedRevision : payload.revision) ||
             errMsg.includes("site_settings.key") ||
             errMsg.includes("prevent_null_key_site_settings");
 
@@ -2246,53 +2366,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         // ONLY update in-memory fallback cache once D1 transaction succeeds!
         applyPayloadToMemoryStore(payload);
 
-        // Delete orphaned R2 media files safely after D1 batch success
-        if (orphanedR2Keys.size > 0) {
-          for (const key of orphanedR2Keys) {
-            try {
-              // Shared media reference check: verify no remaining vehicle image in D1 still references this R2 key
-              const inUseRow = await db
-                .prepare(
-                  "SELECT COUNT(*) as count FROM vehicle_images WHERE r2_key = ? OR public_url LIKE ?",
-                )
-                .bind(key, `%${encodeURIComponent(key)}%`)
-                .first<{ count: number }>();
-
-              if ((inUseRow?.count || 0) === 0) {
-                if (resolvedEnv.BUCKET) {
-                  await resolvedEnv.BUCKET.delete(key);
-                }
-              } else {
-                console.warn(
-                  `R2 key "${key}" is still in use by another vehicle image. Preserving shared media.`,
-                );
-              }
-            } catch (r2Err) {
-              console.error(`Failed to delete orphaned R2 object ${key}:`, r2Err);
-              // Queue for retry via r2_cleanup_queue table
-              try {
-                await db
-                  .prepare(
-                    `INSERT INTO r2_cleanup_queue (id, r2_key, attempts, last_error, created_at)
-                     VALUES (?, ?, 1, ?, ?)
-                     ON CONFLICT(id) DO UPDATE SET attempts = attempts + 1, last_error = excluded.last_error`,
-                  )
-                  .bind(
-                    `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    key,
-                    String(r2Err),
-                    Date.now(),
-                  )
-                  .run();
-              } catch (queueErr) {
-                console.error(
-                  "Failed to enqueue failed R2 delete into r2_cleanup_queue:",
-                  queueErr,
-                );
-              }
-            }
-          }
-        }
+        // Retired R2 files remain available for undo; the admin GC retries after 24h.
 
         // Edge Cache Invalidation: Immediately purge cached GET /api/cms from Cloudflare Edge
         try {
@@ -2400,13 +2474,13 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
           .prepare("DELETE FROM inquiry_attempts WHERE created_at < ?")
           .bind(now - 3600000)
           .run();
-        const countRow = await db
+        const admitted = await db
           .prepare(
-            "SELECT COUNT(*) as count FROM inquiry_attempts WHERE ip = ? AND created_at >= ?",
+            "INSERT INTO inquiry_attempts (id, ip, created_at) SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM inquiry_attempts WHERE ip = ? AND created_at >= ?) < 5 RETURNING id",
           )
-          .bind(ip, cutoff)
-          .first<{ count: number }>();
-        if ((countRow?.count || 0) >= 5) {
+          .bind(`att-${crypto.randomUUID()}`, ip, now, ip, cutoff)
+          .first<{ id: string }>();
+        if (!admitted) {
           return new Response(
             JSON.stringify({
               ok: false,
@@ -2415,12 +2489,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
             { status: 429, headers: { "content-type": "application/json; charset=utf-8" } },
           );
         }
-        await db
-          .prepare("INSERT INTO inquiry_attempts (id, ip, created_at) VALUES (?, ?, ?)")
-          .bind(`att-${now}-${Math.random().toString(36).slice(2, 7)}`, ip, now)
-          .run();
       } catch (rateErr) {
         console.error("D1 inquiry rate limit error:", rateErr);
+        return jsonResponse(
+          { ok: false, error: "Talep servisine şu anda ulaşılamıyor. Lütfen tekrar deneyin." },
+          { status: 503 },
+        );
       }
     } else {
       const history = (ipInquiryAttempts.get(ip) || []).filter((ts) => now - ts < windowMs);
@@ -2448,7 +2522,23 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         vehicleId?: string;
       }>(request);
       if (!parsedBody.success) return parsedBody.response;
-      const body = parsedBody.data;
+      const shape = z
+        .object({
+          type: z.enum(["Teklif", "İthalat"]).optional(),
+          car: z.string(),
+          name: z.string(),
+          phone: z.string(),
+          offerOrBudget: z.string().trim().min(1).max(2000),
+          details: z.string().max(2000).optional(),
+          vehicleId: z.string().max(100).optional(),
+        })
+        .safeParse(parsedBody.data);
+      if (!shape.success)
+        return jsonResponse(
+          { ok: false, error: "Talep bilgileri geçersiz veya eksik." },
+          { status: 400 },
+        );
+      const body = shape.data;
 
       // Input Validation
       const name = String(body.name || "").trim();
@@ -2466,7 +2556,12 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
         );
       }
 
-      if (phone.length < 7 || phone.length > 25) {
+      if (
+        phone.length < 7 ||
+        phone.length > 25 ||
+        !/^[+\d\s().-]+$/.test(phone) ||
+        phone.replace(/\D/g, "").length < 7
+      ) {
         return new Response(
           JSON.stringify({ ok: false, error: "Geçerli bir telefon numarası giriniz." }),
           { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
@@ -2570,38 +2665,24 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
     try {
       const rows = await db
         .prepare(
-          "SELECT slug, updated_at FROM vehicles WHERE status = 'active' ORDER BY is_featured DESC, updated_at DESC",
+          "SELECT slug, updated_at FROM vehicles WHERE status = 'active' ORDER BY is_featured DESC, sort_order ASC, updated_at DESC",
         )
         .all<{ slug: string; updated_at: string }>();
       if (rows.results && rows.results.length > 0) {
         vehicleEntries = rows.results.map((r) => ({
           slug: r.slug,
           lastmod:
-            (r.updated_at || new Date().toISOString()).split("T")[0] ||
+            (r.updated_at || new Date().toISOString()).split(/[T ]/)[0] ||
             new Date().toISOString().split("T")[0]!,
         }));
       }
     } catch (e) {
       console.error("D1 sitemap query error:", e);
+      return new Response("Sitemap temporarily unavailable", {
+        status: 503,
+        headers: { "cache-control": "no-store" },
+      });
     }
-  }
-
-  // Fallback to active catalog defaults if D1 is not bound or has no records
-  if (vehicleEntries.length === 0) {
-    const defaultSlugs = [
-      "cupra-formentor-2023",
-      "audi-q2-design-2016",
-      "ferrari-296-gts",
-      "porsche-911-gt3-weissach",
-      "lamborghini-urus-se",
-      "rolls-royce-spectre",
-      "mercedes-g63-grand-edition",
-      "bmw-m4-competition-2025",
-      "audi-rs6-performance",
-      "bentley-gt-speed-first-edition",
-    ];
-    const nowIso = new Date().toISOString().split("T")[0]!;
-    vehicleEntries = defaultSlugs.map((s) => ({ slug: s, lastmod: nowIso }));
   }
 
   const nowIso = new Date().toISOString().split("T")[0];
@@ -2609,7 +2690,7 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>${baseUrl}/</loc>
+    <loc>${baseUrl.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}/</loc>
     <lastmod>${nowIso}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
@@ -2617,7 +2698,7 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
 ${vehicleEntries
   .map(
     (v) => `  <url>
-    <loc>${baseUrl}/arac/${v.slug}</loc>
+    <loc>${baseUrl.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}/arac/${encodeURIComponent(v.slug)}</loc>
     <lastmod>${v.lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>

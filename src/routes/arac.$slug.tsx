@@ -12,47 +12,20 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { ImageLightboxModal } from "../components/ImageLightboxModal";
-import {
-  CARS,
-  PHONE_RAW,
-  T,
-  getStoredCars,
-  translateTerm,
-  useByCarStore,
-  waLink,
-  type Car,
-  type Lang,
-} from "@/lib/bycar";
+import { T, translateTerm, useByCarStore, waLink, type Car, type Lang } from "@/lib/bycar";
 import { QuickOfferForm } from "./index";
 import { fetchLiveVehicle } from "@/lib/catalog-service";
 
 export const Route = createFileRoute("/arac/$slug")({
   loader: async ({ params }) => {
-    try {
-      const liveCar = await fetchLiveVehicle({ data: params.slug });
-      if (liveCar) {
-        return { car: liveCar as unknown as Car };
-      }
-    } catch (e) {
-      console.error("SSR vehicle loader error:", e);
-    }
-
-    const pool = typeof window !== "undefined" ? getStoredCars() : CARS;
-    const found =
-      pool.find(
-        (c) =>
-          (c.id === params.slug || (c as unknown as { slug?: string }).slug === params.slug) &&
-          c.status !== "draft",
-      ) ||
-      CARS.find(
-        (c) =>
-          (c.id === params.slug || (c as unknown as { slug?: string }).slug === params.slug) &&
-          c.status !== "draft",
-      );
-    if (!found) {
-      throw notFound();
-    }
-    return { car: found };
+    const result = await fetchLiveVehicle({ data: params.slug });
+    if (!result.car) throw notFound();
+    return {
+      car: result.car as unknown as Car,
+      siteUrl: result.siteUrl,
+      settings: result.settings,
+      cmsConfig: result.cmsConfig,
+    };
   },
   notFoundComponent: VehicleNotFoundPage,
   head: ({ loaderData }) => {
@@ -68,9 +41,15 @@ export const Route = createFileRoute("/arac/$slug")({
     const rawImage = found.images[0] || "/hero.png";
     const ogImage = rawImage.startsWith("http")
       ? rawImage
-      : `https://bycarglobal.com${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
+      : `${loaderData?.siteUrl || ""}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
 
     return {
+      links: [
+        {
+          rel: "canonical",
+          href: `${loaderData?.siteUrl || ""}/arac/${encodeURIComponent(found.slug || found.id)}`,
+        },
+      ],
       meta: [
         { title: `${found.year} ${found.title} | ByCar — Exclusive Automotive` },
         {
@@ -85,7 +64,10 @@ export const Route = createFileRoute("/arac/$slug")({
           content: `${found.specs.power} · ${found.km.toLocaleString("tr-TR")} KM · ${found.specs.expertise}`,
         },
         { property: "og:image", content: ogImage },
-        { property: "og:url", content: `https://bycarglobal.com/arac/${found.id}` },
+        {
+          property: "og:url",
+          content: `${loaderData?.siteUrl || ""}/arac/${encodeURIComponent(found.slug || found.id)}`,
+        },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:image", content: ogImage },
       ],
@@ -119,14 +101,19 @@ function VehicleNotFoundPage() {
 function VehicleDetailPage() {
   const { slug } = Route.useParams();
   const loaderData = Route.useLoaderData();
-  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore();
+  const { cars, settings, cmsConfig, lang, setLang } = useByCarStore({
+    cars: [loaderData.car],
+    settings: loaderData.settings || undefined,
+    cmsConfig: loaderData.cmsConfig || undefined,
+  });
   const t = T[lang];
   const [img, setImg] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const car = cars.find((c) => c.id === slug && c.status !== "draft") || loaderData?.car;
+  const car =
+    cars.find((c) => (c.id === slug || c.slug === slug) && c.status !== "draft") || loaderData?.car;
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -147,7 +134,7 @@ function VehicleDetailPage() {
       : (car.extras || []).map((item) => translateTerm(item, lang));
 
   const absoluteImages = car.images.map((im) =>
-    im.startsWith("http") ? im : `https://bycarglobal.com${im.startsWith("/") ? "" : "/"}${im}`,
+    im.startsWith("http") ? im : `${loaderData.siteUrl}${im.startsWith("/") ? "" : "/"}${im}`,
   );
 
   const carJsonLd = JSON.stringify({
@@ -169,7 +156,7 @@ function VehicleDetailPage() {
     },
     offers: {
       "@type": "Offer",
-      url: `https://bycarglobal.com/arac/${car.id}`,
+      url: `${loaderData.siteUrl}/arac/${encodeURIComponent(car.slug || car.id)}`,
       availability: isSold ? "https://schema.org/SoldOut" : "https://schema.org/InStock",
     },
   });
@@ -333,7 +320,9 @@ function VehicleDetailPage() {
               <div className="mt-4 hidden lg:block border border-border bg-card p-4">
                 <h2 className="mb-2.5 font-display text-base font-semibold">{t.form}</h2>
                 <QuickOfferForm
+                  contact={cmsConfig.contact}
                   carTitle={car.title}
+                  vehicleId={car.id}
                   t={t}
                   lang={lang}
                   autoWhatsApp={settings.whatsappAutoOpenOnForm}
@@ -348,10 +337,17 @@ function VehicleDetailPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.35em] text-primary">{car.brand}</p>
                 <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(window.location.href);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(window.location.href);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch {
+                      window.prompt(
+                        lang === "tr" ? "Bağlantıyı kopyalayın:" : "Copy this link:",
+                        window.location.href,
+                      );
+                    }
                   }}
                   className="inline-flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
@@ -428,7 +424,7 @@ function VehicleDetailPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <a
-                      href={waLink(car.title)}
+                      href={waLink(car.title, undefined, cmsConfig.contact)}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center justify-center gap-2 bg-gold px-4 py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold"
@@ -447,7 +443,9 @@ function VehicleDetailPage() {
                   <div className="block lg:hidden border border-border bg-card p-4">
                     <h2 className="mb-2.5 font-display text-base font-semibold">{t.form}</h2>
                     <QuickOfferForm
+                      contact={cmsConfig.contact}
                       carTitle={car.title}
+                      vehicleId={car.id}
                       t={t}
                       lang={lang}
                       autoWhatsApp={settings.whatsappAutoOpenOnForm}
@@ -486,7 +484,7 @@ function VehicleDetailPage() {
         {!isSold && (
           <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2.5 border-t border-border bg-background/95 p-3 pb-safe backdrop-blur-md shadow-2xl lg:hidden">
             <a
-              href={waLink(car.title)}
+              href={waLink(car.title, undefined, cmsConfig.contact)}
               target="_blank"
               rel="noreferrer"
               className="flex-1 flex items-center justify-center gap-2 bg-gold py-3 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-gold active:scale-[0.98] transition-transform"

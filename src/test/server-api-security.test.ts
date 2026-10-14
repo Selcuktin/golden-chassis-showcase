@@ -546,7 +546,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
     expect(body.error).toContain("Çakışma tespit edildi");
   });
 
-  it("Regression Test 3c: D1 Batch chunking splits large statements into chunks of 50 and triggers R2 orphan media deletion", async () => {
+  it("Regression Test 3c: large catalogs use one atomic D1 batch and queue orphan media", async () => {
     const loginRes = await handleApiRequest(
       new Request("https://bycarglobal.com/api/admin/login", {
         method: "POST",
@@ -606,7 +606,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       },
     };
 
-    // Construct 35 cars with 3 images each = 107 statements (>90 statements trigger chunking)
+    // A large catalog must remain one transaction even when each record has several images.
     const cars = Array.from({ length: 35 }, (_, i) => ({
       id: `car-chunk-${i}`,
       brand: "BMW",
@@ -652,14 +652,12 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const res = await handleApiRequest(req, { DB: mockDb, BUCKET: mockBucket });
     expect(res?.status).toBe(200);
 
-    // Assert that batch was chunked into <= 50 statements
-    expect(batchCalls.length).toBeGreaterThanOrEqual(2);
-    for (const chunk of batchCalls) {
-      expect(chunk.length).toBeLessThanOrEqual(50);
-    }
+    // The revision guard must cover every catalog mutation in the same transaction.
+    expect(batchCalls).toHaveLength(1);
+    expect(batchCalls[0]!.length).toBeLessThan(30);
 
     // Assert that orphaned R2 key was deleted
-    expect(deletedR2Keys).toContain("vehicles/car-del-1/1");
+    expect(deletedR2Keys).not.toContain("vehicles/car-del-1/1");
   });
 
   it("Regression Test 3d: Shared media asset is preserved and NOT deleted from R2 if another vehicle references it", async () => {
@@ -963,7 +961,10 @@ describe("Server API, D1 Security & Stability Engine", () => {
           }
           return { results: [], success: true };
         },
-        first: async () => ({ count: 0 }),
+        first: async () =>
+          sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+            ? null
+            : { count: 0 },
       }),
       batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
       exec: async () => ({ count: 0, duration: 0 }),
@@ -1140,7 +1141,10 @@ describe("Server API, D1 Security & Stability Engine", () => {
         }),
         run: async () => ({ success: true }),
         all: async () => ({ results: [], success: true }),
-        first: async () => ({ count: 0 }),
+        first: async () =>
+          sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+            ? null
+            : { count: 0 },
       }),
       batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
       exec: async () => ({ count: 0, duration: 0 }),
@@ -1308,7 +1312,10 @@ describe("Server API, D1 Security & Stability Engine", () => {
         }),
         run: async () => ({ success: true }),
         all: async () => ({ results: [], success: true }),
-        first: async () => ({ count: 0 }),
+        first: async () =>
+          sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+            ? null
+            : { count: 0 },
       }),
       batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
       exec: async () => ({ count: 0, duration: 0 }),
@@ -1401,7 +1408,10 @@ describe("Server API, D1 Security & Stability Engine", () => {
         },
         run: async () => ({ success: true }),
         all: async () => ({ results: [], success: true }),
-        first: async () => ({ count: 0 }),
+        first: async () =>
+          sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+            ? null
+            : { count: 0 },
       }),
       batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
       exec: async () => ({ count: 0, duration: 0 }),
@@ -1582,15 +1592,21 @@ describe("Server API, D1 Security & Stability Engine", () => {
     const nowMs = Date.now();
 
     const mockDb = {
-      prepare: () => ({
+      prepare: (sql: string) => ({
         bind: () => ({
           run: async () => ({ success: true }),
           all: async () => ({ results: [], success: true }),
-          first: async () => ({ count: 0 }),
+          first: async () =>
+            sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+              ? null
+              : { count: 0 },
         }),
         run: async () => ({ success: true }),
         all: async () => ({ results: [], success: true }),
-        first: async () => ({ count: 0 }),
+        first: async () =>
+          sql.includes("cms_config") || sql.includes("SELECT id FROM r2_cleanup_queue")
+            ? null
+            : { count: 0 },
       }),
       batch: async (stmts: unknown[]) => stmts.map(() => ({ success: true })),
       exec: async () => ({ count: 0, duration: 0 }),
@@ -1994,7 +2010,7 @@ describe("Server API, D1 Security & Stability Engine", () => {
       body: JSON.stringify({
         revision: 1,
         cmsConfig: {
-          brandName: "ByCar Test",
+          hero: { titleTr: "ByCar Test" },
           customPasswordHash: "malicious_leaked_hash_12345",
           secret: "super_secret_value",
         },

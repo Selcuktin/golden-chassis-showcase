@@ -31,6 +31,7 @@ export const vehicles = sqliteTable(
     description_en: text("description_en").notNull().default(""),
     status: text("status").notNull().default("active"),
     is_featured: integer("is_featured").notNull().default(0),
+    sort_order: integer("sort_order").notNull().default(0),
     created_at: timestamp("created_at"),
     updated_at: timestamp("updated_at"),
   },

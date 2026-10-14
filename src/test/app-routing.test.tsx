@@ -76,6 +76,7 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     recordLoginAttempt(true); // clean up
 
     // Test unrestricted custom body/fuel/gear persistence + Undo + JSON/SQL export
+    saveStoredCars(CARS);
     const car0 = CARS[0]!;
     const customCar: Car = {
       ...car0,
@@ -91,7 +92,7 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     expect(jsonBackup).toContain("Özel Shooting Brake GT");
 
     const sqlDump = exportD1SqlDump();
-    expect(sqlDump).toContain("INSERT OR REPLACE INTO vehicles");
+    expect(sqlDump).toContain("INSERT INTO vehicles");
     expect(sqlDump).toContain("Özel Shooting Brake GT");
 
     const restored = restoreUndoSnapshot();

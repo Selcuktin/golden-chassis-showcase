@@ -125,6 +125,7 @@ describe("ByCar Fleet & ImageLightboxModal Verification", () => {
 
   it("Regression Test 2: Full Delete -> Undo -> Delete again lifecycle restores vehicle and clears deletion queue", async () => {
     const {
+      saveStoredCars,
       saveUndoSnapshot,
       restoreUndoSnapshot,
       getUndoSnapshot,
@@ -134,6 +135,7 @@ describe("ByCar Fleet & ImageLightboxModal Verification", () => {
     } = await import("../lib/bycar");
 
     clearAllBrowserStorage();
+    saveStoredCars(CARS);
     const testCar = CARS[0]!;
 
     // 1. Initial State: Save Undo Snapshot
