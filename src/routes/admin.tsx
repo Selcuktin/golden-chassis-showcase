@@ -866,14 +866,20 @@ function Admin() {
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
         <div className="w-full max-w-md border border-border bg-card p-8 shadow-2xl">
           <div className="mb-6 flex flex-col items-center text-center">
-            <img
-              src="/bycar-logo-dark.webp"
-              alt="ByCar"
-              width={180}
-              height={44}
-              decoding="async"
-              className="mb-4 h-11 w-auto object-contain"
-            />
+            <a
+              href="/"
+              className="inline-block transition-opacity hover:opacity-85 cursor-pointer"
+              title="Canlı Vitrine Git"
+            >
+              <img
+                src="/bycar-logo-dark.webp"
+                alt="ByCar"
+                width={180}
+                height={44}
+                decoding="async"
+                className="mb-4 h-11 w-auto object-contain"
+              />
+            </a>
             <p className="text-[10px] uppercase tracking-[0.4em] text-primary">
               BYCAR GLOBAL · PBKDF2 KORUMALI
             </p>
@@ -1053,14 +1059,20 @@ function Admin() {
           {/* Top Bar with TR / EN Switcher */}
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
             <div className="flex items-center gap-3">
-              <img
-                src="/bycar-logo-dark.webp"
-                alt="ByCar Exclusive"
-                width={160}
-                height={40}
-                decoding="async"
-                className="h-10 w-auto object-contain"
-              />
+              <a
+                href="/"
+                className="inline-block transition-opacity hover:opacity-85 cursor-pointer"
+                title="Canlı Vitrine Git"
+              >
+                <img
+                  src="/bycar-logo-dark.webp"
+                  alt="ByCar Exclusive"
+                  width={160}
+                  height={40}
+                  decoding="async"
+                  className="h-10 w-auto object-contain"
+                />
+              </a>
               <div className="border-l border-border pl-3">
                 <p className="text-[10px] uppercase tracking-[0.35em] text-primary font-medium">
                   BYCAR GLOBAL · VIP ADMIN

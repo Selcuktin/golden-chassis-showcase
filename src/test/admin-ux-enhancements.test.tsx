@@ -167,3 +167,15 @@ it("locks hero visuals to studio media and focuses CMS on headlines and CTAs", a
   expect(screen.getByText(/Ana Başlık \(Türkçe\)/i)).toBeInTheDocument();
   expect(screen.getByText(/Üst Rozet \(Türkçe\)/i)).toBeInTheDocument();
 });
+
+it("links admin header logo directly to public showcase", async () => {
+  const router = adminRouter();
+  render(<RouterProvider router={router} />);
+
+  await screen.findByText(/Koleksiyon, Filtre & Talep Yönetimi/i);
+  const logoLink = screen.getByTitle("Canlı Vitrine Git");
+  expect(logoLink).toBeInTheDocument();
+  expect(logoLink).toHaveAttribute("href", "/");
+  const logoImg = logoLink.querySelector("img");
+  expect(logoImg).toHaveAttribute("src", "/bycar-logo-dark.webp");
+});
