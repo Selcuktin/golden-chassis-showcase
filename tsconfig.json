@@ -4,7 +4,10 @@
     "src/**/*.tsx",
     "vite.config.ts",
     "vitest.config.ts",
-    "eslint.config.js"
+    "eslint.config.js",
+    "drizzle.config.ts",
+    "vitest.integration.config.ts",
+    "tests/**/*.ts"
   ],
   "compilerOptions": {
     "target": "ES2022",
