@@ -9,6 +9,7 @@ import {
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Route as AdminRoute } from "../routes/admin";
+import * as bycar from "../lib/bycar";
 import { CARS, DEFAULT_CMS_CONFIG, DEFAULT_SETTINGS, clearAllBrowserStorage } from "../lib/bycar";
 
 function adminRouter(initialPath = "/admin") {
@@ -190,6 +191,93 @@ it("blocks publication during video upload and discards a late result after the 
   );
   expect(save).toBeEnabled();
 });
+
+it("discards an image upload that completes after the car form was reset", async () => {
+  vi.spyOn(bycar, "compressImageToWebP").mockResolvedValue(
+    new Blob(["converted"], { type: "image/webp" }),
+  );
+  const router = adminRouter();
+  render(<RouterProvider router={router} />);
+  await screen.findByText(CARS[0]!.title);
+  fireEvent.click(screen.getAllByRole("button", { name: /Düzenle/i })[0]!);
+  await screen.findByText(/^Tanıtım Videosu$/i);
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  let finish!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementation((input, init) => {
+    if (String(input) === "/api/admin/upload")
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    return original(input, init);
+  });
+  const input = document.querySelector('input[type="file"][accept="image/*"]')!;
+  fireEvent.change(input, {
+    target: { files: [new File(["photo"], "test.png", { type: "image/png" })] },
+  });
+  const save = screen.getByRole("button", { name: /Değişiklikleri Kaydet & Yayınla/i });
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(save).toBeDisabled();
+  fireEvent.click(screen.getAllByRole("button", { name: /Düzenlemeyi Sıfırla/i })[0]!);
+  await act(async () =>
+    finish(new Response(JSON.stringify({ ok: true, url: "/api/media/late-photo.webp" }))),
+  );
+  expect(document.querySelector('img[src="/api/media/late-photo.webp"]')).toBeNull();
+  expect(save).toBeEnabled();
+});
+
+it.each([
+  ["image/webp", ".webp"],
+  ["image/jpeg", ".jpg"],
+  ["image/gif", ".gif"],
+  ["image/avif", ".avif"],
+])(
+  "uploads successful photos around a failed file with actual MIME %s",
+  async (mime, extension) => {
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    vi.spyOn(bycar, "compressImageToWebP")
+      .mockResolvedValueOnce(new Blob(["one"], { type: mime }))
+      .mockRejectedValueOnce(new Error("Dosya okunamadı"))
+      .mockResolvedValueOnce(new Blob(["two"], { type: mime }));
+    const router = adminRouter();
+    render(<RouterProvider router={router} />);
+    await screen.findByText(CARS[0]!.title);
+    fireEvent.click(screen.getAllByRole("button", { name: /Düzenle/i })[0]!);
+    await screen.findByText(/^Tanıtım Videosu$/i);
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let uploads = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (/^(data|blob):/.test(String(input)))
+        throw new Error("CSP forbids fetching local image URLs");
+      if (String(input) === "/api/admin/upload")
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ ok: true, url: `/api/media/photo-${++uploads}${extension}` }),
+          ),
+        );
+      return original(input, init);
+    });
+    fireEvent.change(document.querySelector('input[type="file"][accept="image/*"]')!, {
+      target: {
+        files: ["one", "broken", "two"].map(
+          (name) => new File(["photo"], `${name}.png`, { type: "image/png" }),
+        ),
+      },
+    });
+    await waitFor(() =>
+      expect(document.querySelector(`img[src="/api/media/photo-2${extension}"]`)).not.toBeNull(),
+    );
+    expect(document.querySelector(`img[src="/api/media/photo-1${extension}"]`)).not.toBeNull();
+    expect(window.alert).toHaveBeenCalledWith("broken.png: Dosya okunamadı");
+    const upload = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/admin/upload");
+    expect(upload?.[1]?.headers).toMatchObject({
+      "content-type": mime,
+      "x-file-name": `one${extension}`,
+    });
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => /^(data|blob):/.test(String(url)))).toBe(
+      false,
+    );
+  },
+);
 
 it("locks hero visuals to studio media and focuses CMS on headlines and CTAs", async () => {
   window.sessionStorage.setItem("bycar_admin_active_tab", "content");
