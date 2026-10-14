@@ -37,6 +37,7 @@ export async function enforceCloudflareAccess(
   request: Request,
   env: CloudflareAccessEnv,
 ): Promise<Response | null> {
+  if (env.CF_ACCESS_REQUIRED === "false") return null;
   const configured =
     env.CF_ACCESS_REQUIRED === "true" ||
     Boolean(env.CF_ACCESS_TEAM_DOMAIN || env.CF_ACCESS_AUD || env.CF_ACCESS_ALLOWED_EMAILS);
