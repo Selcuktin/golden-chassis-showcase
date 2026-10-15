@@ -22,7 +22,9 @@ const root = process.cwd();
 const secret = "IntegrationOnlyPassword!2026";
 type Bindings = { DB: D1Database; BUCKET: R2Bucket };
 
-async function createLocalDatabase(legacy: boolean | "empty" | "before-seed-repair" = false) {
+async function createLocalDatabase(
+  legacy: boolean | "empty" | "before-seed-repair" | "before-rebrand" = false,
+) {
   const directory = await mkdtemp(path.join(tmpdir(), "bycar-d1-test-"));
   const configPath = path.join(directory, "wrangler.json");
   const persist = path.join(directory, "state");
@@ -30,10 +32,13 @@ async function createLocalDatabase(legacy: boolean | "empty" | "before-seed-repa
     await readFile(path.join(root, "tests/fixtures/wrangler.json"), "utf8"),
   );
   config.d1_databases[0].migrations_dir = path.join(root, "drizzle");
-  if (legacy === "before-seed-repair") {
+  if (legacy === "before-seed-repair" || legacy === "before-rebrand") {
     const priorMigrations = path.join(directory, "migrations");
     await mkdir(priorMigrations);
-    for (const name of ["0000_baseline.sql", "0001_site_settings_integrity.sql"]) {
+    const names = ["0000_baseline.sql", "0001_site_settings_integrity.sql"];
+    if (legacy === "before-rebrand")
+      names.push("0002_revoke_legacy_seed_admin.sql", "0003_catalog_order.sql");
+    for (const name of names) {
       await copyFile(path.join(root, "drizzle", name), path.join(priorMigrations, name));
     }
     config.d1_databases[0].migrations_dir = priorMigrations;
@@ -63,7 +68,7 @@ async function createLocalDatabase(legacy: boolean | "empty" | "before-seed-repa
       "--file",
       path.join(root, "tests/fixtures/legacy-schema.sql"),
     );
-  } else if (legacy === false || legacy === "before-seed-repair") {
+  } else if (legacy === false || legacy === "before-seed-repair" || legacy === "before-rebrand") {
     await wrangler("d1", "migrations", "apply", "DB");
   }
 
@@ -85,9 +90,12 @@ async function createLocalDatabase(legacy: boolean | "empty" | "before-seed-repa
       await proxy.dispose();
       config.d1_databases[0].migrations_dir = path.join(root, "drizzle");
       await writeFile(configPath, JSON.stringify(config));
-      const result = await wrangler("d1", "migrations", "apply", "DB");
-      this.env = await connect();
-      return result.stdout;
+      try {
+        const result = await wrangler("d1", "migrations", "apply", "DB");
+        return result.stdout;
+      } finally {
+        this.env = await connect();
+      }
     },
     async dispose() {
       await proxy.dispose();
@@ -153,7 +161,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
         "r2_cleanup_queue",
       ]),
     );
-    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(4);
+    expect(await db.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count")).toBe(5);
     expect(
       await db
         .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger'")
@@ -806,7 +814,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     ).toBe("42");
     expect(
       await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
-    ).toBe(4);
+    ).toBe(5);
     expect(
       await local.env.DB.prepare(
         "SELECT value FROM site_settings WHERE key = 'replay_setting'",
@@ -1086,7 +1094,156 @@ describe("0002: retirement of deterministic seed credentials", () => {
     expect((await login(oldPassword))?.status).toBe(401);
     expect(
       await local.env.DB.prepare("SELECT COUNT(*) AS count FROM d1_migrations").first("count"),
-    ).toBe(4);
+    ).toBe(5);
+  });
+});
+
+describe("0004: ByCar Etiler content migration", () => {
+  let local: Awaited<ReturnType<typeof createLocalDatabase>>;
+  const previousConfig = {
+    contact: {
+      email: "info@bycarglobal.com",
+      instagramUrl: "https://instagram.com/bycarglobal",
+      phone: "+905551234567",
+      address: "Özel adres",
+      whatsappOfferTemplate: "Merhaba ByCar Global, {car}",
+    },
+    about: { storyTr: "ByCar Global: özel seçim — Türkçe 👋", storyEn: "BYCAR GLOBAL collection" },
+    seo: { metaTitleTr: "Sahibinin özel SEO başlığı", metaDescTr: "ByCar Global seçkisi" },
+  };
+  beforeAll(async () => {
+    local = await createLocalDatabase("before-rebrand");
+    await createDatabase(local.env.DB)
+      .insert(vehicles)
+      .values({
+        ...car,
+        power: "",
+        color: "",
+        package: "",
+        expertise: "",
+        description_tr: "ByCar Global özel aracı",
+        description_en: "ByCar Global car",
+      });
+    await local.env.DB.batch([
+      local.env.DB.prepare("UPDATE site_settings SET value = '41' WHERE key = 'cms_revision'"),
+      local.env.DB.prepare(
+        "INSERT INTO site_settings (key,value) VALUES ('cms_config', ?), ('custom_setting','keep')",
+      ).bind(JSON.stringify(previousConfig)),
+      local.env.DB.prepare(
+        "INSERT INTO admin_users (id,username,password_hash,password_salt) VALUES ('owner','owner','unchanged-hash','unchanged-salt')",
+      ),
+      local.env.DB.prepare(
+        "INSERT INTO admin_sessions (id,admin_id,token_hash,expires_at) VALUES ('session','owner','unchanged-token','2099-01-01')",
+      ),
+      local.env.DB.prepare(
+        "INSERT INTO inquiries (id,type,vehicle_id,car_title,customer_name,phone,offer_or_budget) VALUES ('history','Teklif',?,'ByCar Global historical title','Test','555','Info')",
+      ).bind(car.id),
+      local.env.DB.prepare(
+        "INSERT INTO vehicle_images (id,vehicle_id,r2_key,public_url) VALUES ('photo',?,'vehicles/original.webp','/api/media/vehicles/original.webp')",
+      ).bind(car.id),
+    ]);
+    await local.env.BUCKET.put("vehicles/original.webp", "original-bytes");
+    await local.migrate();
+  });
+  afterAll(async () => local?.dispose());
+
+  it("renames stored content and invalidates stale editors, preserving contact details, credentials, customer history and R2", async () => {
+    const db = local.env.DB;
+    const config = JSON.parse(
+      (await db
+        .prepare("SELECT value FROM site_settings WHERE key='cms_config'")
+        .first<string>("value")) || "{}",
+    );
+    expect(config.about.storyTr).toBe("ByCar Etiler: özel seçim — Türkçe 👋");
+    expect(config.about.storyEn).toBe("BYCAR ETİLER collection");
+    expect(config.contact).toEqual({
+      ...previousConfig.contact,
+      whatsappOfferTemplate: "Merhaba ByCar Etiler, {car}",
+    });
+    expect(config.seo.metaTitleTr).toBe(previousConfig.seo.metaTitleTr);
+    expect(
+      await db.prepare("SELECT value FROM site_settings WHERE key='cms_revision'").first("value"),
+    ).toBe("42");
+    expect(
+      await db
+        .prepare("SELECT description_tr FROM vehicles WHERE id=?")
+        .bind(car.id)
+        .first("description_tr"),
+    ).toBe("ByCar Etiler özel aracı");
+    expect(
+      await db
+        .prepare("SELECT password_hash FROM admin_users WHERE id='owner'")
+        .first("password_hash"),
+    ).toBe("unchanged-hash");
+    expect(
+      await db
+        .prepare("SELECT token_hash FROM admin_sessions WHERE id='session'")
+        .first("token_hash"),
+    ).toBe("unchanged-token");
+    expect(
+      await db.prepare("SELECT car_title FROM inquiries WHERE id='history'").first("car_title"),
+    ).toBe("ByCar Global historical title");
+    expect(
+      await db.prepare("SELECT r2_key FROM vehicle_images WHERE id='photo'").first("r2_key"),
+    ).toBe("vehicles/original.webp");
+    expect(await (await local.env.BUCKET.get("vehicles/original.webp"))?.text()).toBe(
+      "original-bytes",
+    );
+    expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("does not replay the content repair or bump the revision on migration reapplication", async () => {
+    await local.migrate();
+    expect(
+      await local.env.DB.prepare("SELECT value FROM site_settings WHERE key='cms_revision'").first(
+        "value",
+      ),
+    ).toBe("42");
+  });
+
+  it("rolls back config and revision if a later vehicle update fails", async () => {
+    const failure = await createLocalDatabase("before-rebrand");
+    try {
+      await createDatabase(failure.env.DB)
+        .insert(vehicles)
+        .values({
+          ...car,
+          power: "",
+          color: "",
+          package: "",
+          expertise: "",
+          description_tr: "ByCar Global",
+        });
+      await failure.env.DB.batch([
+        failure.env.DB.prepare("UPDATE site_settings SET value='8' WHERE key='cms_revision'"),
+        failure.env.DB.prepare(
+          "INSERT INTO site_settings (key,value) VALUES ('cms_config',?)",
+        ).bind(JSON.stringify(previousConfig)),
+      ]);
+      await failure.env.DB.prepare(
+        "CREATE TRIGGER fail_rebrand BEFORE UPDATE ON vehicles BEGIN SELECT RAISE(ABORT, 'rebrand-failure'); END",
+      ).run();
+      await expect(failure.migrate()).rejects.toThrow();
+      expect(
+        await failure.env.DB.prepare(
+          "SELECT value FROM site_settings WHERE key='cms_revision'",
+        ).first("value"),
+      ).toBe("8");
+      expect(
+        JSON.parse(
+          (await failure.env.DB.prepare(
+            "SELECT value FROM site_settings WHERE key='cms_config'",
+          ).first<string>("value")) || "{}",
+        ),
+      ).toEqual(previousConfig);
+      expect(
+        await failure.env.DB.prepare(
+          "SELECT COUNT(*) AS count FROM d1_migrations WHERE name='0004_bycaretiler_brand.sql'",
+        ).first("count"),
+      ).toBe(0);
+    } finally {
+      await failure.dispose();
+    }
   });
 });
 

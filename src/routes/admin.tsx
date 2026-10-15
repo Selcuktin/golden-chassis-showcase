@@ -65,7 +65,7 @@ import { AdminSystemTab } from "@/components/admin/AdminSystemTab";
 export const Route = createFileRoute("/admin")({
   head: () => ({
     meta: [
-      { title: "VIP Yönetim Paneli — ByCar Global" },
+      { title: "VIP Yönetim Paneli — ByCar Etiler" },
       {
         name: "description",
         content: "ByCar araç koleksiyonu, filtre ve VIP talep yönetim paneli.",
@@ -921,7 +921,7 @@ function Admin() {
               />
             </a>
             <p className="text-[10px] uppercase tracking-[0.4em] text-primary">
-              BYCAR GLOBAL · PBKDF2 KORUMALI
+              BYCAR ETİLER · PBKDF2 KORUMALI
             </p>
             <h1 className="mt-1 font-display text-3xl font-semibold">VIP Yönetim Girişi</h1>
           </div>
@@ -1106,7 +1106,7 @@ function Admin() {
               >
                 <img
                   src="/bycar-logo-dark.webp"
-                  alt="ByCar Exclusive"
+                  alt="ByCar Etiler"
                   width={160}
                   height={40}
                   decoding="async"
@@ -1115,7 +1115,7 @@ function Admin() {
               </a>
               <div className="border-l border-border pl-3">
                 <p className="text-[10px] uppercase tracking-[0.35em] text-primary font-medium">
-                  BYCAR GLOBAL · VIP ADMIN
+                  BYCAR ETİLER · VIP ADMIN
                 </p>
                 <h1 className="font-display text-2xl font-semibold md:text-3xl">
                   Koleksiyon, Filtre & Talep Yönetimi
@@ -1575,7 +1575,7 @@ function Admin() {
                     descTr.trim() ||
                     `${numYear} model ${finalTitle}. ${power || "Yüksek performans"}, ${
                       color || "Özel renk"
-                    }, ${expertise || "Hatasız / Boyasız"} kondisyonda ByCar Global özel koleksiyon aracı.`;
+                    }, ${expertise || "Hatasız / Boyasız"} kondisyonda ByCar Etiler özel koleksiyon aracı.`;
                   const finalDescEn =
                     descEn.trim() ||
                     autoGenerateEnglishDescription(
@@ -2705,7 +2705,7 @@ function Admin() {
                   const waReplyUrl = `https://wa.me/${
                     cleanPhone.startsWith("90") ? cleanPhone : `90${cleanPhone.replace(/^0/, "")}`
                   }?text=${encodeURIComponent(
-                    `Merhaba ${m.name}, ByCar Global'e ilettiğiniz "${m.car}" (${m.type}) talebiniz için VIP danışmanınız olarak dönüş yapıyorum.`,
+                    `Merhaba ${m.name}, ByCar Etiler'e ilettiğiniz "${m.car}" (${m.type}) talebiniz için VIP danışmanınız olarak dönüş yapıyorum.`,
                   )}`;
 
                   return (

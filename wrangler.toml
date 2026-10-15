@@ -1,8 +1,13 @@
-# ByCar Global — Cloudflare Workers & D1 Database Configuration
+# ByCar Etiler — Cloudflare Workers & D1 Database Configuration
 name = "selcuktin-golden-chassis-showcase"
 main = ".output/server/index.mjs"
 compatibility_date = "2026-10-13"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+routes = [
+  { pattern = "bycaretiler.com", custom_domain = true },
+  { pattern = "www.bycaretiler.com/*", zone_name = "bycaretiler.com" },
+]
 
 [assets]
 binding = "ASSETS"
@@ -28,9 +33,8 @@ bucket_name = "bycar-media"
 
 [vars]
 NODE_ENV = "production"
-# After custom-domain DNS/TLS and Access rules are ready, set SITE_URL to the
-# purchased primary https origin. It also activates alias redirects.
-# SITE_URL = "https://your-purchased-domain.example"
+# Canonical origin for metadata, sitemap and permanent alias redirects.
+SITE_URL = "https://bycaretiler.com"
 CF_ACCESS_REQUIRED = "false"
 # CF_ACCESS_TEAM_DOMAIN = "https://sami-app-pages.cloudflareaccess.com"
 # CF_ACCESS_AUD = "b60d5e51dce3637ad067bdb9018f782e8bd574158aea2e65c573105850141065"

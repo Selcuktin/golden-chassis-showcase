@@ -41,6 +41,7 @@ import {
   type SiteCMSConfig,
 } from "@/lib/bycar";
 import { fetchLiveCmsData } from "@/lib/catalog-service";
+import { homeSeo, homeStructuredData, SITE_NAME } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
@@ -72,25 +73,27 @@ export const Route = createFileRoute("/")({
     ],
     meta: [
       {
-        title:
-          loaderData?.cmsConfig?.seo?.metaTitleTr ||
-          "ByCar — Exclusive Automotive | Luxury Without Borders",
+        title: homeSeo(loaderData?.cmsConfig).title,
       },
       {
         name: "description",
-        content:
-          loaderData?.cmsConfig?.seo?.metaDescTr ||
-          "Cupra, Audi, Ferrari, Porsche, Lamborghini, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS ve Bentley. Özel koleksiyon ve VIP araç ithalatı.",
+        content: homeSeo(loaderData?.cmsConfig).description,
       },
-      { property: "og:title", content: "ByCar — Exclusive Automotive" },
+      { property: "og:title", content: homeSeo(loaderData?.cmsConfig).title },
+      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:locale", content: "tr_TR" },
+      { name: "robots", content: "index, follow, max-image-preview:large" },
       {
         property: "og:description",
-        content: "Lüksün Yeni Adresi. Dünyanın en seçkin otomobilleri, sizin için.",
+        content: homeSeo(loaderData?.cmsConfig).description,
       },
-      { property: "og:image", content: `${loaderData?.siteUrl || ""}/hero.png` },
+      { property: "og:image", content: `${loaderData?.siteUrl || ""}/hero.webp` },
+      { property: "og:image:alt", content: "ByCar Etiler lüks otomobil koleksiyonu" },
       { property: "og:url", content: loaderData?.siteUrl || "/" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: `${loaderData?.siteUrl || ""}/hero.png` },
+      { name: "twitter:title", content: homeSeo(loaderData?.cmsConfig).title },
+      { name: "twitter:description", content: homeSeo(loaderData?.cmsConfig).description },
+      { name: "twitter:image", content: `${loaderData?.siteUrl || ""}/hero.webp` },
     ],
   }),
   component: Index,
@@ -285,47 +288,8 @@ function Index() {
   );
 
   const jsonLd = useMemo(
-    () =>
-      JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "AutoDealer",
-        name: "ByCar — Exclusive Automotive",
-        url: loaderData?.siteUrl,
-        telephone: cmsConfig.contact.phone,
-        sameAs: [cmsConfig.contact.instagramUrl],
-        founder: {
-          "@type": "Person",
-          name: "Burak Yılmaz",
-          jobTitle: "Founder & CEO",
-        },
-        makesOffer: visibleCars.map((c) => ({
-          "@type": "Offer",
-          url: `${loaderData?.siteUrl || ""}/arac/${encodeURIComponent(c.slug || c.id)}`,
-          availability:
-            c.sold || c.status === "sold"
-              ? "https://schema.org/SoldOut"
-              : "https://schema.org/InStock",
-          itemOffered: {
-            "@type": "Car",
-            name: c.title,
-            brand: { "@type": "Brand", name: c.brand },
-            modelDate: String(c.year),
-            bodyType: c.body,
-            fuelType: c.fuel,
-            vehicleTransmission: c.gear,
-            color: c.specs.color,
-            image: c.images[0]?.startsWith("http")
-              ? c.images[0]
-              : `${loaderData?.siteUrl || ""}${c.images[0]?.startsWith("/") ? "" : "/"}${c.images[0] || "hero.png"}`,
-            mileageFromOdometer: {
-              "@type": "QuantitativeValue",
-              value: c.km,
-              unitCode: "KMT",
-            },
-          },
-        })),
-      }),
-    [visibleCars, cmsConfig.contact.phone, cmsConfig.contact.instagramUrl, loaderData?.siteUrl],
+    () => JSON.stringify(homeStructuredData(visibleCars, cmsConfig, loaderData.siteUrl)),
+    [visibleCars, cmsConfig, loaderData.siteUrl],
   );
 
   return (
@@ -344,7 +308,7 @@ function Index() {
           >
             <img
               src="/bycar-logo-dark.webp"
-              alt="ByCar Exclusive Automotive"
+              alt="ByCar Etiler Exclusive Automotive"
               width={160}
               height={36}
               decoding="async"
@@ -475,19 +439,19 @@ function Index() {
             <Sparkles className="h-3 w-3 text-primary" />
             <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
               {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
-                "BYCAR EXCLUSIVE SHOWROOM"}
+                "BYCAR ETILER SHOWROOM"}
             </span>
           </div>
 
           {/* Headline (Refined slightly smaller for mobile balance) */}
-          <h1 className="mt-3 font-display text-2xl sm:text-3xl font-semibold tracking-tight leading-[1.18]">
+          <p className="mt-3 font-display text-2xl sm:text-3xl font-semibold tracking-tight leading-[1.18]">
             <span className="block text-foreground">
               {lang === "tr" ? "Kusursuzluğun" : "The Definition of"}
             </span>
             <span className="block bg-gradient-to-r from-[#d4af37] via-[#f7e7a8] to-[#d4af37] bg-clip-text text-transparent">
               {lang === "tr" ? "Yeni Tanımı." : "Perfection."}
             </span>
-          </h1>
+          </p>
 
           {/* Subtitle */}
           <p className="mt-2.5 text-xs sm:text-sm font-medium leading-relaxed text-zinc-100 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
@@ -527,7 +491,7 @@ function Index() {
                     ? cmsConfig.hero.bgImageMobile
                     : heroMobile
                 }
-                alt="ByCar Exclusive hypercar"
+                alt="ByCar Etiler süper spor otomobil"
                 width={1832}
                 height={1280}
                 fetchPriority="high"
@@ -548,7 +512,7 @@ function Index() {
               ? cmsConfig.hero.bgImage
               : hero
           }
-          alt="ByCar Exclusive hypercar"
+          alt="ByCar Etiler süper spor otomobil"
           width={1832}
           height={858}
           fetchPriority="high"
@@ -566,9 +530,9 @@ function Index() {
           <div className="relative z-10 max-w-md lg:max-w-lg xl:max-w-xl">
             <p className="mb-3 text-[10px] lg:text-xs font-semibold tracking-[0.35em] uppercase text-primary drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]">
               {(lang === "tr" ? cmsConfig.hero.badgeTr : cmsConfig.hero.badgeEn) ||
-                "BYCAR EXCLUSIVE SHOWROOM"}
+                "BYCAR ETILER SHOWROOM"}
             </p>
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-semibold leading-[1.08] tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
+            <p className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-semibold leading-[1.08] tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
               {(() => {
                 const title =
                   (lang === "tr" ? cmsConfig.hero.titleTr : cmsConfig.hero.titleEn) || t.heroTitle;
@@ -582,7 +546,7 @@ function Index() {
                 }
                 return <span className="text-white">{title}</span>;
               })()}
-            </h1>
+            </p>
             <p className="mt-4 lg:mt-6 text-sm sm:text-base lg:text-lg font-medium leading-relaxed text-zinc-100 drop-shadow-[0_2px_12px_rgba(0,0,0,1)] max-w-lg">
               {(lang === "tr" ? cmsConfig.hero.subtitleTr : cmsConfig.hero.subtitleEn) || t.heroSub}
             </p>
@@ -631,7 +595,18 @@ function Index() {
 
       {/* COLLECTION */}
       <section id="koleksiyon" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:py-24">
-        <SectionTitle kicker="Collection" title={t.collection} />
+        <SectionTitle
+          kicker={t.collection}
+          title={
+            lang === "tr" ? "ByCar Etiler Otomobil Koleksiyonu" : "ByCar Etiler Car Collection"
+          }
+          primary
+        />
+        <p className="mb-8 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          {lang === "tr"
+            ? "ByCar Etiler lüks ve süper spor otomobil koleksiyonunda araçların kilometre, donanım, ekspertiz ve fotoğraflarını inceleyebilirsiniz. Satıştaki araçlar ve satılmış koleksiyon örnekleri ayrı işaretlenir. Güncel fiyat, takas ve özel araç tedariki için ekibimizle iletişime geçin."
+            : "Explore mileage, specifications, inspection details and photos in the ByCar Etiler luxury and supercar collection. Available cars and sold examples are clearly marked. Contact our team for current pricing, trade-in enquiries and bespoke vehicle sourcing."}
+        </p>
 
         {/* Hybrid Brand Pills (Horizontal Carousel on Mobile) + Filter Panel Toggle */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -985,7 +960,7 @@ function Index() {
               <div className="relative overflow-hidden rounded-full border-2 border-primary/60 p-2 shadow-gold">
                 <img
                   src="/bycar-logo-dark.webp"
-                  alt="ByCar Global logosu"
+                  alt="ByCar Etiler logosu"
                   width={720}
                   height={208}
                   loading="lazy"
@@ -995,7 +970,7 @@ function Index() {
               <div className="mt-6 text-center">
                 <div className="font-display text-3xl font-semibold">Burak Yılmaz</div>
                 <div className="mt-1 text-xs tracking-[0.3em] text-primary">
-                  FOUNDER & CEO | BYCAR GLOBAL
+                  FOUNDER & CEO | BYCAR ETİLER
                 </div>
               </div>
             </div>
@@ -1041,6 +1016,8 @@ function Index() {
                 <div key={idx}>
                   <button
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
+                    aria-expanded={isOpen}
+                    aria-controls={`faq-answer-${idx}`}
                     className="flex w-full cursor-pointer items-center justify-between gap-4 px-6 py-5 text-left transition hover:text-primary"
                   >
                     <span className="font-display text-xl font-semibold">{qText}</span>
@@ -1050,11 +1027,13 @@ function Index() {
                       }`}
                     />
                   </button>
-                  {isOpen && (
-                    <div className="border-t border-border/50 bg-background/40 px-6 py-5 text-sm leading-relaxed text-muted-foreground">
-                      {aText}
-                    </div>
-                  )}
+                  <div
+                    id={`faq-answer-${idx}`}
+                    hidden={!isOpen}
+                    className="border-t border-border/50 bg-background/40 px-6 py-5 text-sm leading-relaxed text-muted-foreground"
+                  >
+                    {aText}
+                  </div>
                 </div>
               );
             })}
@@ -1072,7 +1051,7 @@ function Index() {
             <div className="flex items-center gap-3">
               <img
                 src="/bycar-logo-dark.webp"
-                alt="ByCar Exclusive Automotive"
+                alt="ByCar Etiler Exclusive Automotive"
                 width={160}
                 height={36}
                 loading="lazy"
@@ -1086,7 +1065,7 @@ function Index() {
               </div>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Luxury Without Borders · bycarglobal.com
+              Luxury Without Borders · bycaretiler.com
             </p>
             <p className="mt-1 text-xs text-muted-foreground/80">{cmsConfig.contact.address}</p>
             <p className="mt-1 text-xs text-primary/80">
@@ -1154,8 +1133,8 @@ function Index() {
           <div className="flex items-center justify-between gap-3 text-xs">
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               {lang === "tr"
-                ? "ByCar Global, tercihlerinizi hatırlamak için KVKK uyumlu çerezler kullanır."
-                : "ByCar Global uses essential cookies to remember your VIP preferences."}{" "}
+                ? "ByCar Etiler, tercihlerinizi hatırlamak için KVKK uyumlu çerezler kullanır."
+                : "ByCar Etiler uses essential cookies to remember your VIP preferences."}{" "}
               <button
                 onClick={() => setShowKvkk(true)}
                 className="text-primary underline cursor-pointer hover:text-primary/80"
@@ -1231,7 +1210,7 @@ function Index() {
       {/* KVKK & PRIVACY MODAL */}
       {showKvkk && (
         <Modal onClose={() => setShowKvkk(false)}>
-          <p className="mb-1 text-xs uppercase tracking-[0.35em] text-primary">BYCAR GLOBAL</p>
+          <p className="mb-1 text-xs uppercase tracking-[0.35em] text-primary">BYCAR ETİLER</p>
           <h3 className="mb-6 text-3xl font-semibold">{t.kvkkTitle}</h3>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             {t.kvkkBody.map((p, i) => (
@@ -1248,15 +1227,18 @@ function SectionTitle({
   kicker,
   title,
   center,
+  primary,
 }: {
   kicker: string;
   title: string;
   center?: boolean;
+  primary?: boolean;
 }) {
+  const Heading = primary ? "h1" : "h2";
   return (
     <div className={`mb-10 ${center ? "text-center" : ""}`}>
       <p className="mb-2 text-xs uppercase tracking-[0.5em] text-primary">{kicker}</p>
-      <h2 className="text-4xl font-semibold md:text-6xl">{title}</h2>
+      <Heading className="text-4xl font-semibold md:text-6xl">{title}</Heading>
     </div>
   );
 }
@@ -1476,7 +1458,7 @@ export function QuickOfferForm({
           });
 
           // 2. Prepare & Open WhatsApp (Dual-Channel Flow)
-          const waMsg = `Merhaba ByCar Global, web sitenizdeki "${carTitle}" aracınız için teklif/bilgi talebim:\n• Ad Soyad: ${name}\n• Telefon: ${phone}\n• Teklif / Not: ${offer}`;
+          const waMsg = `Merhaba ByCar Etiler, web sitenizdeki "${carTitle}" aracınız için teklif/bilgi talebim:\n• Ad Soyad: ${name}\n• Telefon: ${phone}\n• Teklif / Not: ${offer}`;
           const url = waLink(undefined, waMsg, contact);
           setDoneUrl(url);
           if (autoWhatsApp && typeof window !== "undefined") {
@@ -1560,7 +1542,7 @@ function Modal({
           <div className="flex items-center gap-2">
             <div className="h-1.5 w-10 rounded-full bg-border sm:hidden" />
             <span className="hidden sm:inline font-display text-sm tracking-widest text-primary uppercase">
-              BYCAR EXCLUSIVE SHOWROOM
+              BYCAR ETILER SHOWROOM
             </span>
           </div>
           <button

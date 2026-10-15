@@ -37,6 +37,8 @@ await check("home", async () => {
   const html = await r.text();
   assert.ok(html.includes('rel="canonical"'));
   assert.ok(html.includes(`${origin}`), "Canonical must use configured/current origin");
+  assert.match(html, /<title>[^<]*ByCar Etiler/);
+  assert.equal([...html.matchAll(/<h1(?:\s|>)/g)].length, 1, "One semantic home H1");
   assert.equal(r.headers.get("x-content-type-options"), "nosniff");
   const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"?#]+)[^"]*"/g)].map((m) => m[1]);
   for (const asset of new Set(assets)) {
@@ -65,7 +67,10 @@ await check("sitemap", async () => {
 await check("robots", async () => {
   const r = await response("/robots.txt");
   assert.equal(r.status, 200);
-  assert.ok((await r.text()).includes(`${origin}/sitemap.xml`));
+  const robots = await r.text();
+  assert.ok(robots.includes(`${origin}/sitemap.xml`));
+  assert.ok(robots.includes("Allow: /api/media/"), "Public photos must be crawlable");
+  assert.ok(robots.includes("Disallow: /admin"));
 });
 for (const car of cms.cars)
   await check(`vehicle ${car.id}`, async () => {
@@ -74,6 +79,8 @@ for (const car of cms.cars)
     assert.equal(r.status, 200);
     const html = await r.text();
     assert.ok(html.includes('rel="canonical"'));
+    assert.ok(html.includes(`${origin}/arac/${encodeURIComponent(car.slug || car.id)}`));
+    assert.match(html, /<title>[^<]*ByCar Etiler/);
   });
 const media = new Set(
   cms.cars
