@@ -1,4 +1,4 @@
-# ByCar — Exclusive Automotive Showcase
+# ByCar Etiler — Exclusive Automotive Showcase
 
 > Lüks, süper spor ve özel ithalat araçlar için fiyatsız (teklif usulü) VIP vitrin, SSR destekli katalog ve Cloudflare D1 destekli yönetim platformu.
 
@@ -6,10 +6,9 @@
 
 ## 🌐 Canlı Yayın & Domain Bilgileri
 
-- **Aktif Cloudflare Worker URL:**  
-  [https://selcuktin-golden-chassis-showcase.selcuktin.workers.dev](https://selcuktin-golden-chassis-showcase.selcuktin.workers.dev)
-- **Hedef Özel Alan Adı (Custom Domain):**  
-  `https://bycarglobal.com` (ve `https://www.bycarglobal.com`)
+- **Ana yayın adresi:** [https://bycaretiler.com](https://bycaretiler.com)
+- **Alternatif adresler:** `www.bycaretiler.com` ve eski Workers adresi,
+  yol ve sorguyu koruyarak ana domaine 308 ile yönlendirilir.
 - **VIP Yönetim Paneli:**  
   `/admin` (PBKDF2-HMAC-SHA256 100.000 iterasyon ve IP brute-force korumalı)
 
@@ -40,16 +39,15 @@
 
 ---
 
-## 🚀 Cloudflare Custom Domain (bycarglobal.com) Bağlama Rehberi
+## 🚀 Cloudflare Custom Domain (bycaretiler.com) Bağlama Rehberi
 
-Alan adı, DNS/TLS ve `SITE_URL` ayarı birlikte hazırlanmalıdır. Ana alan adı ve
-`www` aynı Worker üzerinde çalışmadan `SITE_URL` etkinleştirilmemelidir.
-Adım adım geçiş ve son kontrol komutları için
-[yayın hazırlığı raporunu](docs/production-readiness.md#alan-adı-alındığında) okuyun.
+Ana domain `wrangler.toml` içinde custom domain, mevcut proxied `www` DNS kaydı
+ise aynı Worker'a bir route ile bağlıdır. `SITE_URL=https://bycaretiler.com`;
+canonical, sitemap ve yönlendirmeler aynı kökü kullanır. E-posta ve sosyal hesap
+değişikliği domain bağlantısından bağımsızdır; sahibi yeni bilgileri iletene kadar
+mevcut iletişim ayarları korunur.
 
-Satın alınmış alan adı veya e-posta kutusu bu repoda varsayılmaz. `SITE_URL`
-verilmediğinde çalışan adresin origin'i kullanılır; verildiğinde alternatif
-adresler yöntem/gövde koruyan 308 ile ana adrese yönlendirilir.
+Güncel marka ve SEO denetimi: [docs/seo-audit.md](docs/seo-audit.md).
 
 ---
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CatalogBackupSchema } from "./cms-validation";
+import { HOME_DESCRIPTION, HOME_TITLE } from "./seo";
 
 export const PHONE = "+90 540 061 16 34";
 export const PHONE_RAW = "905400611634";
@@ -242,13 +243,13 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
     mapsUrl: "https://maps.google.com/?q=Nilufer+Bursa",
     instagramUrl: "https://instagram.com/bycarglobal",
     whatsappOfferTemplate:
-      "Merhaba ByCar Global, {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.",
+      "Merhaba ByCar Etiler, {car} için fiyat teklifi ve detaylı bilgi almak istiyorum.",
     whatsappImportTemplate:
-      "Merhaba ByCar Global, {model} ({year}) için özel ithalat ve tedarik talebinde bulunmak istiyorum. Bütçem: {budget}.",
+      "Merhaba ByCar Etiler, {model} ({year}) için özel ithalat ve tedarik talebinde bulunmak istiyorum. Bütçem: {budget}.",
   },
   hero: {
-    badgeTr: "BYCAR EXCLUSIVE SHOWROOM",
-    badgeEn: "BYCAR EXCLUSIVE SHOWROOM",
+    badgeTr: "BYCAR ETILER SHOWROOM",
+    badgeEn: "BYCAR ETILER SHOWROOM",
     titleTr: "Kusursuzluğun Yeni Tanımı.",
     titleEn: "Redefining Automotive Perfection.",
     subtitleTr:
@@ -434,7 +435,7 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
       id: "faq-5",
       qTr: "Gümrük, ÖTV ve plaka tescil işlemlerini kim yürütüyor?",
       qEn: "Who handles customs clearance and registration?",
-      aTr: "Tüm gümrükleme, ÖTV/KDV tahakkukları, TSE uygunluk belgesi ve noter/plaka tescil süreçleri ByCar Global'in uzman hukuk ve müşavirlik ekibi tarafından anahtar teslim olarak yürütülür.",
+      aTr: "Tüm gümrükleme, ÖTV/KDV tahakkukları, TSE uygunluk belgesi ve noter/plaka tescil süreçleri ByCar Etiler'in uzman hukuk ve müşavirlik ekibi tarafından anahtar teslim olarak yürütülür.",
       aEn: "Our dedicated legal and customs brokerage team manages all customs duties, homologation, and license plate registration on a complete turnkey basis.",
     },
   ],
@@ -449,21 +450,20 @@ export const DEFAULT_CMS_CONFIG: SiteCMSConfig = {
   },
   legal: {
     kvkkTr:
-      "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.\n2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki formlar aracılığıyla paylaştığınız Ad-Soyad, Telefon ve Araç Tercihi bilgileriniz yalnızca size özel fiyat teklifi sunulması ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.\n3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz.\n4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
+      "1. Veri Sorumlusu: ByCar Etiler ('ByCar Etiler — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.\n2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki formlar aracılığıyla paylaştığınız Ad-Soyad, Telefon ve Araç Tercihi bilgileriniz yalnızca size özel fiyat teklifi sunulması ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.\n3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz.\n4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
     kvkkEn:
-      "1. Data Controller: ByCar Global is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.\n2. Purpose: Your contact and vehicle preferences submitted through our forms are processed exclusively to provide personalized quotes and VIP advisory services.\n3. Confidentiality: Client data is strictly confidential and never shared with third parties.\n4. Your Rights: You may request access, correction, or deletion of your personal data at any time via +90 540 061 16 34.",
+      "1. Data Controller: ByCar Etiler is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.\n2. Purpose: Your contact and vehicle preferences submitted through our forms are processed exclusively to provide personalized quotes and VIP advisory services.\n3. Confidentiality: Client data is strictly confidential and never shared with third parties.\n4. Your Rights: You may request access, correction, or deletion of your personal data at any time via +90 540 061 16 34.",
     privacyTr:
-      "ByCar Global, ziyaretçilerinin gizliliğini en üst düzeyde korur. Sitemizde toplanan veriler yalnızca VIP hizmet kalitemizi artırmak ve taleplerinizi yanıtlamak amacıyla işlenir.",
+      "ByCar Etiler, ziyaretçilerinin gizliliğini en üst düzeyde korur. Sitemizde toplanan veriler yalnızca VIP hizmet kalitemizi artırmak ve taleplerinizi yanıtlamak amacıyla işlenir.",
     privacyEn:
-      "ByCar Global protects visitor privacy at the highest standards. Information collected is used strictly to enhance VIP service quality.",
+      "ByCar Etiler protects visitor privacy at the highest standards. Information collected is used strictly to enhance VIP service quality.",
     cookieBannerTr: "Sitemizde lüks kullanıcı deneyimi sunmak için çerezler kullanılmaktadır.",
     cookieBannerEn: "We use essential cookies to provide an exclusive browsing experience.",
   },
   seo: {
-    metaTitleTr: "ByCar — Exclusive Automotive | Lüks & Süper Spor Araç Koleksiyonu",
-    metaTitleEn: "ByCar — Exclusive Automotive | Luxury & Supercar Collection",
-    metaDescTr:
-      "Bursa Nilüfer'de fiyatsız VIP araç koleksiyonu, özel ithalat ve süper spor otomotiv danışmanlığı.",
+    metaTitleTr: HOME_TITLE,
+    metaTitleEn: "ByCar Etiler | Luxury Cars and Bespoke Vehicle Sourcing",
+    metaDescTr: HOME_DESCRIPTION,
     metaDescEn:
       "Curated luxury vehicle showcase, bespoke supercar import, and VIP concierge in Bursa.",
   },
@@ -673,7 +673,7 @@ export function autoGenerateEnglishDescription(
   const cleanPower = power.trim() || "high-performance";
   const cleanPkg = pkg.trim() || "Exclusive";
   const cleanExp = translateTerm(expertise.trim() || "Hatasız / Boyasız / Orijinal", "en");
-  return `${year} ${title.trim() || cleanBrand || "Luxury Vehicle"}${brandSuffix} featuring ${cleanPower} engine and ${cleanPkg} specification with ${kmText}. Condition: ${cleanExp}. Available via ByCar Global VIP Concierge.`;
+  return `${year} ${title.trim() || cleanBrand || "Luxury Vehicle"}${brandSuffix} featuring ${cleanPower} engine and ${cleanPkg} specification with ${kmText}. Condition: ${cleanExp}. Available via ByCar Etiler VIP Concierge.`;
 }
 
 export const CARS: Car[] = [
@@ -1249,8 +1249,8 @@ export const CARS: Car[] = [
       "Rear Seat Entertainment Displays & Wireless Charging",
     ],
     description: {
-      tr: "ByCar Global seçkisinin zirvesi: 2026 Lamborghini Urus BRABUS 900 Superblack Edition. 900 beygir güç, 1050 Nm tork, tam karbon fiber Widestar gövde kiti ve BRABUS Masterpiece özel iç mimarisi ile ultra lüks performansın nihai simgesi.",
-      en: "The pinnacle of ByCar Global showcase: 2026 Lamborghini Urus BRABUS 900 Superblack Edition. Generating 900 HP and 1050 Nm of torque, equipped with full carbon fiber Widestar kit and bespoke BRABUS Masterpiece interior.",
+      tr: "ByCar Etiler seçkisinin zirvesi: 2026 Lamborghini Urus BRABUS 900 Superblack Edition. 900 beygir güç, 1050 Nm tork, tam karbon fiber Widestar gövde kiti ve BRABUS Masterpiece özel iç mimarisi ile ultra lüks performansın nihai simgesi.",
+      en: "The pinnacle of ByCar Etiler showcase: 2026 Lamborghini Urus BRABUS 900 Superblack Edition. Generating 900 HP and 1050 Nm of torque, equipped with full carbon fiber Widestar kit and bespoke BRABUS Masterpiece interior.",
     },
   },
   {
@@ -2779,13 +2779,13 @@ export const T = {
       ],
       [
         "Gümrük, ÖTV ve plaka tescil işlemlerini kim yürütüyor?",
-        "Tüm gümrükleme, ÖTV/KDV tahakkukları, TSE uygunluk belgesi ve noter/plaka tescil süreçleri ByCar Global'in uzman hukuk ve müşavirlik ekibi tarafından anahtar teslim olarak yürütülür.",
+        "Tüm gümrükleme, ÖTV/KDV tahakkukları, TSE uygunluk belgesi ve noter/plaka tescil süreçleri ByCar Etiler'in uzman hukuk ve müşavirlik ekibi tarafından anahtar teslim olarak yürütülür.",
       ],
     ],
     privacy: "KVKK ve Gizlilik Politikası",
     kvkkTitle: "KVKK Aydınlatma Metni ve Gizlilik Politikası",
     kvkkBody: [
-      "1. Veri Sorumlusu: ByCar Global ('ByCar — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.",
+      "1. Veri Sorumlusu: ByCar Etiler ('ByCar Etiler — Exclusive Automotive') olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu ('KVKK') kapsamında kişisel verilerinizin güvenliğine en üst düzeyde önem veriyoruz.",
       "2. İşlenen Kişisel Veriler ve Amaç: Web sitemiz üzerindeki 'Fiyat Teklifi Al', 'Site Üzerinden Teklif Ver' ve 'Özel İthalat Talebi' formları aracılığıyla paylaştığınız Ad-Soyad, Telefon Numarası ve Araç Tercihi bilgileriniz; yalnızca size özel fiyat teklifi sunulması, araç tedarik sürecinin yürütülmesi ve VIP müşteri danışmanlarımızın sizinle iletişime geçmesi amacıyla işlenmektedir.",
       "3. Verilerin Aktarımı ve Güvenliği: Paylaştığınız iletişim ve teklif verileri hiçbir koşulda üçüncü taraf reklam veya pazarlama şirketleriyle paylaşılmaz; yalnızca gizlilik protokolü altında ByCar uzman ekibi tarafından görüntülenir.",
       "4. Haklarınız: KVKK'nın 11. maddesi uyarınca verilerinizin silinmesini, düzeltilmesini veya bilgi talep etme hakkınızı her zaman +90 540 061 16 34 numaralı hattımız üzerinden kullanabilirsiniz.",
@@ -2879,7 +2879,7 @@ export const T = {
     privacy: "Privacy Policy & GDPR",
     kvkkTitle: "Data Protection (KVKK / GDPR) & Privacy Policy",
     kvkkBody: [
-      "1. Data Controller: ByCar Global ('ByCar — Exclusive Automotive') is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.",
+      "1. Data Controller: ByCar Etiler ('ByCar Etiler — Exclusive Automotive') is committed to protecting the confidentiality and security of your personal data under KVKK and GDPR standards.",
       "2. Purpose of Processing: Your Full Name, Phone Number, and Vehicle Preferences submitted through our 'Request a Quote', 'Make an Offer', and 'Private Import' forms are processed exclusively to provide personalized vehicle quotes and VIP advisory services.",
       "3. Confidentiality: Client inquiries and offer details are strictly confidential and are never shared with third-party marketing agencies.",
       "4. Your Rights: You may request access, correction, or deletion of your personal data at any time by contacting us at +90 540 061 16 34.",

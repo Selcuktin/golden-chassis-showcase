@@ -16,6 +16,7 @@ import { ImageLightboxModal } from "../components/ImageLightboxModal";
 import { T, translateTerm, useByCarStore, waLink, type Car, type Lang } from "@/lib/bycar";
 import { QuickOfferForm } from "./index";
 import { fetchLiveVehicle } from "@/lib/catalog-service";
+import { absoluteUrl, SITE_NAME, vehicleSeo, vehicleStructuredData } from "@/lib/seo";
 
 export const Route = createFileRoute("/arac/$slug")({
   loader: async ({ params }) => {
@@ -34,15 +35,13 @@ export const Route = createFileRoute("/arac/$slug")({
     if (!found) {
       return {
         meta: [
-          { title: "Araç Bulunamadı (404) — ByCar Global" },
+          { title: "Araç Bulunamadı (404) — ByCar Etiler" },
           { name: "robots", content: "noindex, nofollow" },
         ],
       };
     }
-    const rawImage = found.images[0] || "/hero.png";
-    const ogImage = rawImage.startsWith("http")
-      ? rawImage
-      : `${loaderData?.siteUrl || ""}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
+    const seo = vehicleSeo(found);
+    const ogImage = absoluteUrl(found.images[0] || "/hero.webp", loaderData.siteUrl);
 
     return {
       links: [
@@ -52,17 +51,18 @@ export const Route = createFileRoute("/arac/$slug")({
         },
       ],
       meta: [
-        { title: `${found.year} ${found.title} | ByCar — Exclusive Automotive` },
+        { title: seo.title },
         {
           name: "description",
-          content:
-            found.description?.tr ||
-            `${found.year} ${found.title} — ${found.specs.power}, ${found.specs.expertise}. ByCar Global VIP Koleksiyonu.`,
+          content: seo.description,
         },
-        { property: "og:title", content: `${found.year} ${found.title} — ByCar Global` },
+        { property: "og:title", content: seo.title },
+        { property: "og:site_name", content: SITE_NAME },
+        { property: "og:locale", content: "tr_TR" },
+        { name: "robots", content: "index, follow, max-image-preview:large" },
         {
           property: "og:description",
-          content: `${found.specs.power} · ${found.km.toLocaleString("tr-TR")} KM · ${found.specs.expertise}`,
+          content: seo.description,
         },
         { property: "og:image", content: ogImage },
         {
@@ -70,6 +70,8 @@ export const Route = createFileRoute("/arac/$slug")({
           content: `${loaderData?.siteUrl || ""}/arac/${encodeURIComponent(found.slug || found.id)}`,
         },
         { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: seo.title },
+        { name: "twitter:description", content: seo.description },
         { name: "twitter:image", content: ogImage },
       ],
     };
@@ -81,7 +83,7 @@ function VehicleNotFoundPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center text-foreground">
       <p className="mb-2 text-xs uppercase tracking-[0.4em] text-primary">
-        HTTP 404 · BYCAR GLOBAL
+        HTTP 404 · BYCAR ETİLER
       </p>
       <h1 className="font-display text-4xl font-semibold md:text-6xl">Araç Bulunamadı</h1>
       <p className="mt-4 max-w-md text-sm text-muted-foreground">
@@ -118,9 +120,7 @@ function VehicleDetailPage() {
 
   useEffect(() => {
     if (typeof document !== "undefined") {
-      document.title = car
-        ? `${car.year} ${car.title} | ByCar — Exclusive Automotive`
-        : "Araç Bulunamadı (404) — ByCar Global";
+      document.title = car ? vehicleSeo(car).title : "Araç Bulunamadı (404) — ByCar Etiler";
     }
   }, [car]);
 
@@ -134,33 +134,7 @@ function VehicleDetailPage() {
       ? car.extrasEn
       : (car.extras || []).map((item) => translateTerm(item, lang));
 
-  const absoluteImages = car.images.map((im) =>
-    im.startsWith("http") ? im : `${loaderData.siteUrl}${im.startsWith("/") ? "" : "/"}${im}`,
-  );
-
-  const carJsonLd = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "Car",
-    name: `${car.year} ${car.title}`,
-    brand: { "@type": "Brand", name: car.brand },
-    model: car.title,
-    vehicleModelDate: car.year,
-    bodyType: car.body,
-    fuelType: car.fuel,
-    vehicleTransmission: car.gear,
-    color: car.specs.color,
-    image: absoluteImages,
-    mileageFromOdometer: {
-      "@type": "QuantitativeValue",
-      value: car.km,
-      unitCode: "KMT",
-    },
-    offers: {
-      "@type": "Offer",
-      url: `${loaderData.siteUrl}/arac/${encodeURIComponent(car.slug || car.id)}`,
-      availability: isSold ? "https://schema.org/SoldOut" : "https://schema.org/InStock",
-    },
-  });
+  const carJsonLd = JSON.stringify(vehicleStructuredData(car, loaderData.siteUrl));
 
   const prevImg = () => {
     setShowVideo(false);

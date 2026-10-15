@@ -130,7 +130,7 @@ describe("App routing & ByCar Phase 6 Convergence integrity", () => {
     // 1. Initial CMS config integrity
     const initialConfig = getStoredCmsConfig();
     expect(initialConfig.contact.phone).toBe("+90 540 061 16 34");
-    expect(initialConfig.hero.badgeTr).toBe("BYCAR EXCLUSIVE SHOWROOM");
+    expect(initialConfig.hero.badgeTr).toBe("BYCAR ETILER SHOWROOM");
     expect(initialConfig.stats.length).toBe(4);
     expect(initialConfig.services.length).toBe(4);
     expect(initialConfig.conciergeSteps.length).toBe(4);

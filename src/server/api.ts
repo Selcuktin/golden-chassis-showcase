@@ -1,4 +1,4 @@
-// ByCar Global — Cloudflare D1 Server API & Security Engine
+// ByCar Etiler — Cloudflare D1 Server API & Security Engine
 // Handles /api/health, /api/admin/login, /api/admin/logout, /api/admin/change-password,
 // /api/admin/upload, /api/media/*, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
 
@@ -625,7 +625,7 @@ export async function handleApiRequest(request: Request, env: unknown): Promise<
   if (url.pathname === "/robots.txt" && request.method === "GET") {
     const base = (resolveEnv(env, request).SITE_URL || url.origin).replace(/\/+$/, "");
     return new Response(
-      `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`,
+      `User-agent: *\nAllow: /\nAllow: /api/media/\nDisallow: /admin\nDisallow: /api/\nDisallow: /_serverFn/\n\nSitemap: ${base}/sitemap.xml\n`,
       {
         headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" },
       },
@@ -2791,13 +2791,10 @@ async function handleSitemap(request: Request, env: unknown): Promise<Response> 
     }
   }
 
-  const nowIso = new Date().toISOString().split("T")[0];
-
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>${baseUrl.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}/</loc>
-    <lastmod>${nowIso}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
