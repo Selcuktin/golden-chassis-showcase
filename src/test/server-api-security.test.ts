@@ -1581,6 +1581,9 @@ describe("Server API, D1 Security & Stability Engine", () => {
 
     const csp = res.headers.get("content-security-policy");
     expect(csp).toBeTruthy();
+    expect(csp).toContain(
+      "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com/beacon.min.js;",
+    );
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
     expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com;");
     expect(csp).toContain("connect-src 'self';");
