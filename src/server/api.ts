@@ -464,6 +464,35 @@ export function resolveEnv(env?: unknown, request?: Request): ServerEnv {
   return (env as ServerEnv) || globalEnv || {};
 }
 
+// Vehicle detail needs current site settings, without rereading the entire catalog.
+export async function getLiveSiteData(env?: unknown): Promise<{
+  settings: SiteSettings | null;
+  cmsConfig: SiteCMSConfig | null;
+}> {
+  const resolved = resolveEnv(env);
+  if (!resolved.DB) {
+    return {
+      settings: (memoryStore.settings as SiteSettings) || null,
+      cmsConfig: (sanitizeCmsConfig(memoryStore.cmsConfig) as SiteCMSConfig) || null,
+    };
+  }
+  const rows = await createDatabase(resolved.DB).all<SettingDbRow>(
+    sql`SELECT * FROM site_settings`,
+  );
+  const values: Record<string, unknown> = {};
+  for (const row of rows) {
+    try {
+      values[row.key] = JSON.parse(row.value);
+    } catch {
+      values[row.key] = row.value;
+    }
+  }
+  return {
+    settings: (values["showcase_settings"] as SiteSettings) || null,
+    cmsConfig: (sanitizeCmsConfig(values["cms_config"]) as SiteCMSConfig) || null,
+  };
+}
+
 // SSR & Server-Side D1 Data Provider: Returns active catalog for SSR/SEO
 export async function getLiveCmsData(env?: unknown): Promise<{
   cars: Car[];
@@ -483,9 +512,7 @@ export async function getLiveCmsData(env?: unknown): Promise<{
       const imagesRes = await db
         .prepare("SELECT * FROM vehicle_images ORDER BY vehicle_id, sort_order ASC")
         .all<ImageDbRow>();
-      const settingsRes = await createDatabase(db).all<SettingDbRow>(
-        sql`SELECT * FROM site_settings`,
-      );
+      const site = await getLiveSiteData(resolved);
 
       const imagesMap = new Map<string, string[]>();
       for (const row of imagesRes.results || []) {
@@ -526,20 +553,10 @@ export async function getLiveCmsData(env?: unknown): Promise<{
         featured: Boolean(row.is_featured),
       }));
 
-      const settingsMap: Record<string, unknown> = {};
-      for (const s of settingsRes) {
-        try {
-          settingsMap[s.key] = JSON.parse(s.value);
-        } catch {
-          settingsMap[s.key] = s.value;
-        }
-      }
-
       {
         return {
           cars,
-          settings: (settingsMap["showcase_settings"] as SiteSettings) || null,
-          cmsConfig: (sanitizeCmsConfig(settingsMap["cms_config"]) as SiteCMSConfig) || null,
+          ...site,
           source: "d1",
         };
       }
