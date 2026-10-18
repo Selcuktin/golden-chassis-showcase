@@ -2602,6 +2602,7 @@ export function useByCarStore(
   options?: { admin?: boolean },
 ) {
   const admin = options?.admin === true;
+  const hasServerCatalog = Array.isArray(initialData?.cars);
   const [cars, setCars] = useState<Car[]>(initialData?.cars ?? []);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
@@ -2647,7 +2648,7 @@ export function useByCarStore(
             "Bu sekmede henüz sunucuya kaydedilmemiş bir taslak var. Tekrar deneyebilir veya sunucudaki güncel veriyi yükleyebilirsiniz.",
         });
       if (window.sessionStorage.getItem("bycar_admin_token")) void syncFromServer();
-    } else {
+    } else if (!hasServerCatalog) {
       void fetch("/api/cms")
         .then(async (response) => {
           if (!response.ok) return;
@@ -2667,7 +2668,7 @@ export function useByCarStore(
       window.removeEventListener("storage", sync);
       window.removeEventListener(SYNC_STATUS_EVENT, handleSyncStatus);
     };
-  }, [admin]);
+  }, [admin, hasServerCatalog]);
 
   const handleManualSync = async () => {
     const result = await syncToServer();

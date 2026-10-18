@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { getPlatformProxy, type PlatformProxy } from "wrangler";
 import {
   getLiveCmsData,
+  getLiveSiteData,
   getLiveVehicleBySlug,
   deriveServerPBKDF2HexWithParams,
   handleApiRequest,
@@ -142,6 +143,72 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     token = ((await response!.json()) as { token: string }).token;
   });
   afterAll(async () => local?.dispose());
+
+  it("reads only one vehicle and current settings for detail, with measured local D1 savings", async () => {
+    const isolated = await createLocalDatabase();
+    try {
+      const db = isolated.env.DB;
+      for (let n = 0; n < 20; n++) {
+        const id = `read-cost-${n}`;
+        await db
+          .prepare(
+            "INSERT INTO vehicles (id,slug,brand,title,year,fuel,gear,body,power,color,package,expertise) VALUES (?,?,'BMW','Fixture',2024,'Benzin','Otomatik','Sedan','500','Siyah','Paket','Ekspertiz')",
+          )
+          .bind(id, id)
+          .run();
+        await db
+          .prepare("INSERT INTO vehicle_images (id,vehicle_id,r2_key,public_url) VALUES (?,?,?,?)")
+          .bind(id, id, id, `/api/media/${id}`)
+          .run();
+      }
+      const measure = () => {
+        const stats = { queries: 0, rowsRead: 0 };
+        const wrap = (stmt: ReturnType<D1Database["prepare"]>): unknown => ({
+          bind: (...args: unknown[]) => wrap(stmt.bind(...args)),
+          all: async () => {
+            const response = await stmt.all();
+            stats.queries++;
+            stats.rowsRead += response.meta.rows_read;
+            return response;
+          },
+          first: async (column?: string) => {
+            const response = await stmt.all<Record<string, unknown>>();
+            stats.queries++;
+            stats.rowsRead += response.meta.rows_read;
+            const row = response.results[0];
+            return row ? (column ? row[column] : row) : null;
+          },
+        });
+        return {
+          stats,
+          env: { DB: { prepare: (query: string) => wrap(db.prepare(query)) } as ApiDatabase },
+        };
+      };
+      const before = measure();
+      const [oldCar, fullCatalog] = await Promise.all([
+        getLiveVehicleBySlug("read-cost-0", before.env),
+        getLiveCmsData(before.env),
+      ]);
+      const after = measure();
+      const [newCar, site] = await Promise.all([
+        getLiveVehicleBySlug("read-cost-0", after.env),
+        getLiveSiteData(after.env),
+      ]);
+      expect(newCar).toEqual(oldCar);
+      expect(site).toEqual({ settings: fullCatalog.settings, cmsConfig: fullCatalog.cmsConfig });
+      expect(before.stats.queries).toBe(5);
+      expect(after.stats.queries).toBe(3);
+      expect(after.stats.rowsRead).toBeLessThan(before.stats.rowsRead);
+      console.info("Local D1 detail read cost", { before: before.stats, after: after.stats });
+      await db
+        .prepare("INSERT INTO site_settings (key,value) VALUES ('showcase_settings',?)")
+        .bind(JSON.stringify({ quotaProbe: "fresh" }))
+        .run();
+      expect((await getLiveSiteData(isolated.env)).settings).toEqual({ quotaProbe: "fresh" });
+    } finally {
+      await isolated.dispose();
+    }
+  });
 
   it("creates all nine tables, both triggers, and the initial CMS revision", async () => {
     const db = local.env.DB;
