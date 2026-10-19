@@ -28,7 +28,7 @@ async function createLocalDatabase(
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), "bycar-d1-test-"));
   const configPath = path.join(directory, "wrangler.json");
-  const persist = path.join(directory, "state");
+  const persist = path.join(directory, ".wrangler", "state");
   const config = JSON.parse(
     await readFile(path.join(root, "tests/fixtures/wrangler.json"), "utf8"),
   );
@@ -55,8 +55,7 @@ async function createLocalDatabase(
         "--config",
         configPath,
         "--local",
-        "--persist-to",
-        persist,
+        ...(args[1] === "export" ? [] : ["--persist-to", persist]),
       ],
       { env: { ...process.env, WRANGLER_SEND_METRICS: "false" }, maxBuffer: 4 * 1024 * 1024 },
     );
@@ -86,6 +85,22 @@ async function createLocalDatabase(
   const env = await connect();
   return {
     env,
+    async exportTo(file: string) {
+      await proxy.dispose();
+      try {
+        await wrangler("d1", "export", "DB", "--output", file);
+      } finally {
+        this.env = await connect();
+      }
+    },
+    async restoreFrom(file: string) {
+      await proxy.dispose();
+      try {
+        await wrangler("d1", "execute", "DB", "--file", file);
+      } finally {
+        this.env = await connect();
+      }
+    },
     // Stop workerd before the CLI opens the same persisted SQLite database.
     async migrate() {
       await proxy.dispose();
@@ -143,6 +158,124 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
     token = ((await response!.json()) as { token: string }).token;
   });
   afterAll(async () => local?.dispose());
+
+  it("restores an actual local D1 export into a separately migrated target without losing seed-conflicting settings", async () => {
+    await mkdir(path.join(root, ".wrangler"), { recursive: true });
+    const folder = await mkdtemp(path.join(root, ".wrangler", "transfer-restore-"));
+    const target = await createLocalDatabase();
+    try {
+      await local.env.DB.prepare("INSERT INTO site_settings (key,value,updated_at) VALUES (?,?,?)")
+        .bind("transfer_fixture", "Türkçe 'tırnak'; -- güvenli", "2026-10-19T00:00:00Z")
+        .run();
+      await local.env.DB.prepare(
+        "UPDATE site_settings SET value='42' WHERE key='cms_revision'",
+      ).run();
+      const dump = path.join(folder, "source.sql");
+      const restore = path.join(folder, "restore.sql");
+      await local.exportTo(dump);
+      await execFileAsync(process.execPath, [
+        path.join(root, "scripts/prepare-transfer-restore.mjs"),
+        dump,
+        restore,
+      ]);
+      await target.restoreFrom(restore);
+      const tables = [
+        "vehicles",
+        "vehicle_images",
+        "inquiries",
+        "admin_users",
+        "admin_sessions",
+        "login_attempts",
+        "site_settings",
+        "inquiry_attempts",
+        "r2_cleanup_queue",
+      ];
+      for (const table of tables) {
+        const query = `SELECT * FROM ${table} ORDER BY ${table === "site_settings" ? "key" : "id"}`;
+        expect((await target.env.DB.prepare(query).all()).results).toEqual(
+          (await local.env.DB.prepare(query).all()).results,
+        );
+      }
+      expect(
+        await target.env.DB.prepare(
+          "SELECT value FROM site_settings WHERE key='cms_revision'",
+        ).first("value"),
+      ).toBe("42");
+      expect((await target.env.DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+      expect(
+        await target.env.DB.prepare("SELECT COUNT(*) AS n FROM d1_migrations").first("n"),
+      ).toBe(5);
+      // Restore is deliberately not replayable over a populated target.
+      await expect(target.restoreFrom(restore)).rejects.toThrow();
+    } finally {
+      await local.env.DB.prepare("DELETE FROM site_settings WHERE key='transfer_fixture'").run();
+      await local.env.DB.prepare(
+        "UPDATE site_settings SET value='1' WHERE key='cms_revision'",
+      ).run();
+      await target.dispose();
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
+  it("freezes all transfer mutations without changing actual D1 or R2", async () => {
+    const snapshot = async () => {
+      const tables = [
+        "vehicles",
+        "vehicle_images",
+        "inquiries",
+        "admin_users",
+        "admin_sessions",
+        "login_attempts",
+        "site_settings",
+        "inquiry_attempts",
+        "r2_cleanup_queue",
+      ];
+      return Promise.all(
+        tables.map((table) =>
+          local.env.DB.prepare(
+            `SELECT * FROM ${table} ORDER BY ${table === "site_settings" ? "key" : "id"}`,
+          )
+            .all()
+            .then((result) => result.results),
+        ),
+      );
+    };
+    const before = await snapshot();
+    const mediaBefore = (await local.env.BUCKET.list()).objects.map(({ key, size }) => ({
+      key,
+      size,
+    }));
+    for (const endpoint of [
+      "/api/admin/login",
+      "/api/admin/logout",
+      "/api/admin/change-password",
+      "/api/admin/upload",
+      "/api/admin/media/gc",
+      "/api/cms",
+      "/api/inquiry",
+      "/api/admin/inquiries/status",
+      "/api/admin/inquiries/delete",
+    ]) {
+      const response = await handleApiRequest(post(endpoint, {}, token), {
+        ...local.env,
+        TRANSFER_WRITE_LOCK: "true",
+        ADMIN_PASSWORD: secret,
+      });
+      expect(response?.status).toBe(503);
+    }
+    expect(await snapshot()).toEqual(before);
+    expect((await local.env.BUCKET.list()).objects.map(({ key, size }) => ({ key, size }))).toEqual(
+      mediaBefore,
+    );
+    expect(
+      (
+        await handleApiRequest(new Request("https://local.invalid/api/health"), {
+          ...local.env,
+          TRANSFER_WRITE_LOCK: "true",
+        })
+      )?.status,
+    ).toBe(200);
+  });
 
   it("reads only one vehicle and current settings for detail, with measured local D1 savings", async () => {
     const isolated = await createLocalDatabase();

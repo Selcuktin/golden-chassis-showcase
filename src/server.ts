@@ -46,6 +46,7 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 import { handleApiRequest } from "./server/api";
 import { canonicalSiteRedirect } from "./server/site-origin";
+import { transferWriteLock } from "./server/transfer-lock";
 
 function applySecurityHeaders(response: Response, request?: Request): Response {
   const headers = new Headers(response.headers);
@@ -95,6 +96,8 @@ export default {
     }
 
     try {
+      const locked = transferWriteLock(request, effectiveEnv);
+      if (locked) return applySecurityHeaders(locked, request);
       const redirect = canonicalSiteRedirect(
         request,
         (effectiveEnv as { SITE_URL?: string } | undefined)?.SITE_URL,
