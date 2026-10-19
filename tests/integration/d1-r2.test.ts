@@ -160,6 +160,7 @@ describe("Wrangler migrations and actual local D1/R2 bindings", () => {
   afterAll(async () => local?.dispose());
 
   it("restores an actual local D1 export into a separately migrated target without losing seed-conflicting settings", async () => {
+    await mkdir(path.join(root, ".wrangler"), { recursive: true });
     const folder = await mkdtemp(path.join(root, ".wrangler", "transfer-restore-"));
     const target = await createLocalDatabase();
     try {
