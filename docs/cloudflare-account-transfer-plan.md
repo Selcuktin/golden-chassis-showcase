@@ -1,9 +1,55 @@
 # ByCar Etiler — Cloudflare hesap taşıma planı
 
-Hazırlık: 18 Ekim 2026. Hedef uygulama günü: 19 Ekim 2026, sahibiyle belirlenecek
+Hazırlık güncellemesi: 19 Ekim 2026. Uygulama günü sahibiyle belirlenecek
 düşük trafik saatinde. Bu belge bir uygulama planıdır; yeni hesapta kaynak oluşturma,
 üretim yedeği alma, DNS değiştirme veya veri taşıma bu hazırlık kapsamında yapılmadı.
-Kaynak bilgileri uygulama gününde yeniden doğrulanacak.
+Kaynak bilgileri uygulama gününde yeniden doğrulanacak. 19 Ekim'de kullanıcı
+Cloudflare hazırlık ve aktarım işlerini yetkilendirdi; Turkticaret NS değişikliğini
+kendisi yapacak. DNS değişikliği için yeni NS adresleri yalnız hedef kabulden sonra verilir.
+
+## 19 Ekim hazırlık durumu
+
+- Onaylı kaynak `main`: `787fab81f4bb2ea461ffb8060cd8be9201e15fe3` (D1 optimizasyonu dahil).
+  Hazırlık PR'ı bu commit'le normal merge yapılarak güncellendi; geçmiş yeniden yazılmadı.
+- Hedef hesap ekran görüntüsünde ID `7f748d43de71933045facda4f76e8d2d` olarak
+  görünüyor. D1 ve R2 ekranları açık, henüz kaynak yok. Bu ekran görüntüsü API
+  erişimi veya kaynak oluşturma başarısı kanıtı değildir.
+- Mevcut Wrangler OAuth yalnız eski hesap `371caa7e632e84151d1de536dc76b2e1`
+  erişimini gösteriyor. Yeni hesap üyeliği/davet kabulü ve gereken API yetkileri
+  doğrulanmadan hedefte işlem başlatılamaz. Secret/token sohbete yazılmaz.
+- Yazma kilidi kodda hazır: `TRANSFER_WRITE_LOCK=true`. Varsayılan kapalıdır;
+  bu PR'ın yayınlanması kilidi kendiliğinden açmaz. Worker girişinde canonical
+  redirect'ten önce ve doğrudan API girişinde mutasyonları 503/no-store ile keser.
+- Çevrimdışı restore hazırlayıcı hazır:
+  `node scripts/prepare-transfer-restore.mjs .wrangler/backups/source.sql .wrangler/backups/restore.sql`.
+  Yalnız güvenilir sahibine ait D1 export'u Node 24 belleğinde açar. Dokuz tabloyu,
+  integrity/FK durumunu kontrol eder; bağımlılık sıralı veri SQL'i ve tablo başına
+  deterministik SHA-256 manifest üretir. D1/SQLite iç tablolarını kopyalamaz;
+  yalnız site_settings seed çatışmasını update ile çözer. Çıktı yalnız Git dışındaki
+  `.wrangler/` altında ve yeni dosya olarak oluşturulur; mevcut dosyayı ezmez.
+  Uzak kaynağa bağlanmaz, SQL verisini terminale basmaz. Erişim izinleri Windows'ta
+  ayrıca kontrol edilir; POSIX mode tek başına Windows ACL garantisi değildir.
+- Restore çıktısı yalnız eşleşen migration'larla kurulmuş BOŞ hedefe uygulanır.
+  Üretim dump'ı yerine sentetik gerçek yerel D1 export/import provası kullanılır.
+  Üretim snapshot'ıyla final karşılaştırma aktarım sırasında zorunludur.
+- R2 S3 erişimi/metadata kopya provası, yeni hesap kaynakları, hedef preview,
+  final export ve DNS/TLS geçişi henüz yapılmadı. Tam aktarım hazır/onaylı diye
+  raporlanmaz; hedef erişimi geldikten sonra bu kapılar sırayla tamamlanır.
+- Yerel doğrulama: 165 Vitest ve 30 gerçek workerd D1/R2 testi başarılı.
+  Restore testi Wrangler'ın gerçek export'unu ayrı, migration ile kurulmuş
+  yerel hedefe aktarır; dokuz tablonun içeriği, parola/oturum satırları dahil,
+  birebir karşılaştırılır. Türkçe/tırnaklı ayar, cms_revision seed çatışması,
+  FK bütünlüğü ve dolu hedefe yanlış ikinci import'un reddi sınanır.
+  D1 export çocuk tabloyu parent'tan önce yazabildiği için yalnız bellek içi
+  staging SQLite'ta FK enforcement kapatılır; tam yükleme sonrası FK kontrolü
+  zorunludur. Gerçek hedef D1 constraints kapatılmaz.
+  Typecheck, production build ve Drizzle snapshot kontrolü başarılı; npm audit 0.
+  ESLint hata yok; mevcut UI fast-refresh uyarıları var.
+
+Süre: hazırlık/prova için 3–5 saat çalışma tahmini; final veri işlemleri için
+30–60 dakika başlangıç bakım penceresi. Bu taahhüt değildir; gerçek medya boyutu,
+DNS ve TLS durumuna göre uzar. Universal SSL, zone aktivasyonundan sonra
+15 dakika–24 saat sürebilir. O süre site kesintisiz kalır varsayılmaz.
 
 Amaç: yalnızca ByCar'ın Worker, D1 ve R2 kaynaklarını ve domainin Cloudflare DNS
 yönetimini yeni hesaba geçirmek. Diğer projeler eski hesapta kalır. Domain, araç
@@ -27,7 +73,7 @@ yazma durdurulur ve kabul ölçütleri sağlanmadan hedefte yazma açılmaz.
 | DNSSEC                | 18 Ekim RDAP yanıtında `delegationSigned=false`                                       | Geçişten önce parent DS kaydı ayrıca sorgulanacak                                       |
 | Ana domain bağlantısı | Apex custom domain; `www.bycaretiler.com/*` Worker route                              | Yeni zone aktif olduktan sonra aynı davranış yeniden kurulacak                          |
 | Uygulama ayarları     | `NODE_ENV=production`, `SITE_URL=https://bycaretiler.com`, `CF_ACCESS_REQUIRED=false` | Canlı hedefte aynı kalır; e-posta/OTP tekrar açılmaz                                    |
-| İncelenen kod tabanı  | `2600c427e19942f0032d3766d4038cb58ea872a2`                                            | İşlem günündeki onaylı main SHA'sı yeniden sabitlenir                                   |
+| İncelenen kod tabanı  | `787fab81f4bb2ea461ffb8060cd8be9201e15fe3`                                            | İşlem günündeki onaylı main SHA'sı ve hazırlık PR'ı yeniden sabitlenir                   |
 | Şema geçmişi          | `drizzle/0000`–`0004`, 5 migration                                                    | İşlem gününde kaynak geçmişi ve repoyla eşleştirilir                                    |
 
 Hedef hesap ID, yeni D1 ID, Worker önizleme adresi, yeni zone ID, NS'ler, TLS
@@ -84,8 +130,10 @@ gününde kontrol edilmeli; eski hesaba yeniden yayın yapması engellenmeli.
 Sadece admin panelini kapatmak yeterli değildir: `/api/inquiry` müşteri kaydı,
 login/logout ve parola işlemleri D1'e yazabilir; medya yükleme ve GC R2'yi değiştirir.
 
-Uygulama PR'ında, istek işleyicilerinden önce çalışan geçici bakım/yazma kilidi
-hazırlanır ve yerelde denenir. Bu özellik bugün repoda mevcut sayılmaz.
+Bu hazırlık PR'ındaki `TRANSFER_WRITE_LOCK` kullanılır ve hedefte kapalı/açık
+durumları doğrulanır. Kaynağa kilit destekli build yayınlanmadan son snapshot alınmaz.
+Kilit istek işleyicilerinden ve canonical redirect'ten önce çalışır. GET/HEAD/OPTIONS
+açık kalır; başka doğrudan DB/R2 yazıcılarının durdurulması operatör sorumluluğudur.
 
 - Kaynakta tüm değiştirici HTTP yöntemleri, admin giriş/çıkış/parola işlemleri,
   CMS kaydı, müşteri formu, upload ve GC durur. Canonical yönlendirmeden önce

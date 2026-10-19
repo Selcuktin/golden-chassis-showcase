@@ -3,6 +3,7 @@
 // /api/admin/upload, /api/media/*, /api/admin/inquiries, /api/cms, /api/inquiry, /sitemap.xml
 
 import { z } from "zod";
+import { transferWriteLock } from "./transfer-lock";
 import { CmsConfigSchema, SettingsSchema, VehicleSchema } from "../lib/cms-validation";
 import { isMediaReferenced, mediaKey } from "./media-references";
 import { sql } from "drizzle-orm";
@@ -62,6 +63,7 @@ export type ServerEnv = CloudflareAccessEnv & {
   NODE_ENV?: string;
   SITE_URL?: string;
   GIT_COMMIT?: string;
+  TRANSFER_WRITE_LOCK?: string;
 };
 
 // Strongly typed DB row interfaces
@@ -634,6 +636,8 @@ export async function getLiveVehicleBySlug(slug: string, env?: unknown): Promise
 
 // Main API Handler
 export async function handleApiRequest(request: Request, env: unknown): Promise<Response | null> {
+  const locked = transferWriteLock(request, resolveEnv(env, request));
+  if (locked) return locked;
   const url = new URL(request.url);
   // Cloudflare serves /api routes without shared caching; response headers also protect browsers.
   const accessResponse = await enforceCloudflareAccess(request, resolveEnv(env, request));
