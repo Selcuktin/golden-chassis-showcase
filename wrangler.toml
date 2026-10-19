@@ -1,12 +1,14 @@
 # ByCar Etiler — Cloudflare Workers & D1 Database Configuration
-name = "selcuktin-golden-chassis-showcase"
+name = "bycaretiler"
+account_id = "7f748d43de71933045facda4f76e8d2d"
 main = ".output/server/index.mjs"
 compatibility_date = "2026-10-13"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
+preview_urls = false
 routes = [
-  { pattern = "bycaretiler.com", custom_domain = true },
-  { pattern = "www.bycaretiler.com/*", zone_name = "bycaretiler.com" },
+  { pattern = "bycaretiler.com/*", zone_id = "a6efd36482258371c763caf785dc48b3" },
+  { pattern = "www.bycaretiler.com/*", zone_id = "a6efd36482258371c763caf785dc48b3" },
 ]
 
 [assets]
@@ -22,7 +24,7 @@ directory = ".output/public"
 [[d1_databases]]
 binding = "DB"
 database_name = "bycar_db"
-database_id = "cb9bbc34-a9ef-446e-b993-46405a7ca765"
+database_id = "8b964994-5695-49da-9923-64ca43dfa8cf"
 migrations_dir = "drizzle"
 
 # Cloudflare R2 Storage (Vehicle Images & Media)
@@ -36,6 +38,5 @@ NODE_ENV = "production"
 # Canonical origin for metadata, sitemap and permanent alias redirects.
 SITE_URL = "https://bycaretiler.com"
 CF_ACCESS_REQUIRED = "false"
-# CF_ACCESS_TEAM_DOMAIN = "https://sami-app-pages.cloudflareaccess.com"
-# CF_ACCESS_AUD = "b60d5e51dce3637ad067bdb9018f782e8bd574158aea2e65c573105850141065"
-# CF_ACCESS_ALLOWED_EMAILS is stored as a Worker secret, not in Git.
+# Only enable temporarily for a coordinated snapshot; disable on the accepted target.
+TRANSFER_WRITE_LOCK = "false"
