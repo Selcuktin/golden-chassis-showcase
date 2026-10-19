@@ -1,5 +1,10 @@
 # ByCar Etiler — Cloudflare hesap taşıma planı
 
+> **19 Ekim 2026 güncel durum:** Tam aktarım tamamlandı. Güncel kaynaklar ve kabul
+> sonuçları [operasyon kaydında](cloudflare-account-transfer-2026-10-19.md).
+> Aşağıdaki hazırlık aşaması tarihsel plandır; kaynak hesabı tekrar etkinleştirme
+> veya eski veriyi yeni, dolu veritabanına yeniden import etme talimatı değildir.
+
 Hazırlık güncellemesi: 19 Ekim 2026. Uygulama günü sahibiyle belirlenecek
 düşük trafik saatinde. Bu belge bir uygulama planıdır; yeni hesapta kaynak oluşturma,
 üretim yedeği alma, DNS değiştirme veya veri taşıma bu hazırlık kapsamında yapılmadı.

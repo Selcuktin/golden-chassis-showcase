@@ -2,8 +2,9 @@
 
 Hazırlık ve güvenli restore PR #21 ile main'e alındı (06d4bfb).
 Bu PR yeni hesap yayın hedefini kalıcı Wrangler yapılandırmasına geçirir.
-Domain ve uygulama URL'leri değişmez. Bu belge DNS/SSL tamamlandı anlamına gelmez;
-son durum aşağıdaki kabul kapılarıyla takip edilir.
+Domain ve uygulama URL'leri değişmedi. **Tam aktarım 19 Ekim 2026'da tamamlandı.**
+PR #23 merge SHA'sı `1fb6a8b5aba2680f959872e690acccd0f6502369` yeni hesapta
+yayınlandı; sahibi mevcut parolasıyla girişini ve araçları doğruladı.
 
 ## Hedef kaynaklar
 
@@ -55,12 +56,35 @@ doğrulama kodu üretilmedi. CF_ACCESS_REQUIRED=false; e-posta/OTP geri açılma
 - [x] Hedef migration, veri/hash ve medya karşılaştırması, özel önizleme kabulü.
 - [x] Yeni hesaptaki DNS kayıtları sahip ekran görüntüsüyle doğrulandı.
 - [x] Geçiş öncesi public resolver'da DS cevabı yok (DNSSEC delegasyonu kapalı).
-- [ ] Sahip Turkticaret nameserver değişikliğini kaydetti.
-- [ ] Yeni zone Active; apex/www TLS ve HTTP yönlendirme kabulü.
-- [ ] Kalıcı yeni hesap config PR'ı CI sonrası merge edildi, merge SHA'sı yayınlandı.
-- [ ] Yalnız yeni hedefte yazmalar açık; sahip mevcut panel parolasıyla giriş yaptı.
-- [ ] Eski Worker'ın DB/R2 kullanımı kaldırılıp yalnız ana domaine yönlendirme kaldı.
-- [ ] Hesaplar arası bağımlılık ve yeni D1 metrikleri son kez doğrulandı.
+- [x] Sahip Turkticaret nameserver değişikliğini kaydetti; registry ve iki public
+  resolver yeni NS'leri doğruladı.
+- [x] Yeni zone Active (17:16:29 UTC); eski zone Moved Away. Apex HTTPS ve www
+  HTTPS yönlendirmesi geçerli sertifikayla doğrulandı; path/query korunuyor.
+- [x] Kalıcı yeni hesap config PR #23 tüm CI kontrolleri sonrası merge edildi;
+  merge SHA'sı yayınlandı. Main quality ve audit de başarılı.
+- [x] Yalnız yeni hedefte yazmalar açık; sahip mevcut panel parolasıyla giriş yaptı.
+- [x] Eski Worker D1/R2/service/assets bindings: 0; route: 0; custom domain: 0;
+  workers.dev ve preview URL'leri kapalı. Eski workers.dev adresi 404 ve Location
+  başlığı yok: eski hesaptan yeni hesaba yönlendirme veya proxy yapılmıyor.
+- [x] Yeni site kalıcı hedef config ile doğrudan yeni hesapta çalışıyor;
+  runtime kaynaklarında eski Worker/hesap/D1 referansı yok. Eski hesaptaki diğer
+  projelere dokunulmadı.
+
+Yayın sonrası salt okunur canlı kabul tekrarlandı: 76 kontrol, 9 halka açık araç,
+58 medya, 0 hata. Taslaklar dahil 13 araç ve 84 görsel satırı tam veri kopyasında
+korunur; kamu kataloğunun daha küçük olması veri kaybı değildir. Normal parola
+girişi sahibi tarafından yapıldı; üretimde sentetik müşteri/araç testi yapılmadı.
+Yeni D1 Time Travel kurtarma noktası özel operasyon kaydına alındı. Son giriş
+sonrası yeni hedefin ayrıca SQL yedeği alınır. R2 kaynak nesneleri ve son hash
+manifesti özel operasyon dizinindedir. Gelecekteki değişiklikler için bağımsız
+periyodik R2 yedeği ayrıca planlanmalıdır; sürekli yedek otomasyonu kurulmuş
+gibi raporlanmaz. Yayın sonrası trafik bazlı günlük D1 tasarrufu henüz ölçülmedi.
+
+Kilitli hedef sürüm 087eb0b4-7eae-487f-a2a0-c4c9d934239c; yazma açılan
+yayın 34bfbd17-61f3-4297-bd33-ff4fe1b3c78a. Eski Worker'ın kapatılmış,
+storage binding'siz sürümü 88cc5f34-904e-4ad6-b855-768fb0fd4f64.
+Bir sorun olursa yeni hesaptaki uygun Worker sürümüne dönülür; DNS'yi veya
+veriyi otomatik eski hesaba döndürmeyin.
 
 ## Geri dönüş
 
