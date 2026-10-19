@@ -1,5 +1,10 @@
 # ByCar hesap aktarımı — 19 Ekim 2026 operasyon kaydı
 
+> **Sonraki açık kullanıcı talebiyle eski ByCar Worker/D1/R2 silindi.**
+> [Temizlik ve yerel geri yükleme doğrulaması](cloudflare-old-account-cleanup-2026-10-19.md).
+> Aşağıdaki kaynak saklama/rollback açıklamaları ilk aktarımın tarihsel planıdır;
+> eski hesapta hazır kaynaklara dönüş artık mümkün değildir.
+
 Hazırlık ve güvenli restore PR #21 ile main'e alındı (06d4bfb).
 Bu PR yeni hesap yayın hedefini kalıcı Wrangler yapılandırmasına geçirir.
 Domain ve uygulama URL'leri değişmedi. **Tam aktarım 19 Ekim 2026'da tamamlandı.**

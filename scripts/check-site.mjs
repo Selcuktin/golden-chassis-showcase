@@ -1,9 +1,7 @@
 // Read-only release check. Never submits customer forms or changes production data.
 import assert from "node:assert/strict";
 
-const base = new URL(
-  process.argv[2] || "https://selcuktin-golden-chassis-showcase.selcuktin.workers.dev",
-);
+const base = new URL(process.argv[2] || "https://bycaretiler.com");
 const origin = base.origin;
 const problems = [];
 let checked = 0;
